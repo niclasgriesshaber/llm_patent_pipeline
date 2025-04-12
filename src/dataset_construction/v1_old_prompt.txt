@@ -1,0 +1,63 @@
+**Objective:** Process a German Patent Register page image (typically double-column). Extract valid Categories and Patent Entries sequentially into a flat JSON array.
+
+**Context:** Source is a historical German patent register. Accurately transcribe German characters.
+
+**Layout & Reading Order:**
+*   **Main Content Area:** Focus *only* on the text within the main content columns (usually two).
+*   **Running Headers (IGNORE):** Text in the top margin (top-left corner/center/top-right corner, e.g., `Kl. 1 a. Nr 199496`, page number, `Kl. 2 a. Nr 201 431`) is **outside** the main content columns and serves as navigation. **ABSOLUTELY IGNORE AND DISCARD ALL RUNNING HEADER TEXT.**
+*   **Reading Sequence:** Process the **left column top-to-bottom**, then the **right column top-to-bottom**.
+
+**Extraction Targets & Rules:**
+
+1.  **Category:**
+    *   **Identification:** Text block functioning as a heading or subheading *within the main content columns*. Often starts with "Klasse" or a code (e.g., `1a.`, `85g.`) followed by descriptive text. Acts as a divider for patent entries.
+    *   **Extraction:** Capture the full, verbatim text.
+        *   **Line Breaks:** Rejoin words hyphenated across lines (e.g., `Aufbereit-\nung` -> `Aufbereitung`). Replace all *other* internal line breaks with a single space.
+        *   **Output:** Store as a single string value for the key `"category"`.
+
+2.  **Patent Entry:**
+    *   **Identification:** Distinct text block *within the main content columns*, typically starting with a 5-6 digit number (maybe preceded by `(†)` or a single-digit number with a period), AND containing **substantial descriptive text** (names, places, dates, technical details). Found at the start of the page or under a Category or another Patent Entry.
+    *   **CRITICAL EXCLUSION (Number Lists):** **IGNORE AND DISCARD** any text block directly under a Category that consists *primarily* of patent/reference numbers (e.g., `254 218 A 1. — 254 976 A 109. — 255 021 A 159.`) and **LACKS substantial descriptive text**. These are **NOT** valid Patent Entries.
+    *   **Extraction:** Capture the complete, verbatim text of *valid* entries only.
+        *   **Line Breaks:** Rejoin words hyphenated across lines (e.g., `ver-\nschiedenem` -> `verschiedenem`). Replace all *other* internal line breaks with a single space.
+        *   **Output:** Store as a single string value for the key `"entry"`.
+    *   **Accuracy:** Preserve all original characters, capitalization, spelling, punctuation, and symbols precisely after handling line breaks.
+
+**Output Format:**
+
+*   A single **JSON array**.
+*   Each element is a **JSON object** with exactly **one** key:
+    *   `{"category": "Full text of Category (single string, line breaks processed)"}`
+    *   OR
+    *   `{"entry": "Full text of valid Patent Entry (single string, line breaks processed)"}`
+*   Objects must appear in the array strictly following the **Reading Sequence**.
+*   If multiple Categories appear consecutively (e.g., a main heading followed immediately by a subheading, or two subheadings back-to-back with no entries between), represent them as sequential `{"category": ...}` objects in the array.
+
+**Example Output Structure:**
+
+```json
+[
+  {
+    "category": "Klasse 1. Aufbereitung von Erzen und Brennstoffen."
+  },
+  {
+    "category": "1a. Aufbereitung, außer magnetischer und elektrischer. (Letztere beide 1b)."
+  },
+  {
+    "entry": "46645. — DIETZ, H., in Berlin, Gneisenaustraſse 20. Maschine zum Sortiren von Körpern von verschiedenem spezifischen Gewichte. 8. Dezember 1887. — A 307."
+  },
+  // ... potentially more entries or categories ...
+  {
+    "category": "85g. Springbrunnen und Strahlrohre (außer Zimmerspringbrunnen Klasse 34l)."
+  },
+  {
+    "category": "85h. Abtritte mit Spülung und Desinfektionseinrichtungen (Hahn-, Ventil- und Schieberkonstruktionen Klasse 47g, Abtritte ohne Spülung Klasse 34k)."
+  },
+  {
+    "entry": "46442. — HALOT, E. & J., und F. DE POSCH in Brüssel, 53 Rue Derosne Molembeek St. Jean; Vertreter: G. BRANDT in Berlin SW., Kochstrasse 4. Neuerung an Teig - Knet - Maschinen. 9. Juni 1888. — A 209."
+  },
+  // ... more entries or categories following reading order ...
+]
+```
+
+*Final Instruction:* Focus ONLY on identifying and extracting valid Categories and Patent Entries from within the main content columns according to these precise definitions and reading order. Absolutely ensure RUNNING HEADERS (in top margin) and standalone NUMBER LISTS are discarded. Produce only the final JSON array.

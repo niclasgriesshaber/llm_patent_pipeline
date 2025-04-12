@@ -40,7 +40,7 @@ if not API_KEY:
     sys.exit("Error: GOOGLE_API_KEY not found.")
 
 # --- Configuration based on original working script & user request ---
-MODEL_NAME = "gemini-2.5-pro-exp-03-25" #"gemini-2.0-flash" # gemini-2.5-pro-exp-03-25 # gemini-2.5-pro-preview-03-25
+MODEL_NAME = "gemini-2.0-flash" #"gemini-2.5-pro-exp-03-25" #"gemini-2.0-flash" # gemini-2.5-pro-exp-03-25 # gemini-2.5-pro-preview-03-25
 MAX_OUTPUT_TOKENS = 8192
 MAX_RETRIES = 3
 BACKOFF_SLEEP_SECONDS = 30

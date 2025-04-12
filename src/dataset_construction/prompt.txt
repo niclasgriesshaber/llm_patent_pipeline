@@ -1,51 +1,72 @@
-**Objective:** Process an image of a German Patent Register page (double-column format). Extract valid category headings and valid patent entries sequentially, producing a flat JSON array.
+**Objective:** Perform information extraction from a German Patent Register page image (typically double-column format). Extract Classification Headings and valid Patent Entries sequentially into a flat JSON array. Preserve original German characters.
 
-**Context:** The provided image depicts a page from a historical **German** patent register. Expect and accurately transcribe German-specific characters.
+**Critical Instructions & Layout:**
 
-**Reading Order:** Process the **left column from top to bottom**, then the **right column from top to bottom**.
+1.  **Target Area:** Extraction MUST focus **exclusively** on the text content physically located **within the main content columns** (usually two columns, separated by a vertical gutter).
+2.  **IGNORE Running Headers:** Text located in the **top margin** of the page (e.g., `Kl. X. Nr YYYYY		page number		Kl. X. Nr YYYYY`) serves ONLY for navigation in the original document. **This text MUST be completely ignored and discarded. DO NOT include it in the output.**
+3.  **Reading Order:** Process text strictly column by column: Read the **entire left column from top to bottom**, then read the **entire right column from top to bottom**. Maintain this exact sequence in the output array.
 
-**Extraction Targets:**
+**Extraction Targets & Detailed Rules:**
 
-1.  **Valid Category Heading:**
-    *   **Identification:** Identify text blocks *clearly positioned as subheadings within the main double-column text flow*. These typically start with "Klasse" followed by a number (e.g., "Klasse 1.") and often include a descriptive title (e.g., "Aufbereitung..."). They may also contain references like "Vgl. die Klassen...". A valid heading frequently acts as a divider *between* patent entries within a column.
-    *   **!!! ABSOLUTE CRITICAL EXCLUSION - Running Category Headers !!!:** Explicitly **identify and COMPLETELY IGNORE AND DISCARD** any text appearing in the page's running headers (typically the top-left or top-right corners of the page, *outside* the main content columns). Text located in these header areas are **absolutely NOT** valid category headings. They are navigational aids, not content subheadings. **UNDER NO CIRCUMSTANCES EXTRACT THESE RUNNING HEADERS.** Mistaking them for valid category headings is a critical error.
-    *   **Crucial Exclusion - General:** Also ignore any category/number annotations appearing in page margins or footers. Only text functioning as a subheading *within the column text* is a **valid** category heading.
-    *   **Extraction (Valid Headings Only):** Capture the full, verbatim text of the *valid* heading (one located *within* the column flow, not a header/footer) as a single string. **Critically, rejoin words hyphenated across line breaks (e.g., `Aufbereit-\nung` becomes `Aufbereitung`). Remove the hyphen and concatenate the parts directly.** For all *other* internal line breaks within the heading (if any), replace them with a single space.
+1.  **Classification Heading:**
+    *   **Identification:** Identify text blocks *within the main content columns* that function as organizational headings. These divide categories of patent entries. They typically appear in one of these formats:
+        *   **Main Heading:** Typically starts with "Klasse", followed by a number and period (e.g., `Klasse 1.`), and then descriptive text (e.g., `Aufbereitung von Erzen.`).
+        *   **Sub-Heading:** Typically starts with a code (number + optional character + period, e.g., `1a.`, `85g.`), often followed by descriptive text.
+    *   **Cross-References:** Text starting with "Vgl." (e.g., `Vgl. die Klassen 25, 41...`) appearing *immediately* below or alongside a Main or Sub-Heading, *before* the next distinct Patent Entry or the next Heading, is considered part of that *preceding* heading. Include it.
+    *   **Extraction:**
+        *   Capture the full, verbatim text of the heading, including any attached "Vgl." cross-references.
+        *   **Line Break Handling:** Rejoin words hyphenated across lines (e.g., `Aufbereit-\nung` becomes `Aufbereitung`). Replace ALL *other* internal line breaks within the heading text with a single space.
+        *   **Output:** Store the entire processed heading text as a single string value for the key `"category"`.
 
-2.  **Valid Patent Entry:**
-    *   **Identification:** A distinct text block usually beginning with a 5-6 digit patent number (potentially preceded by `(†)`). **Must contain associated descriptive text** (names, places like Berlin, dates like '8. Dezember 1887', invention details, etc.). Found directly under a category heading or following another patent entry within the columns.
-    *   **!!! ABSOLUTE CRITICAL EXCLUSION !!!:** You **MUST** identify and **COMPLETELY IGNORE AND DISCARD** any block of text appearing directly after a category heading that consists *primarily* of patent/reference numbers and **LACKS substantial descriptive text**. These typically look like `45780 A 83. - 45832 A 167. - 46031 A 155.` or the example `45621 A 49. - 45743 A 63.`. **NEVER, UNDER ANY CIRCUMSTANCES, EXTRACT THESE NUMBER-ONLY LISTS.** They are **NOT** valid patent entries. Failure to exclude them is a critical error.
-    *   **Extraction (Valid Entries Only):** Capture the complete, verbatim text of the *valid* entry (which contains descriptive text) as a single string. **Critically, rejoin words hyphenated across line breaks (e.g., `ver-\nschiedenem` becomes `verschiedenem`, `De-\nzember` becomes `Dezember`). Remove the hyphen and concatenate the parts directly.** For all *other* internal line breaks within the entry, replace them with a single space to ensure the entire entry forms one continuous line of text in the output.
-    *   **Accuracy:** Transcribe valid entries with the precision of a world-class historian, preserving all original characters, capitalization, spelling, punctuation, and symbols exactly as they appear in the source *after* correctly handling the line breaks as specified above.
+2.  **Patent Entry:**
+    *   **Identification:** Identify distinct text blocks *within the main content columns* that represent an individual patent record. A valid Patent Entry MUST meet these criteria:
+        *   Typically starts with a 5-6 digit number (the Patent Number). This number might be preceded by a symbol like `(†)` or a smaller group/item number with a period (e.g., `3. 299 583`).
+        *   Crucially, it **MUST contain substantial descriptive text** characteristic of a patent record, typically including:
+            *   Patent Holder Name(s) and Location(s).
+            *   A technical Title/Subject description.
+            *   Date(s).
+    *   **CRITICAL EXCLUSION RULE (Number Lists):** **IGNORE AND DISCARD** any text block appearing directly under a Category Heading that consists *almost exclusively* of lists of patent numbers or reference codes (e.g., `55 306 A 115. - 55343 A 131. - 55403 A 149.`) and **LACKS the substantial descriptive elements** (Applicant Name, Title, etc.) defined above. These are *NOT valid Patent Entries.**
+    *   **Extraction:**
+        *   Capture the complete, verbatim text of *only valid* Patent Entries.
+        *   **Line Break Handling:** Rejoin words hyphenated across lines (e.g., `ver-\nschiedenem` becomes `verschiedenem`). Replace ALL *other* internal line breaks within the entry text with a single space.
+        *   **Output:** Store the entire processed entry text as a single string value for the key `"entry"`.
+    *   **Accuracy:** Preserve all original German characters, capitalization, spelling, punctuation (including periods, commas, hyphens, em-dashes), and symbols (`(†)`) precisely after handling line breaks.
 
-**Output Format:**
+**Output Format Specification:**
 
-*   A single **JSON array**.
-*   Each element is a **JSON object** with exactly **one key**:
-    *   `{"category": "Full text of VALID category heading (single string, line breaks processed)"}`
+*   Produce a single **JSON array** containing multiple JSON objects.
+*   Each object in the array must have **exactly ONE key**:
+    *   `{"category": "Full text of heading (single string, line breaks processed)"}`
     *   OR
-    *   `{"entry": "Full text of VALID patent entry (single string, line breaks processed)"}`
-*   The order of objects in the array must strictly follow the specified **Reading Order**.
+    *   `{"entry": "Full text of valid patent entry (single string, line breaks processed)"}`
+*   The objects MUST appear in the array strictly following the **Reading Order** (left column top-to-bottom, then right column top-to-bottom).
+*   If multiple Category Headings (e.g., Main + Sub, or Sub + Sub) appear consecutively without any patent entries between them, represent them as sequential `{"category": ...}` objects in the output array.
 
 **Example Output Structure:**
 
 ```json
 [
   {
-    "category": "Klasse 1. Aufbereitung von Erzen, Mineralien und Brennstoffen."
+    "category": "Klasse 1. Aufbereitung von Erzen, Mineralien und Brennstoffen. Vgl. die Klassen 40 und 50."
   },
   {
-    "entry": "46645. — DIETZ, H., in Berlin, Gneisenaustraſse 20. Maschine zum Sortiren von Körpern von verschiedenem spezifischen Gewichte. 8. Dezember 1887. — A 307."
+    "entry": "55546. — NORDVALL, JOHAN, JOHAN AXEL ESTBERG und MAGNUS MATTSSON, sämmtlich in Ostersund, Schweden; Vertreter: BRYDGES & CO. in Berlin S.W., Königgrätzerstr. 101. Centrifugal-Sortirapparat. 16. März 1890. — A 249."
+  },
+  {
+    "entry": "55551. — GLASER, F. C., in Berlin S.W., Lindenstraſse 80. Verbundstofsherd. 10. Juni 1890. — A 249."
   },
   // ... more entries ...
   {
-    "category": "Klasse 2. Bäckerei."
+    "category": "Klasse 3. Bekleidungsindustrie. Vgl. die Klassen 25, 41, 44, 52, 71."
   },
   {
-    "entry": "46442. — HALOT, E. & J., und F. DE POSCH in Brüssel, 53 Rue Derosne Molembeek St. Jean; Vertreter: G. BRANDT in Berlin SW., Kochstrasse 4. Neuerung an Teig - Knet - Maschinen. 9. Juni 1888. — A 209."
-  }
-  // ... more entries ...
+    "category": "3a."
+  },
+  {
+    "entry": "(†) 55539. — FÜRSTENHEIM, C., in Berlin C., Jerusalemerstraſse 15. Zusammenklappbares Büstengestell. 5. Juni 1890. — A 249."
+  },
+  // ... more entries or categories following reading order ...
 ]
 ```
 
-*Final Instructions:* Focus ONLY on identifying and extracting valid category headings and valid patent entries according to these precise definitions and reading order. ABSOLUTELY ensure that RUNNING HEADERS and the standalone patent number lists following category headings are identified and DISCARDED, NEVER extracted. Ensure accurate, verbatim transcription into the specified flat JSON format. Ignore all other non-specified text elements. Only output the JSON array, nothing else.
+*Final Instruction:* Adhere strictly to these rules. Prioritize correct identification of the main content columns, exclusion of running headers and number lists, and accurate transcription/line break processing. The output MUST be only the specified JSON array. Nothing else.
