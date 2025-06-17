@@ -144,29 +144,58 @@ def format_duration(seconds: float) -> str:
 def repair_unescaped_quotes(json_str: str) -> str:
     """
     Repairs problematic quotes in a JSON-like string for robust parsing.
-    - Replaces all non-standard quotes (German, curly, etc.) with escaped double quotes (\")
-    - Escapes all unescaped double quotes inside string values (but not property names or JSON syntax)
-    - Only processes the value part of key-value pairs
+    - Walks through the string character by character
+    - Escapes all double quotes and non-standard quotes inside values (after : and opening quote), except the opening and closing quotes
+    - Leaves property names and JSON syntax untouched
+    - Handles all edge cases robustly
     """
-    # 1. Replace all non-standard quotes with escaped double quotes
     nonstd_quotes = [
         '„', '“', '”', '«', '»', '‘', '’', '‚', '‛', '`', '´', '‹', '›', 'ʺ', 'ˮ', '❛', '❜', '❝', '❞', '❮', '❯'
     ]
-    for q in nonstd_quotes:
-        json_str = json_str.replace(q, '\\"')
-
-    # 2. Regex to match key-value pairs: "key": "value"
-    def escape_value_quotes(match):
-        key = match.group(1)
-        value = match.group(2)
-        # Escape all unescaped double quotes inside the value
-        value_escaped = re.sub(r'(?<!\\)"', r'\\"', value)
-        return f'"{key}": "{value_escaped}"'
-
-    # This regex matches "key": "value" pairs
-    pattern = re.compile(r'"([^"]+)":\s*"((?:[^"\\]|\\.)*)"')
-    json_str = pattern.sub(escape_value_quotes, json_str)
-    return json_str
+    nonstd_quotes_set = set(nonstd_quotes)
+    result = []
+    in_string = False
+    escape = False
+    after_colon = False
+    i = 0
+    while i < len(json_str):
+        c = json_str[i]
+        if not in_string:
+            if c == ':':
+                result.append(c)
+                # Look ahead for whitespace and opening quote
+                j = i + 1
+                while j < len(json_str) and json_str[j].isspace():
+                    result.append(json_str[j])
+                    j += 1
+                if j < len(json_str) and json_str[j] == '"':
+                    result.append('"')
+                    in_string = True
+                    i = j  # skip to opening quote
+                # else, not a string value
+            else:
+                result.append(c)
+        else:
+            if escape:
+                result.append(c)
+                escape = False
+            elif c == '\\':
+                result.append(c)
+                escape = True
+            elif c == '"':
+                # End of string value
+                result.append(c)
+                in_string = False
+            elif c in nonstd_quotes_set:
+                # Escape non-standard quote
+                result.append('\\"')
+            elif c == '"':
+                # Escape standard quote inside value
+                result.append('\\"')
+            else:
+                result.append(c)
+        i += 1
+    return ''.join(result)
 
 def parse_json_str(response_text: str) -> Any:
     """Parse JSON from response text with robust error handling and repair for unescaped quotes."""
