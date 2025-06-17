@@ -803,8 +803,25 @@ def main():
                     overwrite_error_file(pdf_base_out_dir, pdf_stem, pdf_name, failed_pages, error_tracker)
             else:
                 logging.warning("No pages were successfully processed")
+            # If error file exists, delete it since there are no failed pages
+            err_file = pdf_base_out_dir / f"errors_{pdf_stem}.txt"
+            if err_file.exists():
+                try:
+                    err_file.unlink()
+                    logging.info(f"Deleted error file as there are no failed pages: {get_relative_path(err_file)}")
+                except Exception as e:
+                    logging.error(f"Failed to delete error file {get_relative_path(err_file)}: {e}")
+            return
         else:
             logging.warning("No failed pages found in error file or error file not found.")
+            # If error file exists, delete it since there are no failed pages
+            err_file = pdf_base_out_dir / f"errors_{pdf_stem}.txt"
+            if err_file.exists():
+                try:
+                    err_file.unlink()
+                    logging.info(f"Deleted error file as there are no failed pages: {get_relative_path(err_file)}")
+                except Exception as e:
+                    logging.error(f"Failed to delete error file {get_relative_path(err_file)}: {e}")
             return
     
     else:
