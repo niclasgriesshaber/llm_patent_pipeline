@@ -141,36 +141,45 @@ def format_duration(seconds: float) -> str:
     mins, secs = divmod(rem, 60)
     return f"{int(hrs):02d}:{int(mins):02d}:{int(secs):02d}"
 
+def repair_unescaped_quotes(json_str: str) -> str:
+    """
+    Escapes unescaped double quotes inside string values in a JSON-like string.
+    Only applies to values, not property names.
+    Also replaces German-style quotes with escaped double quotes.
+    """
+    string_pattern = re.compile(r'"((?:[^"\\]|\\.)*)"')
+    def replacer(match):
+        s = match.group(1)
+        # Replace German-style quotes
+        s = s.replace('„', '\\"').replace('"', '\\"')
+        # Escape any unescaped double quotes (not already escaped)
+        s = re.sub(r'(?<!\\)"', r'\\"', s)
+        return f'"{s}"'
+    return string_pattern.sub(replacer, json_str)
+
 def parse_json_str(response_text: str) -> Any:
-    """Parse JSON from response text with robust error handling."""
+    """Parse JSON from response text with robust error handling and repair for unescaped quotes."""
     # Extract JSON from code blocks if present
     fenced_match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", response_text, re.IGNORECASE)
     if fenced_match:
         candidate = fenced_match.group(1).strip()
         if candidate.startswith('\ufeff'): candidate = candidate[1:]
     else:
-        # Try the entire response if no code blocks
         candidate = response_text.strip().strip("`")
         if candidate.startswith('\ufeff'): candidate = candidate[1:]
-    
-    # Parse the candidate as JSON
     try:
         return json.loads(candidate)
     except json.JSONDecodeError as e:
-        # Provide detailed error context
-        error_context = f"Failed to parse JSON content: {e}\n"
-        error_context += f"Content snippet: {candidate[:200]}...\n"
-        error_context += f"Content length: {len(candidate)} characters\n"
-        
-        # Identify common JSON formatting issues
-        if "Expecting property name" in str(e):
-            error_context += "Possible issue: Missing quotes around property names or trailing commas\n"
-        elif "Expecting ',' delimiter" in str(e):
-            error_context += "Possible issue: Missing commas between array/object elements\n"
-        elif "Expecting value" in str(e):
-            error_context += "Possible issue: Empty values or missing values\n"
-        
-        raise ValueError(error_context) from e
+        # Try to repair unescaped quotes
+        repaired = repair_unescaped_quotes(candidate)
+        try:
+            return json.loads(repaired)
+        except json.JSONDecodeError as e2:
+            # Provide detailed error context
+            error_context = f"Failed to parse JSON content (even after repair): {e2}\n"
+            error_context += f"Content snippet: {candidate[:200]}...\n"
+            error_context += f"Content length: {len(candidate)} characters\n"
+            raise ValueError(error_context) from e2
 
 def increase_file_descriptor_limit():
     """Increase the file descriptor limit to prevent 'Too many open files' errors."""
