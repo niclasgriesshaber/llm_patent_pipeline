@@ -600,6 +600,60 @@ def create_consolidated_csv(json_dir: Path, pdf_base_out_dir: Path, pdf_stem: st
     logging.info(f"Created consolidated CSV with {len(df)} rows: {get_relative_path(final_csv_path)}")
     return final_csv_path
 
+def overwrite_error_file(pdf_base_out_dir: Path, pdf_stem: str, pdf_name: str, 
+                        failed_pages: Set[int], error_tracker: ErrorTracker) -> None:
+    """Overwrite the error file with current error information."""
+    err_file = pdf_base_out_dir / f"errors_{pdf_stem}.txt"
+    logging.warning(f"{len(failed_pages)} page(s) failed. Writing details to: {get_relative_path(err_file)}")
+    pdf_base_out_dir.mkdir(parents=True, exist_ok=True)
+    
+    try:
+        total_pages = len(failed_pages)  # We only care about remaining failed pages
+        error_summary = error_tracker.get_error_summary()
+        
+        with err_file.open("w", encoding="utf-8") as ef:
+            # Basic Information
+            ef.write(f"Errors for PDF: {pdf_name}\n")
+            ef.write(f"Report Generated: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+            ef.write(f"Failed Pages Summary: {sorted(list(failed_pages))}\n")
+            ef.write(f"Prompt Used: {PROMPT_FILE_PATH.name}\n")
+            ef.write(f"Total Failed Pages: {total_pages}\n\n")
+            
+            # Error Summary Section
+            ef.write("Error Summary:\n")
+            ef.write("-" * 40 + "\n")
+            ef.write(f"API Call Final Failures (pages): {error_summary.get('API', 0)}\n")
+            ef.write(f"JSON Parse Final Failures (pages): {error_summary.get('PARSE', 0)}\n")
+            ef.write(f"Too Many Open Files (pages): {error_summary.get('FILE_LIMIT', 0)}\n")
+            ef.write(f"Rate Limit Hits (occurrences): {error_summary.get('RATE_LIMIT_HITS', 0)}\n")
+            ef.write(f"Other/Future Failures: {error_summary.get('OTHER', 0) + error_summary.get('FUTURE', 0)}\n\n")
+            
+            # Detailed Error Information
+            ef.write("Detailed Error Information:\n")
+            ef.write("=" * 40 + "\n")
+            
+            # Group errors by type for better organization
+            errors_by_type = defaultdict(list)
+            for p_idx in sorted(failed_pages):
+                page_errors = error_tracker.get_page_errors(p_idx)
+                for error_type, error_msg in page_errors:
+                    errors_by_type[error_type].append((p_idx, error_msg))
+            
+            # Write errors grouped by type
+            for error_type in ErrorType:
+                if errors_by_type[error_type]:
+                    ef.write(f"\n{error_type.name} Errors:\n")
+                    ef.write("-" * 20 + "\n")
+                    for page_idx, error_msg in errors_by_type[error_type]:
+                        retry_count = error_tracker.get_retry_count(page_idx)
+                        ef.write(f"Page {page_idx:04d} (Retries: {retry_count}/{MAX_RETRIES}):\n")
+                        ef.write(f"  Error: {error_msg}\n")
+                        if "Content snippet" in error_msg:
+                            ef.write("  " + "-" * 18 + "\n")
+    
+    except Exception as e:
+        logging.error(f"Failed to write error file {get_relative_path(err_file)}: {e}", exc_info=True)
+
 def process_specific_pages(pages: List[int], png_dir: Path, json_dir: Path, task_prompt: str, 
                          temperature: float, error_tracker: ErrorTracker) -> Tuple[List[dict], Set[int]]:
     """Process a specific list of pages. Returns (results, successfully_processed_pages)."""
@@ -755,7 +809,7 @@ def main():
                 failed_pages = set(pages_to_process) - successful_pages
                 if failed_pages:
                     error_tracker.errors = {p: error_tracker.errors[p] for p in failed_pages}
-                    write_error_file(pdf_base_out_dir, pdf_stem, pdf_name, failed_pages, error_tracker)
+                    overwrite_error_file(pdf_base_out_dir, pdf_stem, pdf_name, failed_pages, error_tracker)
             else:
                 logging.warning("No pages were successfully processed")
         else:
@@ -810,7 +864,7 @@ def main():
         # Create error file if there are still failures
         failed_pages = error_tracker.get_failed_pages()
         if failed_pages:
-            write_error_file(pdf_base_out_dir, pdf_stem, pdf_name, failed_pages, error_tracker)
+            overwrite_error_file(pdf_base_out_dir, pdf_stem, pdf_name, failed_pages, error_tracker)
 
     pdf_tokens = defaultdict(int)
     for r in page_results_list:
