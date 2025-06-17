@@ -3,21 +3,21 @@
 set -euo pipefail
 
 ##############################################
-# Minimal "Directory Listing" Script
 # - Lists *.tif files from an HTML index
 # - Converts each to PDF with compression
-# - Merges into one PDF for one or all folders (filtered)
+# - Merges into one PDF for one or all folders
 ##############################################
 
-# --- Determine Script Directory ---
+# Determine script directory
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
-WORKSPACE_DIR="$( dirname "$SCRIPT_DIR" )" # Assumes script is in a directory one level below workspace root
+WORKSPACE_DIR="$( dirname "$SCRIPT_DIR" )"
 
-# --- Configuration ---
+# Server URL
 BASE_URL="https://digi.bib.uni-mannheim.de/Akademie_Projekt/"
+
 # Output directory relative to the workspace root (one level above script dir)
 OUTPUT_DIR="${WORKSPACE_DIR}/data/pdfs/full_pdfs"
-MAIN_TMP_DIR="" # Will be created by main script flow
+MAIN_TMP_DIR=""
 
 # Logging function
 # Usage: log_msg LEVEL "Message"
@@ -28,7 +28,6 @@ log_msg() {
   # ISO 8601 format timestamp
   echo "$(date '+%Y-%m-%dT%H:%M:%S%z') [$LEVEL] $MSG" >&2
 }
-
 
 # Ensure MAIN_TMP_DIR is cleaned up on exit, error, or interrupt
 # This trap will be set after MAIN_TMP_DIR is created.
