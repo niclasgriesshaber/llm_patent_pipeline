@@ -628,7 +628,7 @@ def overwrite_error_file(pdf_base_out_dir: Path, pdf_stem: str, pdf_name: str,
             ef.write(f"Rate Limit Hits (occurrences): {error_summary.get('RATE_LIMIT_HITS', 0)}\n")
             ef.write(f"Other/Future Failures: {error_summary.get('OTHER', 0) + error_summary.get('FUTURE', 0)}\n\n")
             
-            # Detailed Error Information
+            # Detailed Error Information:
             ef.write("Detailed Error Information:\n")
             ef.write("=" * 40 + "\n")
             
@@ -646,47 +646,38 @@ def overwrite_error_file(pdf_base_out_dir: Path, pdf_stem: str, pdf_name: str,
                     ef.write("-" * 20 + "\n")
                     for page_idx, error_msg in errors_by_type[error_type]:
                         retry_count = error_tracker.get_retry_count(page_idx)
-                        ef.write(f"Page {page_idx:04d} (Retries: {retry_count}/{MAX_RETRIES}):\n")
+                        ef.write(f"Page {page_idx:04d} (Retries: {retry_count+1}/{MAX_RETRIES}):\n")
                         ef.write(f"  Error: {error_msg}\n")
                         if "Content snippet" in error_msg:
                             ef.write("  " + "-" * 18 + "\n")
-    
     except Exception as e:
         logging.error(f"Failed to write error file {get_relative_path(err_file)}: {e}", exc_info=True)
 
 def process_specific_pages(pages: List[int], png_dir: Path, json_dir: Path, task_prompt: str, 
-                         temperature: float, error_tracker: ErrorTracker) -> Tuple[List[dict], Set[int]]:
-    """Process a specific list of pages. Returns (results, successfully_processed_pages)."""
+                         temperature: float, error_tracker: ErrorTracker, max_workers: int = 5) -> Tuple[List[dict], Set[int]]:
+    """Process a specific list of pages in parallel. Returns (results, successfully_processed_pages)."""
     results = []
     successful_pages = set()
-    
-    for page_num in pages:
-        if not validate_page_exists(png_dir, page_num):
-            continue
-            
-        if check_json_exists(json_dir, page_num):
-            successful_pages.add(page_num)
-            continue
-            
-        png_file = png_dir / f"page_{page_num:04d}.png"
-        logging.info(f"Processing page {page_num:04d}...")
-        
-        result = process_page(page_num, png_file, task_prompt, temperature, json_dir, error_tracker)
-        results.append(result)
-        
-        if result["success"]:
-            successful_pages.add(page_num)
-        else:
-            retry_count = 0
-            while retry_count < MAX_RETRIES - 1:  # -1 because we already tried once
-                retry_count += 1
-                logging.info(f"Retry attempt {retry_count}/{MAX_RETRIES} for page {page_num:04d}")
-                result = process_page(page_num, png_file, task_prompt, temperature, json_dir, error_tracker)
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_page = {}
+        for page_num in pages:
+            if not validate_page_exists(png_dir, page_num):
+                continue
+            if check_json_exists(json_dir, page_num):
+                successful_pages.add(page_num)
+                continue
+            png_file = png_dir / f"page_{page_num:04d}.png"
+            future = executor.submit(process_page, page_num, png_file, task_prompt, temperature, json_dir, error_tracker)
+            future_to_page[future] = page_num
+        for future in as_completed(future_to_page):
+            page_num = future_to_page[future]
+            try:
+                result = future.result()
                 results.append(result)
                 if result["success"]:
                     successful_pages.add(page_num)
-                    break
-                    
+            except Exception as e:
+                logging.error(f"Error processing page {page_num}: {e}")
     return results, successful_pages
 
 # Main execution
@@ -782,7 +773,7 @@ def main():
         logging.info(f"Processing single page mode: page {args.page}")
         pages_to_process = [args.page]
         results, successful_pages = process_specific_pages(pages_to_process, png_dir, json_dir, 
-                                                        task_prompt, args.temperature, error_tracker)
+                                                        task_prompt, args.temperature, error_tracker, args.max_workers)
         page_results_list.extend(results)
         
         if successful_pages:
@@ -797,7 +788,7 @@ def main():
         pages_to_process = extract_failed_pages_from_error_file(pdf_base_out_dir, pdf_stem)
         if pages_to_process:
             results, successful_pages = process_specific_pages(pages_to_process, png_dir, json_dir,
-                                                            task_prompt, args.temperature, error_tracker)
+                                                            task_prompt, args.temperature, error_tracker, args.max_workers)
             page_results_list.extend(results)
             
             if successful_pages:
@@ -924,7 +915,7 @@ def main():
                          ef.write("-" * 20 + "\n")
                          for page_idx, error_msg in errors_by_type[error_type]:
                              retry_count = error_tracker.get_retry_count(page_idx)
-                             ef.write(f"Page {page_idx:04d} (Retries: {retry_count}/{MAX_RETRIES}):\n")
+                             ef.write(f"Page {page_idx:04d} (Retries: {retry_count+1}/{MAX_RETRIES}):\n")
                              ef.write(f"  Error: {error_msg}\n")
                              if "Content snippet" in error_msg:
                                  ef.write("  " + "-" * 18 + "\n")
