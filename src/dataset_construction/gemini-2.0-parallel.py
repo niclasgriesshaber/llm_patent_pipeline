@@ -474,12 +474,176 @@ def retry_failed_pages(failed_pages: Set[int], png_files: List[Path], prompt_tex
     
     return retry_results
 
+# After the ErrorTracker class, before main()
+
+def extract_failed_pages_from_error_file(pdf_base_out_dir: Path, pdf_stem: str) -> List[int]:
+    """Extract failed page numbers from error file."""
+    err_file = pdf_base_out_dir / f"errors_{pdf_stem}.txt"
+    if not err_file.exists():
+        logging.error(f"Error file not found: {get_relative_path(err_file)}")
+        return []
+    
+    try:
+        content = err_file.read_text(encoding='utf-8')
+        # Look for the Failed Pages Summary section
+        match = re.search(r'Failed Pages Summary: \[([\d, ]+)\]', content)
+        if not match:
+            logging.error(f"Failed pages summary not found in error file: {get_relative_path(err_file)}")
+            return []
+        
+        # Parse page numbers
+        pages = [int(p.strip()) for p in match.group(1).split(',') if p.strip()]
+        logging.info(f"Found {len(pages)} failed pages in error file: {pages}")
+        return pages
+    except Exception as e:
+        logging.error(f"Error reading/parsing error file {get_relative_path(err_file)}: {e}")
+        return []
+
+def check_json_exists(json_dir: Path, page_num: int) -> bool:
+    """Check if JSON file exists for a specific page."""
+    json_file = json_dir / f"page_{page_num:04d}.json"
+    exists = json_file.exists()
+    if exists:
+        logging.info(f"JSON file already exists for page {page_num:04d}: {get_relative_path(json_file)}")
+    else:
+        logging.info(f"No existing JSON file found for page {page_num:04d}")
+    return exists
+
+def validate_page_exists(png_dir: Path, page_num: int) -> bool:
+    """Validate that PNG file exists for a specific page."""
+    png_file = png_dir / f"page_{page_num:04d}.png"
+    if not png_file.exists():
+        logging.error(f"PNG file not found for page {page_num:04d}: {get_relative_path(png_file)}")
+        return False
+    return True
+
+def create_consolidated_csv(json_dir: Path, pdf_base_out_dir: Path, pdf_stem: str) -> Optional[Path]:
+    """Create consolidated CSV from all available JSON files."""
+    all_json_files = sorted(json_dir.glob("page_*.json"))
+    if not all_json_files:
+        logging.warning(f"No JSON files found in {get_relative_path(json_dir)} to consolidate")
+        return None
+
+    consolidated_data_with_page = []
+    read_json_count = 0
+    read_errors = 0
+    total_items_read = 0
+
+    logging.info(f"Reading content from {len(all_json_files)} JSON files...")
+    for fpath in all_json_files:
+        page_num = -1
+        try:
+            match = re.search(r'page_(\d+)\.json$', fpath.name)
+            if not match:
+                logging.warning(f"Could not extract page number from filename: {fpath.name}. Skipping file.")
+                continue
+            page_num = int(match.group(1))
+
+            with fpath.open("r", encoding="utf-8") as jf:
+                content = json.load(jf)
+            read_json_count += 1
+
+            if isinstance(content, list):
+                for item in content:
+                    if isinstance(item, dict):
+                        consolidated_data_with_page.append({'data': item, 'page': page_num})
+                        total_items_read += 1
+            elif isinstance(content, dict):
+                consolidated_data_with_page.append({'data': content, 'page': page_num})
+                total_items_read += 1
+
+        except Exception as e:
+            logging.error(f"Error processing {get_relative_path(fpath)}: {e}")
+            read_errors += 1
+
+    if not consolidated_data_with_page:
+        logging.warning("No valid data found in JSON files")
+        return None
+
+    # Generate CSV data
+    initial_csv_data = []
+    for record in consolidated_data_with_page:
+        item = record.get('data', {})
+        page_num = record.get('page', None)
+        if isinstance(item, dict):
+            entry_value = item.get("entry", None)
+            category_value = item.get("category", None)
+            initial_csv_data.append({
+                "entry": entry_value,
+                "category": category_value,
+                "page_number": page_num
+            })
+
+    if not initial_csv_data:
+        logging.warning("No valid rows generated for CSV")
+        return None
+
+    # Create DataFrame and process
+    df = pd.DataFrame(initial_csv_data)
+    df['category'] = df['category'].ffill()
+    df = df[df['entry'].notna() & (df['entry'] != '')]
+    
+    if df.empty:
+        logging.warning("DataFrame is empty after filtering")
+        return None
+
+    # Finalize DataFrame
+    df.rename(columns={'page_number': 'page'}, inplace=True)
+    df['id'] = range(1, len(df) + 1)
+    df = df[['id', 'page', 'entry', 'category']]
+
+    # Save CSV
+    final_csv_path = pdf_base_out_dir / f"{pdf_stem}.csv"
+    pdf_base_out_dir.mkdir(parents=True, exist_ok=True)
+    df.to_csv(final_csv_path, index=False, encoding='utf-8', quoting=1)
+    
+    logging.info(f"Created consolidated CSV with {len(df)} rows: {get_relative_path(final_csv_path)}")
+    return final_csv_path
+
+def process_specific_pages(pages: List[int], png_dir: Path, json_dir: Path, task_prompt: str, 
+                         temperature: float, error_tracker: ErrorTracker) -> Tuple[List[dict], Set[int]]:
+    """Process a specific list of pages. Returns (results, successfully_processed_pages)."""
+    results = []
+    successful_pages = set()
+    
+    for page_num in pages:
+        if not validate_page_exists(png_dir, page_num):
+            continue
+            
+        if check_json_exists(json_dir, page_num):
+            successful_pages.add(page_num)
+            continue
+            
+        png_file = png_dir / f"page_{page_num:04d}.png"
+        logging.info(f"Processing page {page_num:04d}...")
+        
+        result = process_page(page_num, png_file, task_prompt, temperature, json_dir, error_tracker)
+        results.append(result)
+        
+        if result["success"]:
+            successful_pages.add(page_num)
+        else:
+            retry_count = 0
+            while retry_count < MAX_RETRIES - 1:  # -1 because we already tried once
+                retry_count += 1
+                logging.info(f"Retry attempt {retry_count}/{MAX_RETRIES} for page {page_num:04d}")
+                result = process_page(page_num, png_file, task_prompt, temperature, json_dir, error_tracker)
+                results.append(result)
+                if result["success"]:
+                    successful_pages.add(page_num)
+                    break
+                    
+    return results, successful_pages
+
 # Main execution
 def main():
     parser = argparse.ArgumentParser(description="Gemini PDF->PNG->JSON->CSV Pipeline (Original API Style)")
     parser.add_argument("--pdf", required=True, help="PDF filename in data/pdfs/patent_pdfs/")
     parser.add_argument("--temperature", type=float, default=0.0, help="LLM temperature (default=0.0)")
     parser.add_argument("--max_workers", type=int, default=20, help="Max concurrent workers for page processing (default=20)")
+    parser.add_argument("--retry_from_error_file", choices=['yes', 'no'], default='no',
+                       help="Retry failed pages listed in the error file")
+    parser.add_argument("--page", type=int, help="Process a single specific page number")
 
     args = parser.parse_args()
 
@@ -559,47 +723,95 @@ def main():
     
     error_tracker = ErrorTracker()
 
-    logging.info(f"Launching {len(png_files)} page tasks (max_workers={args.max_workers})...")
-    logging.info("")
-
-    with ThreadPoolExecutor(max_workers=args.max_workers) as executor:
-        valid_png_files = [png for png in png_files if png.is_file()]
-        if len(valid_png_files) != len(png_files):
-            logging.warning(f"{len(png_files) - len(valid_png_files)} PNG file(s) were missing or invalid.")
-
-        futures = {executor.submit(process_page, k, png, task_prompt, args.temperature, json_dir, error_tracker): (k, png.name)
-                   for k, png in enumerate(valid_png_files, 1)}
-
-        processed_count = 0
-        total_tasks = len(futures)
-        for fut in as_completed(futures):
-            page_idx, png_name = futures[fut]
-            processed_count += 1
-            progress = f"({processed_count}/{total_tasks})"
-            try:
-                res = fut.result()
-                page_results_list.append(res)
-                
-                if not res["success"]:
-                    error_type = res.get('error_type', '?')
-                    error_msg = res.get('error_msg', 'N/A')
-                    logging.warning(f"Page {page_idx:04d} {progress} FAILED ({png_name}): Type={error_type}, Msg={error_msg}")
-                else:
-                    logging.debug(f"Page {page_idx:04d} {progress} OK ({png_name}).")
-            except Exception as e:
-                logging.error(f"[FATAL] Error retrieving result for page {page_idx:04d} ({png_name}): {e}", exc_info=True)
-                error_tracker.add_error(page_idx, ErrorType.FUTURE, str(e))
-                page_results_list.append({"page_idx": page_idx, "success": False, "error_type": "future", "error_msg": str(e)})
-
-    logging.info("")
-    logging.info(f"Finished processing {total_tasks} pages for PDF {pdf_name}.")
-
-    failed_pages = error_tracker.get_failed_pages()
-    if failed_pages:
-        logging.info(f"Retrying {len(failed_pages)} failed pages...")
-        retry_results = retry_failed_pages(failed_pages, valid_png_files, task_prompt, args.temperature, json_dir, error_tracker)
-        page_results_list.extend(retry_results)
+    # Determine pages to process
+    if args.page:
+        logging.info(f"Processing single page mode: page {args.page}")
+        pages_to_process = [args.page]
+        results, successful_pages = process_specific_pages(pages_to_process, png_dir, json_dir, 
+                                                        task_prompt, args.temperature, error_tracker)
+        page_results_list.extend(results)
+        
+        if successful_pages:
+            logging.info(f"Successfully processed page {args.page}")
+            # Create/update CSV after successful single page processing
+            create_consolidated_csv(json_dir, pdf_base_out_dir, pdf_stem)
+        else:
+            logging.error(f"Failed to process page {args.page}")
     
+    elif args.retry_from_error_file == 'yes':
+        logging.info("Retrying failed pages from error file...")
+        pages_to_process = extract_failed_pages_from_error_file(pdf_base_out_dir, pdf_stem)
+        if pages_to_process:
+            results, successful_pages = process_specific_pages(pages_to_process, png_dir, json_dir,
+                                                            task_prompt, args.temperature, error_tracker)
+            page_results_list.extend(results)
+            
+            if successful_pages:
+                logging.info(f"Successfully processed pages: {sorted(list(successful_pages))}")
+                # Create/update CSV after successful retry from error file
+                create_consolidated_csv(json_dir, pdf_base_out_dir, pdf_stem)
+                
+                # Update error file if there are still failures
+                failed_pages = set(pages_to_process) - successful_pages
+                if failed_pages:
+                    error_tracker.errors = {p: error_tracker.errors[p] for p in failed_pages}
+                    write_error_file(pdf_base_out_dir, pdf_stem, pdf_name, failed_pages, error_tracker)
+            else:
+                logging.warning("No pages were successfully processed")
+        else:
+            logging.warning("No failed pages found in error file or error file not found.")
+            return
+    
+    else:
+        # Original parallel processing logic for full PDF
+        logging.info(f"Launching {len(png_files)} page tasks (max_workers={args.max_workers})...")
+        with ThreadPoolExecutor(max_workers=args.max_workers) as executor:
+            valid_png_files = [png for png in png_files if png.is_file()]
+            if len(valid_png_files) != len(png_files):
+                logging.warning(f"{len(png_files) - len(valid_png_files)} PNG file(s) were missing or invalid.")
+
+            futures = {executor.submit(process_page, k, png, task_prompt, args.temperature, json_dir, error_tracker): (k, png.name)
+                       for k, png in enumerate(valid_png_files, 1)}
+
+            processed_count = 0
+            total_tasks = len(futures)
+            for fut in as_completed(futures):
+                page_idx, png_name = futures[fut]
+                processed_count += 1
+                progress = f"({processed_count}/{total_tasks})"
+                try:
+                    res = fut.result()
+                    page_results_list.append(res)
+                    
+                    if not res["success"]:
+                        error_type = res.get('error_type', '?')
+                        error_msg = res.get('error_msg', 'N/A')
+                        logging.warning(f"Page {page_idx:04d} {progress} FAILED ({png_name}): Type={error_type}, Msg={error_msg}")
+                    else:
+                        logging.debug(f"Page {page_idx:04d} {progress} OK ({png_name}).")
+                except Exception as e:
+                    logging.error(f"[FATAL] Error retrieving result for page {page_idx:04d} ({png_name}): {e}", exc_info=True)
+                    error_tracker.add_error(page_idx, ErrorType.FUTURE, str(e))
+                    page_results_list.append({"page_idx": page_idx, "success": False, "error_type": "future", "error_msg": str(e)})
+
+        logging.info("")
+        logging.info(f"Finished processing {total_tasks} pages for PDF {pdf_name}.")
+
+        # Handle retries for the full run
+        failed_pages = error_tracker.get_failed_pages()
+        if failed_pages:
+            logging.info(f"Retrying {len(failed_pages)} failed pages...")
+            retry_results = retry_failed_pages(failed_pages, valid_png_files, task_prompt, args.temperature, json_dir, error_tracker)
+            page_results_list.extend(retry_results)
+
+        # Create CSV after all processing and retries are done
+        create_consolidated_csv(json_dir, pdf_base_out_dir, pdf_stem)
+        
+        # Create error file if there are still failures
+        failed_pages = error_tracker.get_failed_pages()
+        if failed_pages:
+            write_error_file(pdf_base_out_dir, pdf_stem, pdf_name, failed_pages, error_tracker)
+
     pdf_tokens = defaultdict(int)
     for r in page_results_list:
         pdf_tokens['prompt'] += r.get("prompt_tokens", 0)
@@ -625,6 +837,7 @@ def main():
                  # Basic Information
                  ef.write(f"Errors for PDF: {pdf_name}\n")
                  ef.write(f"Report Generated: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+                 ef.write(f"Failed Pages Summary: {sorted(list(failed_pages))}\n")  # Add failed pages list
                  ef.write(f"Prompt Used: {PROMPT_FILE_PATH.name}\n")
                  ef.write(f"Total Pages: {total_pages}\n")
                  ef.write(f"Total Failed Pages: {len(failed_pages)}\n")
