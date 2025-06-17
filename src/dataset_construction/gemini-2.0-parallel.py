@@ -144,57 +144,28 @@ def format_duration(seconds: float) -> str:
 def repair_unescaped_quotes(json_str: str) -> str:
     """
     Repairs problematic quotes in a JSON-like string for robust parsing.
-    - Replaces all non-standard quotes (German, curly, etc.) with standard double quotes ("),
-      including: „ " " « » ' ' ‚ ‛ ` ´
-    - Escapes all double quotes inside string values (but not property names or JSON syntax)
-    - Handles edge cases: nested/mixed quotes, property names, and ensures valid JSON
-    - Leaves property names and JSON syntax untouched
+    - Replaces all non-standard quotes (German, curly, etc.) with escaped double quotes (\")
+    - Escapes all unescaped double quotes inside string values (but not property names or JSON syntax)
+    - Only processes the value part of key-value pairs
     """
-    # 1. Replace all non-standard quotes with standard double quotes
-    quote_variants = [
-        '\u201e',  # „
-        '\u201c',  # "
-        '\u201d',  # "
-        '\u00ab',  # «
-        '\u00bb',  # »
-        '\u2018',  # '
-        '\u2019',  # '
-        '\u201a',  # ‚
-        '\u201b',  # ‛
-        '\u0060',  # `
-        '\u00b4',  # ´
-        '\u2039',  # ‹
-        '\u203a',  # ›
-        '\u02ba',  # ʺ
-        '\u02ee',  # ˮ
-        '\u275b',  # ❛
-        '\u275c',  # ❜
-        '\u275d',  # ❝
-        '\u275e',  # ❞
-        '\u276e',  # ❮
-        '\u276f',  # ❯
+    # 1. Replace all non-standard quotes with escaped double quotes
+    nonstd_quotes = [
+        '„', '“', '”', '«', '»', '‘', '’', '‚', '‛', '`', '´', '‹', '›', 'ʺ', 'ˮ', '❛', '❜', '❝', '❞', '❮', '❯'
     ]
-    # Add literal characters for common cases
-    quote_chars = [
-        '„', '"', '"', '«', '»', "'", "'", '‚', '‛', '`', '´', '‹', '›', 'ʺ', 'ˮ', '❛', '❜', '❝', '❞', '❮', '❯'
-    ]
-    for qc in quote_chars:
-        json_str = json_str.replace(qc, '"')
-    # 2. Now, escape all unescaped double quotes inside string values only
-    #    (not in property names or JSON syntax)
-    #    We'll use a regex to find all string values and escape inner quotes
-    def escape_inner_quotes(match):
-        s = match.group(0)  # The full string, including quotes
-        # Remove the surrounding quotes
-        inner = s[1:-1]
-        # Escape any unescaped double quotes inside the value
-        # (ignore already escaped ones)
-        inner = re.sub(r'(?<!\\)"', r'\\"', inner)
-        return '"' + inner + '"'
-    # This regex matches JSON string values (including escaped characters)
-    # It avoids property names by not matching immediately before a colon
-    string_value_pattern = re.compile(r'"((?:[^"\\]|\\.)*)"(?=\s*[,}\]])', re.UNICODE)
-    json_str = string_value_pattern.sub(escape_inner_quotes, json_str)
+    for q in nonstd_quotes:
+        json_str = json_str.replace(q, '\\"')
+
+    # 2. Regex to match key-value pairs: "key": "value"
+    def escape_value_quotes(match):
+        key = match.group(1)
+        value = match.group(2)
+        # Escape all unescaped double quotes inside the value
+        value_escaped = re.sub(r'(?<!\\)"', r'\\"', value)
+        return f'"{key}": "{value_escaped}"'
+
+    # This regex matches "key": "value" pairs
+    pattern = re.compile(r'"([^"]+)":\s*"((?:[^"\\]|\\.)*)"')
+    json_str = pattern.sub(escape_value_quotes, json_str)
     return json_str
 
 def parse_json_str(response_text: str) -> Any:
