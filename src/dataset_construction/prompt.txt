@@ -31,6 +31,7 @@
 *   Each element is a JSON object with EXACTLY ONE key: `"category"` or `"entry"`.
 *   Objects MUST appear in the strict reading order (left column top-to-bottom, then right column top-to-bottom).
 *   Consecutive category headings must appear as sequential `{"category": ...}` objects.
+*   Do NOT use any unescaped double quotes inside any string value. ALWAYS escape double quotes.
 
 **Example Output Structure:**
 ```json
@@ -42,7 +43,7 @@
     "entry": "55546. — NORDVALL, JOHAN, JOHAN AXEL ESTBERG und MAGNUS MATTSSON, sämmtlich in Ostersund, Schweden; Vertreter: BRYDGES & CO. in Berlin S.W., Königgrätzerstr. 101. Centrifugal-Sortirapparat. 16. März 1890. — A 249."
   },
   {		
-    "entry": "55551. — GLASER, F. C., in Berlin S.W., Lindenstraſse 80. Verbundstofsherd. 10. Juni 1890. — A 249."
+    "entry": "55551. — GLASER, F. C., in Berlin S.W., Lindenstraſse 80. Verbundstofsherd. \"Patent Friz\". 10. Juni 1890. — A 249."
   },
   {
     "category": "Klasse 3. Bekleidungsindustrie. Vgl. die Klassen 25, 41, 44, 52, 71."
