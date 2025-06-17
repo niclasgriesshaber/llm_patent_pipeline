@@ -40,7 +40,7 @@ load_dotenv(dotenv_path=ENV_PATH)
 API_KEY = os.getenv("GOOGLE_API_KEY")
 
 # Model configuration
-MODEL_NAME = "gemini-2.0-flash" #"gemini-2.5-pro-exp-03-25"
+MODEL_NAME = "gemini-2.0-flash"
 MAX_OUTPUT_TOKENS = 8192 # for gemini-2.0-flash
 MAX_RETRIES = 3
 BACKOFF_SLEEP_SECONDS = 30
@@ -618,24 +618,49 @@ def main():
          logging.warning(f"{len(failed_pages)} page(s) failed. Writing details to: {get_relative_path(err_file)}")
          pdf_base_out_dir.mkdir(parents=True, exist_ok=True)
          try:
+             total_pages = len(png_files)
+             success_rate = ((total_pages - len(failed_pages)) / total_pages) * 100 if total_pages > 0 else 0
+             
              with err_file.open("w", encoding="utf-8") as ef:
+                 # Basic Information
                  ef.write(f"Errors for PDF: {pdf_name}\n")
+                 ef.write(f"Report Generated: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
                  ef.write(f"Prompt Used: {PROMPT_FILE_PATH.name}\n")
-                 ef.write(f"Total Failed Pages: {len(failed_pages)}\n\n")
+                 ef.write(f"Total Pages: {total_pages}\n")
+                 ef.write(f"Total Failed Pages: {len(failed_pages)}\n")
+                 ef.write(f"Success Rate: {success_rate:.1f}%\n\n")
                  
+                 # Error Summary Section
                  ef.write("Error Summary:\n")
+                 ef.write("-" * 40 + "\n")
                  ef.write(f"API Call Final Failures (pages): {error_summary.get('API', 0)}\n")
                  ef.write(f"JSON Parse Final Failures (pages): {error_summary.get('PARSE', 0)}\n")
                  ef.write(f"Too Many Open Files (pages): {error_summary.get('FILE_LIMIT', 0)}\n")
                  ef.write(f"Rate Limit Hits (occurrences): {error_summary.get('RATE_LIMIT_HITS', 0)}\n")
                  ef.write(f"Other/Future Failures: {error_summary.get('OTHER', 0) + error_summary.get('FUTURE', 0)}\n\n")
                  
+                 # Detailed Error Information - Organized by Error Type
                  ef.write("Detailed Error Information:\n")
+                 ef.write("=" * 40 + "\n")
+                 
+                 # Group errors by type for better organization
+                 errors_by_type = defaultdict(list)
                  for p_idx in sorted(failed_pages):
-                     ef.write(f"Page {p_idx:04d}:\n")
-                     for error_type, error_msg in error_tracker.get_page_errors(p_idx):
-                         ef.write(f"  - {error_type.name}: {error_msg}\n")
-                     ef.write("\n")
+                     page_errors = error_tracker.get_page_errors(p_idx)
+                     for error_type, error_msg in page_errors:
+                         errors_by_type[error_type].append((p_idx, error_msg))
+                 
+                 # Write errors grouped by type
+                 for error_type in ErrorType:
+                     if errors_by_type[error_type]:
+                         ef.write(f"\n{error_type.name} Errors:\n")
+                         ef.write("-" * 20 + "\n")
+                         for page_idx, error_msg in errors_by_type[error_type]:
+                             retry_count = error_tracker.get_retry_count(page_idx)
+                             ef.write(f"Page {page_idx:04d} (Retries: {retry_count}/{MAX_RETRIES}):\n")
+                             ef.write(f"  Error: {error_msg}\n")
+                             if "Content snippet" in error_msg:
+                                 ef.write("  " + "-" * 18 + "\n")
          except Exception as e:
              logging.error(f"Failed to write error file {get_relative_path(err_file)}: {e}", exc_info=True)
 
