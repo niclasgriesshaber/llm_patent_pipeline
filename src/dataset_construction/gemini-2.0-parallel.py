@@ -141,85 +141,36 @@ def format_duration(seconds: float) -> str:
     mins, secs = divmod(rem, 60)
     return f"{int(hrs):02d}:{int(mins):02d}:{int(secs):02d}"
 
-def repair_unescaped_quotes(json_str: str) -> str:
-    """
-    Repairs problematic quotes in a JSON-like string for robust parsing.
-    - Walks through the string character by character
-    - Escapes all double quotes and non-standard quotes inside values (after : and opening quote), except the opening and closing quotes
-    - Leaves property names and JSON syntax untouched
-    - Handles all edge cases robustly
-    """
-    nonstd_quotes = [
-        '„', '“', '”', '«', '»', '‘', '’', '‚', '‛', '`', '´', '‹', '›', 'ʺ', 'ˮ', '❛', '❜', '❝', '❞', '❮', '❯'
-    ]
-    nonstd_quotes_set = set(nonstd_quotes)
-    result = []
-    in_string = False
-    escape = False
-    after_colon = False
-    i = 0
-    while i < len(json_str):
-        c = json_str[i]
-        if not in_string:
-            if c == ':':
-                result.append(c)
-                # Look ahead for whitespace and opening quote
-                j = i + 1
-                while j < len(json_str) and json_str[j].isspace():
-                    result.append(json_str[j])
-                    j += 1
-                if j < len(json_str) and json_str[j] == '"':
-                    result.append('"')
-                    in_string = True
-                    i = j  # skip to opening quote
-                # else, not a string value
-            else:
-                result.append(c)
-        else:
-            if escape:
-                result.append(c)
-                escape = False
-            elif c == '\\':
-                result.append(c)
-                escape = True
-            elif c == '"':
-                # End of string value
-                result.append(c)
-                in_string = False
-            elif c in nonstd_quotes_set:
-                # Escape non-standard quote
-                result.append('\\"')
-            elif c == '"':
-                # Escape standard quote inside value
-                result.append('\\"')
-            else:
-                result.append(c)
-        i += 1
-    return ''.join(result)
-
 def parse_json_str(response_text: str) -> Any:
-    """Parse JSON from response text with robust error handling and repair for unescaped quotes."""
+    """Parse JSON from response text with robust error handling."""
     # Extract JSON from code blocks if present
     fenced_match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", response_text, re.IGNORECASE)
     if fenced_match:
         candidate = fenced_match.group(1).strip()
         if candidate.startswith('\ufeff'): candidate = candidate[1:]
     else:
+        # Try the entire response if no code blocks
         candidate = response_text.strip().strip("`")
         if candidate.startswith('\ufeff'): candidate = candidate[1:]
+    
+    # Parse the candidate as JSON
     try:
         return json.loads(candidate)
     except json.JSONDecodeError as e:
-        # Try to repair unescaped quotes
-        repaired = repair_unescaped_quotes(candidate)
-        try:
-            return json.loads(repaired)
-        except json.JSONDecodeError as e2:
-            # Provide detailed error context
-            error_context = f"Failed to parse JSON content (even after repair): {e2}\n"
-            error_context += f"Content snippet: {candidate[:200]}...\n"
-            error_context += f"Content length: {len(candidate)} characters\n"
-            raise ValueError(error_context) from e2
+        # Provide detailed error context
+        error_context = f"Failed to parse JSON content: {e}\n"
+        error_context += f"Content snippet: {candidate[:200]}...\n"
+        error_context += f"Content length: {len(candidate)} characters\n"
+        
+        # Identify common JSON formatting issues
+        if "Expecting property name" in str(e):
+            error_context += "Possible issue: Missing quotes around property names or trailing commas\n"
+        elif "Expecting ',' delimiter" in str(e):
+            error_context += "Possible issue: Missing commas between array/object elements\n"
+        elif "Expecting value" in str(e):
+            error_context += "Possible issue: Empty values or missing values\n"
+        
+        raise ValueError(error_context) from e
 
 def increase_file_descriptor_limit():
     """Increase the file descriptor limit to prevent 'Too many open files' errors."""
