@@ -1,0 +1,59 @@
+**Objective:** Extract Category Headings and valid Patent Entries sequentially from the main content columns of a German Patent Register page image into a flat JSON array.
+
+**Scope & Reading Order:**
+1.  **Extraction Area:** Extract ONLY from the text within the main content columns (typically two, separated by a gutter). Ignore page headers, footers, and page numbers.
+2.  **Sequence:** Process the LEFT column entirely from top to bottom, THEN the RIGHT column entirely from top to bottom. Maintain this exact order in the output array.
+3.  **Column Spanning:** A single patent entry might start at the bottom of the left column and continue at the top of the right column. Treat this as one continuous entry.
+
+**Extraction Rules:**
+
+1.  **Line Break Handling:** Join words hyphenated across lines (e.g., `Aufbe-\nreitung` becomes `Aufbereitung`). Replace ALL other internal line breaks within extracted text (both categories and entries) with a single space to form continuous text strings.
+
+2.  **Category Heading:**
+    *   **Identification:** Recognize headings *within the main columns*. A heading MUST start *exactly* with:
+        *   `Klasse ` followed by a number and period (e.g., `Klasse 1.`).
+        *   `Kl. ` (short for Klasse) followed by a number and period.
+        *   A sub-category code (number + optional letter + period, e.g., `1a.`, `85g.`).
+    *   Headings *NEVER* start with "Vgl.". "Vgl." references may appear *after* the initial identifier and descriptive text.
+    *   **Extraction:** Capture the full, verbatim heading text (including the starting identifier, description, and any "Vgl." references) after applying line break handling. Ensure the class identifier (`Klasse X.`, `Kl. X.`, `XYa.`) is *ALWAYS* captured.
+    *   **Output:** Store as `{"category": "Processed heading text"}`.
+
+3.  **Patent Entry:**
+    *   **Identification:** Recognize individual patent records *within the main columns*. A valid entry:
+        *   Typically starts with a 5-6 digit Patent Number (may be preceded by `(†)` or an item number like `3.`).
+        *   **MUST contain substantial descriptive text:** Includes Patent Holder(s), Location(s), Technical Title/Subject, Date(s).
+    *   **CRITICAL EXCLUSION:** **DO NOT EXTRACT** text blocks appearing directly under a category heading that consist *only* or *primarily* of lists of patent numbers/codes (e.g., `55 306 A 115. - 55343 A 131. - 55403 A 149.`) and **LACK the required descriptive text** (holder, title, date, etc.). These are INVALID entries and MUST be ignored.
+    *   **Extraction:** Capture the complete, verbatim text of *valid* entries only, after applying line break handling. Preserve all original German characters, capitalization, punctuation, and symbols (`(†)`).
+    *   **Output:** Store as `{"entry": "Processed entry text"}`.
+
+**Output Format:**
+*   A single JSON array.
+*   Each element is a JSON object with EXACTLY ONE key: `"category"` or `"entry"`.
+*   Objects MUST appear in the strict reading order (left column top-to-bottom, then right column top-to-bottom).
+*   Consecutive category headings must appear as sequential `{"category": ...}` objects.
+
+**Example Output Structure:**
+```json
+[
+  {
+    "category": "Klasse 1. Aufbereitung von Erzen, Mineralien und Brennstoffen. Vgl. die Klassen 40 und 50."
+  },
+  {
+    "entry": "55546. — NORDVALL, JOHAN, JOHAN AXEL ESTBERG und MAGNUS MATTSSON, sämmtlich in Ostersund, Schweden; Vertreter: BRYDGES & CO. in Berlin S.W., Königgrätzerstr. 101. Centrifugal-Sortirapparat. 16. März 1890. — A 249."
+  },
+  {		
+    "entry": "55551. — GLASER, F. C., in Berlin S.W., Lindenstraſse 80. Verbundstofsherd. 10. Juni 1890. — A 249."
+  },
+  {
+    "category": "Klasse 3. Bekleidungsindustrie. Vgl. die Klassen 25, 41, 44, 52, 71."
+  },
+  {
+    "category": "3a."
+  },
+  {
+    "entry": "(†) 55539. — FÜRSTENHEIM, C., in Berlin C., Jerusalemerstraſse 15. Zusammenklappbares Büstengestell. 5. Juni 1890. — A 249."
+  }
+]
+```
+
+**Final Instruction:** Adhere strictly to all rules. Prioritize correct column focus, category identification, the EXCLUSION of number lists, accurate line break handling, and the specified JSON output. Provide ONLY the JSON array. Nothing else.

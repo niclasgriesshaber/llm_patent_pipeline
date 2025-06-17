@@ -1,38 +1,55 @@
-**Objective:** Extract Category Headings and valid Patent Entries sequentially from the main content columns of a German Patent Register page image into a flat JSON array.
+**Objective:** Extract Category Headings and valid Patent Entries sequentially from the two content columns of a German Patent Register page into a flat, strictly valid JSON array.
 
 **Scope & Reading Order:**
-1.  **Extraction Area:** Extract ONLY from the text within the main content columns (typically two, separated by a gutter). Ignore page headers, footers, and page numbers.
-2.  **Sequence:** Process the LEFT column entirely from top to bottom, THEN the RIGHT column entirely from top to bottom. Maintain this exact order in the output array.
-3.  **Column Spanning:** A single patent entry might start at the bottom of the left column and continue at the top of the right column. Treat this as one continuous entry.
+1.  **Extraction Area:** Extract ONLY from the text within the main two content columns. Ignore page headers, footers, and page numbers.
+2.  **Sequence:** Process the LEFT column top-to-bottom, THEN the RIGHT column top-to-bottom. Maintain this exact order.
+3.  **Column Spanning:** An entry starting in the left column may continue in the right column and is thus a single entry.
 
 **Extraction Rules:**
 
-1.  **Line Break Handling:** Join words hyphenated across lines (e.g., `Aufbe-\nreitung` becomes `Aufbereitung`). Replace ALL other internal line breaks within extracted text (both categories and entries) with a single space to form continuous text strings.
+1.  **Line Break Handling:**
+    *   Join words hyphenated across lines (e.g., `Aufbe-\nreitung` becomes `Aufbereitung`).
+    *   Replace all other newlines within an extracted text block with a single space.
 
 2.  **Category Heading:**
-    *   **Identification:** Recognize headings *within the main columns*. A heading MUST start *exactly* with:
-        *   `Klasse ` followed by a number and period (e.g., `Klasse 1.`).
-        *   `Kl. ` (short for Klasse) followed by a number and period.
-        *   A sub-category code (number + optional letter + period, e.g., `1a.`, `85g.`).
-    *   Headings *NEVER* start with "Vgl.". "Vgl." references may appear *after* the initial identifier and descriptive text.
-    *   **Extraction:** Capture the full, verbatim heading text (including the starting identifier, description, and any "Vgl." references) after applying line break handling. Ensure the class identifier (`Klasse X.`, `Kl. X.`, `XYa.`) is *ALWAYS* captured.
-    *   **Output:** Store as `{"category": "Processed heading text"}`.
+    *   **Identify:** Recognize headings that start *exactly* with `Klasse [num].`, `Kl. [num].`, or a sub-category code like `1a.` or `85g.`.
+    *   **Extract:** Capture the full, verbatim heading text after handling line breaks.
 
 3.  **Patent Entry:**
-    *   **Identification:** Recognize individual patent records *within the main columns*. A valid entry:
-        *   Typically starts with a 5-6 digit Patent Number (may be preceded by `(†)` or an item number like `3.`).
-        *   **MUST contain substantial descriptive text:** Includes Patent Holder(s), Location(s), Technical Title/Subject, Date(s).
-    *   **CRITICAL EXCLUSION:** **DO NOT EXTRACT** text blocks appearing directly under a category heading that consist *only* or *primarily* of lists of patent numbers/codes (e.g., `55 306 A 115. - 55343 A 131. - 55403 A 149.`) and **LACK the required descriptive text** (holder, title, date, etc.). These are INVALID entries and MUST be ignored.
-    *   **Extraction:** Capture the complete, verbatim text of *valid* entries only, after applying line break handling. Preserve all original German characters, capitalization, punctuation, and symbols (`(†)`).
-    *   **Output:** Store as `{"entry": "Processed entry text"}`.
+    *   **Identify:** Recognize records starting with a patent number that contain substantial descriptive text (holder, location, title, date).
+    *   **CRITICAL EXCLUSION:** **DO NOT EXTRACT** text blocks that are only lists of patent numbers (e.g., `55306 A 115. - 55343 A 131.`). These are INVALID and must be ignored.
+    *   **Extract:** Capture the complete text of *valid* entries only, preserving all original characters (`(†)`, etc.).
 
-**Output Format:**
-*   A single JSON array.
-*   Each element is a JSON object with EXACTLY ONE key: `"category"` or `"entry"`.
-*   Objects MUST appear in the strict reading order (left column top-to-bottom, then right column top-to-bottom).
-*   Consecutive category headings must appear as sequential `{"category": ...}` objects.
+---
 
-**Example Output Structure:**
+### **JSON Output Specification (Strict Rules)**
+
+You **MUST** generate a single, machine-readable JSON array that adheres to the following strict syntax rules. **Failure to follow these rules will result in an error.**
+
+1.  **Valid Array Structure:** The entire output must be a single array, starting with `[` and ending with `]`.
+    ```json
+    [
+      {...},
+      {...}
+    ]
+    ```
+
+2.  **Double-Quoted Keys:** **ALL** object keys **MUST** be enclosed in double quotes.
+    *   **Correct:** `{"entry": "..."}`
+    *   **Incorrect:** `{entry: "..."}`
+
+3.  **Correct Object Format:** Each element in the array must be an object with exactly **ONE key-value pair**.
+    *   **Correct:** `{"category": "Klasse 1."}`
+    *   **Incorrect:** `{"Klasse 1."}`
+
+4.  **Comma Delimiters:** Every object in the array **MUST** be separated by a comma, except for the very last one. No trailing commas.
+
+5.  **String Value Escaping:** Within JSON string values, any literal double-quote character (`"`) must be escaped as `\"`, and any literal backslash (`\`) must be escaped as `\\`.
+
+---
+
+**Example of Perfect Output Structure:**
+
 ```json
 [
   {
@@ -56,4 +73,4 @@
 ]
 ```
 
-**Final Instruction:** Adhere strictly to all rules. Prioritize correct column focus, category identification, the EXCLUSION of number lists, accurate line break handling, and the specified JSON output. Provide ONLY the JSON array. Nothing else.
+**Final Instruction:**  Adhere to all rules. Your output must be **ONLY the JSON array** and nothing else. Before finishing, double-check your output to ensure it is perfectly valid JSON according to the specifications above.
