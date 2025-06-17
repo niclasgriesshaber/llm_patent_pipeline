@@ -42,6 +42,8 @@ API_KEY = os.getenv("GOOGLE_API_KEY")
 # Model configuration
 MODEL_NAME = "gemini-2.5-flash-preview-05-20"
 MAX_OUTPUT_TOKENS = 8192 # for gemini-2.0-flash
+DEFAULT_THINKING_BUDGET = 10000  # Default thinking budget
+MAX_THINKING_BUDGET = 24576  # Maximum thinking budget
 MAX_RETRIES = 3
 BACKOFF_SLEEP_SECONDS = 30
 MAX_FILE_DESCRIPTORS = 10000
@@ -200,7 +202,7 @@ def get_relative_path(path: Path) -> Path:
         return path
 
 # API call
-def gemini_api_call(prompt: str, pil_image: Image.Image, temperature: float) -> Tuple[Optional[dict], str, bool]:
+def gemini_api_call(prompt: str, pil_image: Image.Image, temperature: float, thinking_budget: int) -> Tuple[Optional[dict], str, bool]:
     """Execute a Gemini API call with retry logic and rate limit handling."""
     try:
         client = genai.Client(api_key=API_KEY)
@@ -252,6 +254,9 @@ def gemini_api_call(prompt: str, pil_image: Image.Image, temperature: float) -> 
                     temperature=temperature,
                     max_output_tokens=MAX_OUTPUT_TOKENS,
                     response_mime_type="application/json",
+                    thinking_config=types.ThinkingConfig(
+                        thinking_budget=thinking_budget
+                    )
                 )
             )
 
@@ -270,6 +275,19 @@ def gemini_api_call(prompt: str, pil_image: Image.Image, temperature: float) -> 
             ttk = getattr(usage, 'thoughts_token_count', 0) or 0
             ctk = getattr(usage, 'candidates_token_count', 0) or 0
             totk = getattr(usage, 'total_token_count', 0) or 0
+
+            # Log the raw response and token information
+            logging.info("-" * 80)
+            logging.info("Raw LLM Response:")
+            logging.info(response.text)
+            logging.info("-" * 80)
+            logging.info(f"Token Usage:")
+            logging.info(f"Prompt tokens: {ptk}")
+            logging.info(f"Thoughts tokens: {ttk}/{thinking_budget}")
+            logging.info(f"Output tokens: {ctk}")
+            logging.info(f"Total tokens: {totk}")
+            logging.info("-" * 80)
+
             return ({"text": response.text, "usage": usage, "prompt_tokens": ptk, "thoughts_tokens": ttk, "candidate_tokens": ctk, "total_tokens": totk}, "", False)
 
         except google_exceptions.ResourceExhausted as e:
@@ -312,6 +330,7 @@ def process_page(page_idx: int,
                  png_path: Path,
                  prompt_text: str,
                  temperature: float,
+                 thinking_budget: int,
                  json_dir: Path,
                  error_tracker: ErrorTracker) -> dict:
     """Process a single page image through the Gemini API and save the results."""
@@ -328,7 +347,7 @@ def process_page(page_idx: int,
         w, h = pil_image.size
         #logging.info(f"[Worker p.{page_idx:04d}] PNG info: {w}x{h}")
 
-        initial_result, error, is_rate_limit = gemini_api_call(prompt_text, pil_image, temperature)
+        initial_result, error, is_rate_limit = gemini_api_call(prompt_text, pil_image, temperature, thinking_budget)
 
         if not initial_result:
             result_info["error_msg"] = error
@@ -376,7 +395,7 @@ def process_page(page_idx: int,
 
                 # Retry API call if we haven't reached max parse retries
                 logging.info(f"[Worker p.{page_idx:04d}] Re-calling API for parse retry ({parse_attempts+1}/{max_parse_retries})...")
-                recall_res, recall_error, recall_rate_limit = gemini_api_call(prompt_text, pil_image, temperature)
+                recall_res, recall_error, recall_rate_limit = gemini_api_call(prompt_text, pil_image, temperature, thinking_budget)
                 result_info["api_failures"] += 1
                 if recall_rate_limit: 
                     result_info["rate_limit_failures"] += 1
@@ -449,7 +468,7 @@ def process_page(page_idx: int,
 
 # Retry mechanism
 def retry_failed_pages(failed_pages: Set[int], png_files: List[Path], prompt_text: str, 
-                      temperature: float, json_dir: Path, error_tracker: ErrorTracker) -> List[dict]:
+                      temperature: float, thinking_budget: int, json_dir: Path, error_tracker: ErrorTracker) -> List[dict]:
     """Retry processing of failed pages with exponential backoff."""
     if not failed_pages:
         return []
@@ -470,7 +489,7 @@ def retry_failed_pages(failed_pages: Set[int], png_files: List[Path], prompt_tex
             logging.error(f"Could not find PNG file for page {page_idx:04d} during retry")
             continue
         
-        result = process_page(page_idx, png_file, prompt_text, temperature, json_dir, error_tracker)
+        result = process_page(page_idx, png_file, prompt_text, temperature, thinking_budget, json_dir, error_tracker)
         retry_results.append(result)
         
         if result["success"]:
@@ -662,7 +681,7 @@ def overwrite_error_file(pdf_base_out_dir: Path, pdf_stem: str, pdf_name: str,
         logging.error(f"Failed to write error file {get_relative_path(err_file)}: {e}", exc_info=True)
 
 def process_specific_pages(pages: List[int], png_dir: Path, json_dir: Path, task_prompt: str, 
-                         temperature: float, error_tracker: ErrorTracker, max_workers: int = 5) -> Tuple[List[dict], Set[int]]:
+                         temperature: float, thinking_budget: int, error_tracker: ErrorTracker, max_workers: int = 5) -> Tuple[List[dict], Set[int]]:
     """Process a specific list of pages in parallel. Returns (results, successfully_processed_pages)."""
     results = []
     successful_pages = set()
@@ -675,7 +694,7 @@ def process_specific_pages(pages: List[int], png_dir: Path, json_dir: Path, task
                 successful_pages.add(page_num)
                 continue
             png_file = png_dir / f"page_{page_num:04d}.png"
-            future = executor.submit(process_page, page_num, png_file, task_prompt, temperature, json_dir, error_tracker)
+            future = executor.submit(process_page, page_num, png_file, task_prompt, temperature, thinking_budget, json_dir, error_tracker)
             future_to_page[future] = page_num
         for future in as_completed(future_to_page):
             page_num = future_to_page[future]
@@ -693,6 +712,8 @@ def main():
     parser = argparse.ArgumentParser(description="Gemini PDF->PNG->JSON->CSV Pipeline (Original API Style)")
     parser.add_argument("--pdf", required=True, help="PDF filename in data/pdfs/patent_pdfs/")
     parser.add_argument("--temperature", type=float, default=0.0, help="LLM temperature (default=0.0)")
+    parser.add_argument("--thinking_budget", type=int, default=DEFAULT_THINKING_BUDGET, 
+                       help=f"Thinking budget for the model (default={DEFAULT_THINKING_BUDGET}, max={MAX_THINKING_BUDGET})")
     parser.add_argument("--max_workers", type=int, default=20, help="Max concurrent workers for page processing (default=20)")
     parser.add_argument("--retry_from_error_file", choices=['yes', 'no'], default='no',
                        help="Retry failed pages listed in the error file")
@@ -700,12 +721,18 @@ def main():
 
     args = parser.parse_args()
 
+    # Validate thinking budget
+    if args.thinking_budget < 0 or args.thinking_budget > MAX_THINKING_BUDGET:
+        logging.error(f"Thinking budget must be between 0 and {MAX_THINKING_BUDGET}")
+        sys.exit(1)
+
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s | %(levelname)s | %(message)s",
                         datefmt="%Y-%m-%d %H:%M:%S",
                         handlers=[logging.StreamHandler(sys.stdout)])
     logging.info("")
     logging.info(f"Using Model: {MODEL_NAME}")
+    logging.info(f"Thinking Budget: {args.thinking_budget}")
 
     increase_file_descriptor_limit()
 
@@ -781,7 +808,7 @@ def main():
         logging.info(f"Processing single page mode: page {args.page}")
         pages_to_process = [args.page]
         results, successful_pages = process_specific_pages(pages_to_process, png_dir, json_dir, 
-                                                        task_prompt, args.temperature, error_tracker, args.max_workers)
+                                                        task_prompt, args.temperature, args.thinking_budget, error_tracker, args.max_workers)
         page_results_list.extend(results)
         
         if successful_pages:
@@ -796,7 +823,7 @@ def main():
         pages_to_process = extract_failed_pages_from_error_file(pdf_base_out_dir, pdf_stem)
         if pages_to_process:
             results, successful_pages = process_specific_pages(pages_to_process, png_dir, json_dir,
-                                                            task_prompt, args.temperature, error_tracker, args.max_workers)
+                                                            task_prompt, args.temperature, args.thinking_budget, error_tracker, args.max_workers)
             page_results_list.extend(results)
             
             if successful_pages:
@@ -840,7 +867,7 @@ def main():
             if len(valid_png_files) != len(png_files):
                 logging.warning(f"{len(png_files) - len(valid_png_files)} PNG file(s) were missing or invalid.")
 
-            futures = {executor.submit(process_page, k, png, task_prompt, args.temperature, json_dir, error_tracker): (k, png.name)
+            futures = {executor.submit(process_page, k, png, task_prompt, args.temperature, args.thinking_budget, json_dir, error_tracker): (k, png.name)
                        for k, png in enumerate(valid_png_files, 1)}
 
             processed_count = 0
@@ -871,7 +898,7 @@ def main():
         failed_pages = error_tracker.get_failed_pages()
         if failed_pages:
             logging.info(f"Retrying {len(failed_pages)} failed pages...")
-            retry_results = retry_failed_pages(failed_pages, valid_png_files, task_prompt, args.temperature, json_dir, error_tracker)
+            retry_results = retry_failed_pages(failed_pages, valid_png_files, task_prompt, args.temperature, args.thinking_budget, json_dir, error_tracker)
             page_results_list.extend(retry_results)
 
         # Create CSV after all processing and retries are done
