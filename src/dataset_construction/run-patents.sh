@@ -2,23 +2,25 @@
 
 # Explicit list of all PDF filenames
 files=(
-  Patentamt_1904.pdf
-  Patentamt_1905.pdf
-  Patentamt_1906.pdf
-  Patentamt_1907.pdf
-  Patentamt_1908.pdf
-  Patentamt_1909.pdf
-  Patentamt_1910.pdf
-  Patentamt_1911.pdf
-  Patentamt_1912.pdf
-  Patentamt_1913.pdf
-  Patentamt_1914.pdf
-  Patentamt_1915.pdf
-  Patentamt_1916.pdf
-  Patentamt_1917.pdf
-  Patentamt_1918.pdf
+  Patentamt_1892_sampled.pdf
+  Patentamt_1893_sampled.pdf
+  Patentamt_1894_sampled.pdf
+  Patentamt_1895_sampled.pdf
+  Patentamt_1901_sampled.pdf
+  Patentamt_1902_sampled.pdf
+  Patentamt_1903_sampled.pdf
+  Patentamt_1905_sampled.pdf
+  Patentamt_1910_sampled.pdf
+  Patentamt_1911_sampled.pdf
+  Patentamt_1912_sampled.pdf
+  Patentamt_1913_sampled.pdf
+  Patentamt_1914_sampled.pdf
+  Patentamt_1915_sampled.pdf
+  Patentamt_1916_sampled.pdf
+  Patentamt_1917_sampled.pdf
+  Patentamt_1918_sampled.pdf
 )
 
 for pdf_file in "${files[@]}"; do
-  python gemini-parallel.py --pdf "$pdf_file"
+  python gemini-2.0-parallel.py --pdf "$pdf_file"
 done
