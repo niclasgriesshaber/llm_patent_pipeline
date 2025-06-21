@@ -42,7 +42,7 @@ API_KEY = os.getenv("GOOGLE_API_KEY")
 # Model configuration
 MODEL_NAME = "gemini-2.5-flash"
 MAX_OUTPUT_TOKENS = 8192 # for gemini-2.0-flash
-DEFAULT_THINKING_BUDGET = -1  # Default thinking budget, -1 for dynamic
+DEFAULT_THINKING_BUDGET = 0  # Default thinking budget, -1 for dynamic
 MAX_THINKING_BUDGET = 24576  # Maximum thinking budget
 MAX_RETRIES = 3
 BACKOFF_SLEEP_SECONDS = 30
@@ -279,9 +279,6 @@ def gemini_api_call(prompt: str, pil_image: Image.Image, temperature: float, thi
 
             # Log the raw response and token information
             logging.info("-" * 80)
-            logging.info("Raw LLM Response:")
-            logging.info(response.text)
-            logging.info("-" * 80)
             logging.info(f"Token Usage:")
             logging.info(f"Prompt tokens: {ptk}")
             logging.info(f"Thoughts tokens: {ttk}/{thinking_budget}")
@@ -336,7 +333,7 @@ def process_page(page_idx: int,
                  error_tracker: ErrorTracker) -> dict:
     """Process a single page image through the Gemini API and save the results."""
     result_info = {
-        "page_idx": page_idx, "prompt_tokens": 0, "thoughts_tokens": 0, "candidate_tokens": 0, "total_tokens": 0,
+        "page_idx": page_idx, "prompt_tokens": 0, "candidate_tokens": 0, "thoughts_tokens": 0, "total_tokens": 0,
         "success": False, "error_msg": "", "error_type": None, "api_failures": 0,
         "rate_limit_failures": 0, "parse_failures": 0, "last_parse_error": ""
     }
@@ -362,13 +359,13 @@ def process_page(page_idx: int,
             return result_info
 
         usage = initial_result["usage"]
-        ptk = initial_result.get("prompt_tokens", getattr(usage, 'prompt_token_count', 0) or 0)
-        ttk = initial_result.get("thoughts_tokens", getattr(usage, 'thoughts_token_count', 0) or 0)
-        ctk = initial_result.get("candidate_tokens", getattr(usage, 'candidates_token_count', 0) or 0)
-        totk = initial_result.get("total_tokens", getattr(usage, 'total_token_count', 0) or 0)
-        result_info.update({"prompt_tokens": ptk, "thoughts_tokens": ttk, "candidate_tokens": ctk, "total_tokens": totk})
+        ptk = getattr(usage, 'prompt_token_count', 0) or 0
+        ctk = getattr(usage, 'candidates_token_count', 0) or 0
+        thtk = getattr(usage, 'thoughts_token_count', 0) or 0
+        ttk = getattr(usage, 'total_token_count', 0) or 0
+        result_info.update({"prompt_tokens": ptk, "candidate_tokens": ctk, "thoughts_tokens": thtk, "total_tokens": ttk})
         resp_text = initial_result["text"]
-        logging.info(f"[Worker p.{page_idx:04d}] Initial API usage -> input={ptk}, thoughts={ttk}, candidate={ctk}, total={totk}")
+        logging.info(f"[Worker p.{page_idx:04d}] Initial API usage -> prompt={ptk}, candidate={ctk}, thoughts={thtk}, total={ttk}")
 
         parse_attempts = 0
         parsed = None
@@ -410,16 +407,16 @@ def process_page(page_idx: int,
                     break
 
                 usage2 = recall_res["usage"]
-                ptk2 = recall_res.get("prompt_tokens", getattr(usage2, 'prompt_token_count', 0) or 0)
-                ttk2 = recall_res.get("thoughts_tokens", getattr(usage2, 'thoughts_token_count', 0) or 0)
-                ctk2 = recall_res.get("candidate_tokens", getattr(usage2, 'candidates_token_count', 0) or 0)
-                totk2 = recall_res.get("total_tokens", getattr(usage2, 'total_token_count', 0) or 0)
+                ptk2 = getattr(usage2, 'prompt_token_count', 0) or 0
+                ctk2 = getattr(usage2, 'candidates_token_count', 0) or 0
+                thtk2 = getattr(usage2, 'thoughts_token_count', 0) or 0
+                ttk2 = getattr(usage2, 'total_token_count', 0) or 0
                 result_info["prompt_tokens"] += ptk2
-                result_info["thoughts_tokens"] += ttk2
                 result_info["candidate_tokens"] += ctk2
-                result_info["total_tokens"] += totk2
+                result_info["thoughts_tokens"] += thtk2
+                result_info["total_tokens"] += ttk2
                 resp_text = recall_res["text"]
-                logging.info(f"[Worker p.{page_idx:04d}] Recall API usage -> input={ptk2}, thoughts={ttk2}, candidate={ctk2}, total={totk2}")
+                logging.info(f"[Worker p.{page_idx:04d}] Recall API usage -> prompt={ptk2}, candidate={ctk2}, thoughts={thtk2}, total={ttk2}")
 
         if not parsed:
             if not result_info["error_msg"]:
@@ -914,10 +911,12 @@ def main():
     for r in page_results_list:
         pdf_tokens['prompt'] += r.get("prompt_tokens", 0)
         pdf_tokens['candidate'] += r.get("candidate_tokens", 0)
+        pdf_tokens['thoughts'] += r.get("thoughts_tokens", 0)
         pdf_tokens['total'] += r.get("total_tokens", 0)
 
     global_tokens['prompt'] += pdf_tokens['prompt']
     global_tokens['candidate'] += pdf_tokens['candidate']
+    global_tokens['thoughts'] += pdf_tokens['thoughts']
     global_tokens['total'] += pdf_tokens['total']
 
     error_summary = error_tracker.get_error_summary()
@@ -1092,10 +1091,10 @@ def main():
             logging.warning(f"No JSON files were successfully read or no data found for PDF '{pdf_stem}'. Final CSV file will not be created.")
 
     pdf_duration = time.time() - prompt_start_time
-    logging.info(f"Tokens (PDF: {pdf_name}): Prompt Tokens={pdf_tokens['prompt']}, Candidate Tokens={pdf_tokens['candidate']}, Total Tokens={pdf_tokens['total']}")
+    logging.info(f"Tokens (PDF: {pdf_name}): prompt={pdf_tokens['prompt']:,}, candidate={pdf_tokens['candidate']:,}, thoughts={pdf_tokens['thoughts']:,}, total={pdf_tokens['total']:,}")
     logging.info("")
     logging.info(f"PDF {pdf_name} Processing Finished ({format_duration(pdf_duration)})")
-    logging.info(f"Global Tokens Running Total: Prompt Tokens={global_tokens['prompt']}, Candidate Tokens={global_tokens['candidate']}, Total Tokens={global_tokens['total']}")
+    logging.info(f"Global Tokens Running Total: prompt={global_tokens['prompt']:,}, candidate={global_tokens['candidate']:,}, thoughts={global_tokens['thoughts']:,}, total={global_tokens['total']:,}")
     logging.info("-" * 80)
 
     pdf_total_duration = time.time() - pdf_start
@@ -1111,6 +1110,7 @@ def main():
     logging.info(" Global Usage Summary ".center(80, "="))
     logging.info(f"  Prompt Tokens:     {global_tokens['prompt']:,}")
     logging.info(f"  Candidate Tokens:  {global_tokens['candidate']:,}")
+    logging.info(f"  Thoughts Tokens:   {global_tokens['thoughts']:,}")
     logging.info(f"  Total Tokens:      {global_tokens['total']:,}")
     script_duration = time.time() - script_start_time
     logging.info(f"  Total Script Time: {format_duration(script_duration)}")
