@@ -6,12 +6,16 @@ from collections import defaultdict
 from typing import List, Tuple, Dict
 import re
 import argparse
+import difflib
 
 BENCHMARKING_DIR = Path(__file__).parent.parent.parent / 'data' / 'benchmarking'
 GT_DIR = BENCHMARKING_DIR / 'gt_xlsx'
 LLM_DIR = BENCHMARKING_DIR / 'llm_csv'
 STRICT_HTML = Path(__file__).parent / 'benchmarking_strict.html'
 FUZZY_HTML = Path(__file__).parent / 'benchmarking_fuzzy.html'
+DIFF_HTML = Path(__file__).parent / 'benchmarking_diff.html'
+GT_FULL_TXT = Path(__file__).parent / 'gt_full.txt'
+LLM_FULL_TXT = Path(__file__).parent / 'llm_full.txt'
 
 def get_file_stems(directory: Path, ext: str) -> set:
     return set(f.stem for f in directory.glob(f'*.{ext}'))
@@ -263,6 +267,40 @@ def make_fuzzy_scaling_chart(metrics_by_threshold: List[Tuple[float, float]]) ->
     '''
     return svg
 
+def make_diff_html(gt_text: str, llm_text: str, cer: float) -> str:
+    diff_html = difflib.HtmlDiff(wrapcolumn=80).make_file(
+        gt_text.splitlines(),
+        llm_text.splitlines(),
+        fromdesc='Ground Truth (gt_full.txt)',
+        todesc='LLM Output (llm_full.txt)'
+    )
+    # Inject CER and some styling
+    report_html = f'''
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <title>Full Dataset Diff</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; }}
+            .diff-header {{ background: #f1f1f1; padding: 10px; margin-bottom: 20px; border-radius: 5px; text-align: center; }}
+            h1 {{ text-align: center; }}
+            table.diff {{ margin: 0 auto; }}
+        </style>
+    </head>
+    <body>
+        <h1>Side-by-Side Dataset Comparison</h1>
+        <div class="diff-header">
+            <strong>Character Error Rate (CER): {cer:.4f}</strong>
+            <br>
+            <span style="font-size:0.9em;">CER is calculated as <code>1 - normalized_levenshtein_similarity</code>. Lower is better.</span>
+        </div>
+        {diff_html}
+    </body>
+    </html>
+    '''
+    return report_html
+
 def make_full_html(sections: List[str], intro: str, legend: str, summary: str, chart: str, scaling_chart: str, mode: str) -> str:
     return f'''
     <!DOCTYPE html>
@@ -324,6 +362,9 @@ def main():
         return
     intro_html = make_intro_html()
     legend_html = make_legend_html()
+    # Collect all entries
+    all_gt_entries = []
+    all_llm_entries = []
     # Strict mode
     strict_sections = []
     strict_metrics_by_year = []
@@ -333,6 +374,8 @@ def main():
         try:
             gt_df = load_gt_file(gt_path)
             llm_df = load_llm_file(llm_path)
+            all_gt_entries.extend(gt_df['entry'].astype(str).tolist())
+            all_llm_entries.extend(llm_df['entry'].astype(str).tolist())
         except Exception as e:
             print(f'Error loading {stem}: {e}')
             continue
@@ -389,6 +432,25 @@ def main():
     with open(FUZZY_HTML, 'w', encoding='utf-8') as f:
         f.write(fuzzy_html)
     print(f'Wrote {FUZZY_HTML}')
+
+    # --- Full dataset diff generation ---
+    gt_full_text = '\n'.join(all_gt_entries)
+    llm_full_text = '\n'.join(all_llm_entries)
+
+    with open(GT_FULL_TXT, 'w', encoding='utf-8') as f:
+        f.write(gt_full_text)
+    print(f'Wrote {GT_FULL_TXT}')
+
+    with open(LLM_FULL_TXT, 'w', encoding='utf-8') as f:
+        f.write(llm_full_text)
+    print(f'Wrote {LLM_FULL_TXT}')
+    
+    cer = 1.0 - Levenshtein.normalized_similarity(gt_full_text, llm_full_text)
+    
+    diff_report_html = make_diff_html(gt_full_text, llm_full_text, cer)
+    with open(DIFF_HTML, 'w', encoding='utf-8') as f:
+        f.write(diff_report_html)
+    print(f'Wrote {DIFF_HTML}')
 
 if __name__ == '__main__':
     main()
