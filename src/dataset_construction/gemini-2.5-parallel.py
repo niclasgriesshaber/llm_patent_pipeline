@@ -42,7 +42,7 @@ API_KEY = os.getenv("GOOGLE_API_KEY")
 # Model configuration
 MODEL_NAME = "gemini-2.5-flash"
 MAX_OUTPUT_TOKENS = 8192 # for gemini-2.0-flash
-DEFAULT_THINKING_BUDGET = 0  # Default thinking budget, -1 for dynamic
+DEFAULT_THINKING_BUDGET = -1  # Default thinking budget, -1 for dynamic
 MAX_THINKING_BUDGET = 24576  # Maximum thinking budget
 MAX_RETRIES = 3
 BACKOFF_SLEEP_SECONDS = 30
@@ -276,15 +276,6 @@ def gemini_api_call(prompt: str, pil_image: Image.Image, temperature: float, thi
             ttk = getattr(usage, 'thoughts_token_count', 0) or 0
             ctk = getattr(usage, 'candidates_token_count', 0) or 0
             totk = getattr(usage, 'total_token_count', 0) or 0
-
-            # Log the raw response and token information
-            logging.info("-" * 80)
-            logging.info(f"Token Usage:")
-            logging.info(f"Prompt tokens: {ptk}")
-            logging.info(f"Thoughts tokens: {ttk}/{thinking_budget}")
-            logging.info(f"Output tokens: {ctk}")
-            logging.info(f"Total tokens: {totk}")
-            logging.info("-" * 80)
 
             return ({"text": response.text, "usage": usage, "prompt_tokens": ptk, "thoughts_tokens": ttk, "candidate_tokens": ctk, "total_tokens": totk}, "", False)
 
@@ -720,8 +711,8 @@ def main():
     args = parser.parse_args()
 
     # Validate thinking budget
-    if args.thinking_budget < 0 or args.thinking_budget > MAX_THINKING_BUDGET:
-        logging.error(f"Thinking budget must be between 0 and {MAX_THINKING_BUDGET}")
+    if args.thinking_budget < -1 or args.thinking_budget > MAX_THINKING_BUDGET:
+        logging.error(f"Thinking budget must be between -1 (dynamic thinking) and {MAX_THINKING_BUDGET}")
         sys.exit(1)
 
     logging.basicConfig(level=logging.INFO,
