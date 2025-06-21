@@ -226,7 +226,7 @@ def gemini_api_call(prompt: str, pil_image: Image.Image, temperature: float, thi
                 pil_image.save(tmp_file_path_str, "PNG")
 
             try:
-                file_upload = client.files.upload(path=tmp_file_path_str)
+                file_upload = client.files.upload(file=tmp_file_path_str)
                 logging.debug(f"File uploaded via client.files.upload: {file_upload.uri}")
             except Exception as upload_err:
                 error_msg = f"File upload failed: {upload_err}"
@@ -255,7 +255,8 @@ def gemini_api_call(prompt: str, pil_image: Image.Image, temperature: float, thi
                     max_output_tokens=MAX_OUTPUT_TOKENS,
                     response_mime_type="application/json",
                     thinking_config=types.ThinkingConfig(
-                        thinking_budget=thinking_budget
+                        thinking_budget=thinking_budget,
+                        include_thoughts=True
                     )
                 )
             )
