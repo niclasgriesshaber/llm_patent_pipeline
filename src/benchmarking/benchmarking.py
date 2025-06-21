@@ -267,7 +267,7 @@ def make_fuzzy_scaling_chart(metrics_by_threshold: List[Tuple[float, float]]) ->
     '''
     return svg
 
-def make_diff_html(gt_text: str, llm_text: str, cer: float) -> str:
+def make_diff_html(gt_text: str, llm_text: str, cer: float, normalized_distance: float) -> str:
     diff_html = difflib.HtmlDiff(wrapcolumn=80).make_file(
         gt_text.splitlines(),
         llm_text.splitlines(),
@@ -294,6 +294,10 @@ def make_diff_html(gt_text: str, llm_text: str, cer: float) -> str:
             <strong>Character Error Rate (CER): {cer:.4f}</strong>
             <br>
             <span style="font-size:0.9em;">CER is calculated as <code>1 - normalized_levenshtein_similarity</code>. Lower is better.</span>
+            <hr style="margin: 10px 0;">
+            <strong>Normalised Edit Distance (ASCII, lowercase): {normalized_distance:.4f}</strong>
+            <br>
+            <span style="font-size:0.9em;">This distance ignores case and non-ASCII characters.</span>
         </div>
         {diff_html}
     </body>
@@ -447,7 +451,15 @@ def main():
     
     cer = 1.0 - Levenshtein.normalized_similarity(gt_full_text, llm_full_text)
     
-    diff_report_html = make_diff_html(gt_full_text, llm_full_text, cer)
+    # Normalize text for ascii-only, lowercase comparison
+    def normalize_text(text: str) -> str:
+        return re.sub(r'[^\x00-\x7f]', '', text).lower()
+
+    gt_normalized_text = normalize_text(gt_full_text)
+    llm_normalized_text = normalize_text(llm_full_text)
+    normalized_edit_distance = 1.0 - Levenshtein.normalized_similarity(gt_normalized_text, llm_normalized_text)
+
+    diff_report_html = make_diff_html(gt_full_text, llm_full_text, cer, normalized_edit_distance)
     with open(DIFF_HTML, 'w', encoding='utf-8') as f:
         f.write(diff_report_html)
     print(f'Wrote {DIFF_HTML}')
