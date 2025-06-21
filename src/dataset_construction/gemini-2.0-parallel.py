@@ -28,12 +28,9 @@ from PIL import Image
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = PROJECT_ROOT / "data"
 CSVS_DIR = DATA_DIR / "csvs"
-PROMPT_SRC_DIR = PROJECT_ROOT / "src" / "dataset_construction"
+PROMPT_LIB_DIR = PROJECT_ROOT / "src" / "dataset_construction" / "prompt_library"
 PDF_SRC_DIR = DATA_DIR / "pdfs" / "patent_pdfs"
 ENV_PATH = PROJECT_ROOT / "config" / ".env"
-
-# Prompt file path
-PROMPT_FILE_PATH = PROMPT_SRC_DIR / "prompt.txt"
 
 # Environment setup
 load_dotenv(dotenv_path=ENV_PATH)
@@ -601,7 +598,7 @@ def create_consolidated_csv(json_dir: Path, pdf_base_out_dir: Path, pdf_stem: st
     return final_csv_path
 
 def overwrite_error_file(pdf_base_out_dir: Path, pdf_stem: str, pdf_name: str, 
-                        failed_pages: Set[int], error_tracker: ErrorTracker) -> None:
+                        failed_pages: Set[int], error_tracker: ErrorTracker, prompt_file_path: Path) -> None:
     """Overwrite the error file with current error information."""
     err_file = pdf_base_out_dir / f"errors_{pdf_stem}.txt"
     logging.warning(f"{len(failed_pages)} page(s) failed. Writing details to: {get_relative_path(err_file)}")
@@ -616,7 +613,7 @@ def overwrite_error_file(pdf_base_out_dir: Path, pdf_stem: str, pdf_name: str,
             ef.write(f"Errors for PDF: {pdf_name}\n")
             ef.write(f"Report Generated: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
             ef.write(f"Failed Pages Summary: {sorted(list(failed_pages))}\n")
-            ef.write(f"Prompt Used: {PROMPT_FILE_PATH.name}\n")
+            ef.write(f"Prompt Used: {prompt_file_path.name}\n")
             ef.write(f"Total Failed Pages: {total_pages}\n\n")
             
             # Error Summary Section
@@ -684,6 +681,7 @@ def process_specific_pages(pages: List[int], png_dir: Path, json_dir: Path, task
 def main():
     parser = argparse.ArgumentParser(description="Gemini PDF->PNG->JSON->CSV Pipeline (Original API Style)")
     parser.add_argument("--pdf", required=True, help="PDF filename in data/pdfs/patent_pdfs/")
+    parser.add_argument("--prompt", default="prompt.txt", help="Prompt filename in src/dataset_construction/prompt_library/")
     parser.add_argument("--temperature", type=float, default=0.0, help="LLM temperature (default=0.0)")
     parser.add_argument("--max_workers", type=int, default=20, help="Max concurrent workers for page processing (default=20)")
     parser.add_argument("--retry_from_error_file", choices=['yes', 'no'], default='no',
@@ -691,6 +689,8 @@ def main():
     parser.add_argument("--page", type=int, help="Process a single specific page number")
 
     args = parser.parse_args()
+
+    PROMPT_FILE_PATH = PROMPT_LIB_DIR / args.prompt
 
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s | %(levelname)s | %(message)s",
@@ -800,7 +800,7 @@ def main():
                 failed_pages = set(pages_to_process) - successful_pages
                 if failed_pages:
                     error_tracker.errors = {p: error_tracker.errors[p] for p in failed_pages}
-                    overwrite_error_file(pdf_base_out_dir, pdf_stem, pdf_name, failed_pages, error_tracker)
+                    overwrite_error_file(pdf_base_out_dir, pdf_stem, pdf_name, failed_pages, error_tracker, PROMPT_FILE_PATH)
             else:
                 logging.warning("No pages were successfully processed")
             # If error file exists, delete it since there are no failed pages
@@ -872,7 +872,7 @@ def main():
         # Create error file if there are still failures
         failed_pages = error_tracker.get_failed_pages()
         if failed_pages:
-            overwrite_error_file(pdf_base_out_dir, pdf_stem, pdf_name, failed_pages, error_tracker)
+            overwrite_error_file(pdf_base_out_dir, pdf_stem, pdf_name, failed_pages, error_tracker, PROMPT_FILE_PATH)
 
     pdf_tokens = defaultdict(int)
     for r in page_results_list:
