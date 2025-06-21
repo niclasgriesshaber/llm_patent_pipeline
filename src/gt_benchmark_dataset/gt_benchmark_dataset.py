@@ -52,6 +52,11 @@ with open(metadata_path, mode="w", newline="") as csvfile:
                 continue
 
             sampled_pages = sorted(random.sample(range(num_pages), 2))
+
+            # Only keep first page of sample pages
+            sampled_pages = [sampled_pages[0]]
+
+            # Sort sampled pages
             print(f"Sampling {len(sampled_pages)} pages from {pdf_file.name}: {sampled_pages}")
             
             # Create a new PDF writer for each file
