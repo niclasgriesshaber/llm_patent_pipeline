@@ -139,7 +139,7 @@ def process_pdf(model_name: str, prompt_text: str, pdf_path: Path, output_dir: P
         logging.info(f"CSV for {pdf_path.name} already exists. Skipping.")
         return
 
-    all_pages_data = []
+    all_rows = []
 
     try:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -149,41 +149,53 @@ def process_pdf(model_name: str, prompt_text: str, pdf_path: Path, output_dir: P
             for i, image in enumerate(images):
                 page_num = i + 1
                 logging.info(f"Processing page {page_num}/{len(images)} of {pdf_path.name}")
-                
                 try:
-                    page_data = gemini_api_call(model_name, prompt_text, image)
-                    
-                    # Add metadata
-                    page_data["pdf_filename"] = pdf_path.name
-                    page_data["page_number"] = page_num
-                    
-                    # Ensure data is a list of a single dict for DataFrame compatibility
-                    all_pages_data.append(page_data)
-
+                    page_objs = gemini_api_call(model_name, prompt_text, image)
+                    if not isinstance(page_objs, list):
+                        logging.warning(f"Expected a list from LLM output, got {type(page_objs)}. Wrapping in list.")
+                        page_objs = [page_objs]
+                    for obj in page_objs:
+                        if not isinstance(obj, dict):
+                            logging.warning(f"Expected dict in LLM output array, got {type(obj)}. Skipping.")
+                            continue
+                        row = {"pdf_filename": pdf_path.name, "page_number": page_num}
+                        row.update(obj)
+                        all_rows.append(row)
                 except Exception as e:
                     logging.error(f"Failed to process page {page_num} for {pdf_path.name}: {e}")
                     # Optionally, add a placeholder for failed pages
-                    all_pages_data.append({
+                    all_rows.append({
                         "pdf_filename": pdf_path.name,
                         "page_number": page_num,
                         "error": str(e)
                     })
-
     except Exception as e:
         logging.error(f"An unexpected error occurred during processing of {pdf_path.name}: {e}")
         return
 
-    if not all_pages_data:
+    if not all_rows:
         logging.warning(f"No data was extracted from {pdf_path.name}. CSV will not be created.")
         return
 
-    # Create and save DataFrame
+    # Create and save DataFrame (mimic original script logic)
     try:
-        df = pd.DataFrame(all_pages_data)
-        # Reorder columns to have metadata first
-        cols = ["pdf_filename", "page_number"] + [c for c in df.columns if c not in ["pdf_filename", "page_number"]]
-        df = df[cols]
-        
+        df = pd.DataFrame(all_rows)
+        # Forward-fill category
+        if "category" in df.columns:
+            df["category"] = df["category"].ffill()
+        # Filter out rows with empty or missing 'entry' (but keep 'category' rows)
+        df = df[(df.get("entry").notna() & (df["entry"] != "")) | (df.get("category").notna() & (df["category"] != ""))]
+        # Assign sequential id
+        df["id"] = range(1, len(df) + 1)
+        # Reorder columns
+        cols = ["id", "pdf_filename", "page_number"]
+        if "entry" in df.columns:
+            cols.append("entry")
+        if "category" in df.columns:
+            cols.append("category")
+        if "error" in df.columns:
+            cols.append("error")
+        df = df[[c for c in cols if c in df.columns]]
         output_dir.mkdir(parents=True, exist_ok=True)
         df.to_csv(output_csv_path, index=False)
         logging.info(f"Successfully created CSV: {output_csv_path}")
