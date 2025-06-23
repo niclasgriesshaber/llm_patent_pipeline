@@ -389,15 +389,29 @@ def run_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Path, fuzzy
         })
         diff_sections.append(make_side_by_side_diff(gt_text, llm_text, stem, year, cer))
 
-    summary_table_html = make_summary_table_html(summary_rows)
+    # Add extra margin above the summary table
+    summary_table_html = '<div style="margin-top: 32px;">' + make_summary_table_html(summary_rows) + '</div>'
     cer_graph_html = make_interactive_cer_graph(summary_rows)
+
+    # Add a legend for the diff color coding
+    diff_legend_html = '''
+    <div class="diff-legend" style="margin: 36px 0 24px 0; padding: 18px 24px; background: #f8f8fc; border-radius: 8px; border: 1px solid #e0e0e0; max-width: 700px;">
+      <strong>Legend for Side-by-Side Comparison:</strong>
+      <ul style="margin: 10px 0 0 20px; padding: 0; font-size: 1em;">
+        <li><span style="background:#d4f8e8; color:#228b22; padding:2px 6px; border-radius:3px;">Insertion</span>: Text present in the LLM output but not in the ground truth.</li>
+        <li><span style="background:#ffe0e0; color:#b22222; padding:2px 6px; border-radius:3px;">Deletion</span>: Text present in the ground truth but not in the LLM output.</li>
+        <li><span style="background:#fff7cc; color:#b8860b; padding:2px 6px; border-radius:3px;">Substitution</span>: Text that differs between the ground truth and the LLM output.</li>
+      </ul>
+    </div>
+    '''
+
     full_html = (
         '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">'
         '<title>Diff Report</title>'
         '{mathjax_script}'
         '{style}'
         '</head><body><div class="container">'
-        '{cer_definition}{summary_table_html}{cer_graph_html}{diff_sections}'
+        '{cer_definition}{summary_table_html}{cer_graph_html}{diff_legend_html}{diff_sections}'
         '</div></body></html>'
     ).format(
         mathjax_script=mathjax_script,
@@ -405,6 +419,7 @@ def run_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Path, fuzzy
         cer_definition=cer_definition,
         summary_table_html=summary_table_html,
         cer_graph_html=cer_graph_html,
+        diff_legend_html=diff_legend_html,
         diff_sections=''.join(diff_sections)
     )
     diff_report_path = output_dir / "diff_report.html"
