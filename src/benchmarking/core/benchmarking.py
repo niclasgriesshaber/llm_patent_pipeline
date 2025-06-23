@@ -239,7 +239,7 @@ def make_summary_table_html(summary_rows):
     return '\n'.join(table)
 
 def make_interactive_cer_graph(summary_rows):
-    years = [row['year'] for row in summary_rows]
+    years = [int(row['year']) for row in summary_rows]
     cers = [row['cer'] for row in summary_rows]
     files = [row['file'] for row in summary_rows]
     return f'''
@@ -257,7 +257,7 @@ var data = [{{
 }}];
 var layout = {{
     title: 'CER by Year',
-    xaxis: {{ title: 'Year', tickangle: -90 }},
+    xaxis: {{ title: 'Year', tickangle: -90, dtick: 1 }},
     yaxis: {{ title: 'CER', tickformat: ',.0%' }},
     margin: {{ t: 40, b: 120 }}
 }};
@@ -271,7 +271,7 @@ def make_side_by_side_diff(gt_text, llm_text, file, year, cer):
         llm_text.splitlines(),
         fromdesc='Ground Truth',
         todesc='LLM Output',
-        context=True,
+        context=False,  # Show all changes, not just context
         numlines=2
     )
     return f'<section class="diff-section"><h2>{html_escape(file)} ({year})</h2><h3>CER: {cer:.2%}</h3>{diff_html}</section>'
@@ -343,7 +343,8 @@ def run_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Path, fuzzy
     # --- CER and Diffing ---
     summary_rows = []
     diff_sections = []
-    cer_definition = '<div class="summary-section"><h2>Character Error Rate (CER) Definition</h2><p>CER = (Levenshtein distance) / (number of characters in ground truth). Insertions, deletions, and substitutions are counted as edit operations. Lower CER means higher similarity.</p></div>'
+    mathjax_script = '<script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>\n<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>'
+    cer_definition = '''<div class="summary-section"><h2>Character Error Rate (CER) Definition</h2><p>$$\mathrm{CER} = \frac{\text{Levenshtein distance}}{\text{number of characters in ground truth}}$$<br>Insertions, deletions, and substitutions are counted as edit operations. Lower CER means higher similarity.</p></div>'''
 
     for stem in common_stems:
         gt_df = load_gt_file(gt_xlsx_dir / f"{stem}.xlsx")
@@ -371,19 +372,36 @@ def run_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Path, fuzzy
 
     summary_table_html = make_summary_table_html(summary_rows)
     cer_graph_html = make_interactive_cer_graph(summary_rows)
+    style = '''<style>
+    body{font-family:Segoe UI,Arial,sans-serif;background:#f4f4f9;color:#222;}
+    .container{max-width:1200px;margin:auto;padding:30px;}
+    .summary-section{margin-top:30px;padding:24px 32px;background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,0.04);}
+    .summary-table{width:100%;border-collapse:collapse;margin-bottom:30px;font-size:1.05em;}
+    .summary-table th,.summary-table td{border:1px solid #ddd;padding:10px 8px;text-align:left;}
+    .summary-table th{background:#e9e9f2;font-weight:600;}
+    .diff-section{background:#fff;border:1px solid #ddd;border-radius:10px;margin-bottom:32px;padding:20px 18px;box-shadow:0 2px 8px rgba(0,0,0,0.04);}
+    table.diff{font-size:0.98em;}
+    td.diff_header{background:#f2f2f2;font-weight:bold;}
+    td.diff_next{background:#e9e9f2;}
+    span.diff_add{background:#d4f8e8;color:#228b22;}
+    span.diff_sub{background:#ffe0e0;color:#b22222;}
+    span.diff_chg{background:#fff7cc;color:#b8860b;}
+    </style>'''
     full_html = (
-        f'<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">'
-        f'<title>Diff Report</title>'
-        f'<style>'
-        f'body{{{{font-family:sans-serif;background:#f4f4f9;color:#333;}}}}'
-        f'.container{{{{max-width:1200px;margin:auto;padding:20px;}}}}'
-        f'.summary-table{{{{width:100%;border-collapse:collapse;margin-bottom:30px;}}}}'
-        f'.summary-table th,.summary-table td{{{{border:1px solid #ddd;padding:8px;text-align:left;}}}}'
-        f'.summary-table th{{{{background:#f2f2f2;}}}}'
-        f'.diff-section{{{{background:#fff;border:1px solid #ddd;border-radius:8px;margin-bottom:20px;padding:15px;box-shadow:0 2px 4px rgba(0,0,0,0.05);}}}}'
-        f'</style></head><body><div class="container">'
-        f'{cer_definition}{summary_table_html}{cer_graph_html}{"".join(diff_sections)}'
-        f'</div></body></html>'
+        '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">'
+        '<title>Diff Report</title>'
+        '{mathjax_script}'
+        '{style}'
+        '</head><body><div class="container">'
+        '{cer_definition}{summary_table_html}{cer_graph_html}{diff_sections}'
+        '</div></body></html>'
+    ).format(
+        mathjax_script=mathjax_script,
+        style=style,
+        cer_definition=cer_definition,
+        summary_table_html=summary_table_html,
+        cer_graph_html=cer_graph_html,
+        diff_sections=''.join(diff_sections)
     )
     diff_report_path = output_dir / "diff_report.html"
     diff_report_path.write_text(full_html, encoding='utf-8')
