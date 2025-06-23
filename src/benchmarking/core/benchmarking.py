@@ -217,7 +217,7 @@ def compute_levenshtein_stats(gt_text: str, llm_text: str):
 def make_summary_table_html(summary_rows):
     table = [
         '<table class="summary-table">',
-        '<caption>File-level CER and Edit Statistics</caption>',
+        '<caption style="font-weight: bold; margin-bottom: 18px; font-size: 1.2em;">File-level CER and Edit Statistics</caption>',
         '<tr><th>File</th><th>Year</th><th>CER</th><th>Words (GT)</th><th>Words (LLM)</th><th>Chars (GT)</th><th>Chars (LLM)</th><th>Insertions</th><th>Deletions</th><th>Substitutions</th></tr>'
     ]
     for row in summary_rows:
@@ -269,12 +269,12 @@ def make_side_by_side_diff(gt_text, llm_text, file, year, cer):
     diff_html = difflib.HtmlDiff(wrapcolumn=80).make_table(
         gt_text.splitlines(),
         llm_text.splitlines(),
-        fromdesc='Ground Truth',
-        todesc='LLM Output',
+        fromdesc='<span class="diff-table-header">Ground Truth</span>',
+        todesc='<span class="diff-table-header">LLM Output</span>',
         context=False,  # Show all changes, not just context
         numlines=2
     )
-    return f'<section class="diff-section"><h2>{html_escape(file)} ({year})</h2><h3>CER: {cer:.2%}</h3>{diff_html}</section>'
+    return f'<section class="diff-section"><h2 class="diff-file-heading">{html_escape(file)}</h2><h3 class="diff-cer">CER: {cer:.2%}</h3>{diff_html}</section>'
 
 # --- Main Comparison Logic ---
 
@@ -351,15 +351,20 @@ def run_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Path, fuzzy
     .summary-table{width:100%;border-collapse:collapse;margin-bottom:30px;font-size:1.05em;}
     .summary-table th,.summary-table td{border:1px solid #ddd;padding:10px 8px;text-align:left;}
     .summary-table th{background:#e9e9f2;font-weight:600;}
-    /* Responsive diff table styling */
-    .diff-section{background:#fff;border:1px solid #ddd;border-radius:10px;margin-bottom:32px;padding:20px 18px;box-shadow:0 2px 8px rgba(0,0,0,0.04);overflow-x:auto;}
-    table.diff{font-size:0.98em;max-width:100%;width:100%;word-break:break-word;}
-    td.diff_header{background:#f2f2f2;font-weight:bold;}
+    .summary-table caption{font-weight: bold; margin-bottom: 18px; font-size: 1.2em;}
+    /* Responsive diff table styling and improved visuals */
+    .diff-section{background:#f9fafc;border:1px solid #dbe2ea;border-radius:14px;margin-bottom:40px;padding:28px 22px;box-shadow:0 4px 16px rgba(0,0,0,0.06);overflow-x:auto;}
+    .diff-file-heading{font-size:1.35em;font-weight:700;margin-bottom:8px;letter-spacing:0.5px;}
+    .diff-cer{font-size:1.08em;font-weight:600;margin-bottom:18px;}
+    table.diff{font-size:1em;max-width:100%;width:100%;word-break:break-word;background:#fff;border-radius:8px;border:1.5px solid #e0e0e0;box-shadow:0 1px 4px rgba(0,0,0,0.03);margin-bottom:0;}
+    td.diff_header{background:#f2f2f2;font-weight:bold;font-size:1.08em;}
     td.diff_next{background:#e9e9f2;}
     span.diff_add{background:#d4f8e8;color:#228b22;}
     span.diff_sub{background:#ffe0e0;color:#b22222;}
     span.diff_chg{background:#fff7cc;color:#b8860b;}
     td{white-space:pre-wrap;}
+    .diff-table-header{font-size:1.08em;font-weight:700;letter-spacing:0.2px;}
+    table.diff tr:hover td{background:#f6f8fa;transition:background 0.2s;}
     </style>'''
     # --- MathJax script and correct LaTeX formula ---
     mathjax_script = '<script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>\n<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>'
