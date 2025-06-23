@@ -158,9 +158,13 @@ def process_pdf(model_name: str, prompt_text: str, pdf_path: Path, output_dir: P
                         if not isinstance(obj, dict):
                             logging.warning(f"Expected dict in LLM output array, got {type(obj)}. Skipping.")
                             continue
-                        row = {"pdf_filename": pdf_path.name, "page_number": page_num}
-                        row.update(obj)
-                        all_rows.append(row)
+                        # Only extract 'entry' and 'category' keys
+                        entry_value = obj.get("entry", None)
+                        category_value = obj.get("category", None)
+                        all_rows.append({
+                            "entry": entry_value,
+                            "category": category_value
+                        })
                 except Exception as e:
                     logging.error(f"Failed to process page {page_num} for {pdf_path.name}: {e}")
                     # Optionally, add a placeholder for failed pages
@@ -177,25 +181,20 @@ def process_pdf(model_name: str, prompt_text: str, pdf_path: Path, output_dir: P
         logging.warning(f"No data was extracted from {pdf_path.name}. CSV will not be created.")
         return
 
-    # Create and save DataFrame (mimic original script logic)
+    # Robust DataFrame creation: forward-fill category, filter, and keep only 'entry' and 'category'
     try:
         df = pd.DataFrame(all_rows)
         # Forward-fill category
         if "category" in df.columns:
             df["category"] = df["category"].ffill()
-        # Filter out rows with empty or missing 'entry' (but keep 'category' rows)
-        df = df[(df.get("entry").notna() & (df["entry"] != "")) | (df.get("category").notna() & (df["category"] != ""))]
-        # Assign sequential id
-        df["id"] = range(1, len(df) + 1)
-        # Reorder columns
-        cols = ["id", "pdf_filename", "page_number"]
-        if "entry" in df.columns:
-            cols.append("entry")
-        if "category" in df.columns:
-            cols.append("category")
-        if "error" in df.columns:
-            cols.append("error")
-        df = df[[c for c in cols if c in df.columns]]
+        # Filter out rows with empty or missing 'entry'
+        df = df[df.get("entry").notna() & (df["entry"] != "")]
+        # Add sequential 'id' column as the first column
+        df = df.reset_index(drop=True)
+        df.insert(0, 'id', range(1, len(df) + 1))
+        # Only keep 'id', 'entry', and 'category' columns (in that order)
+        keep_cols = [col for col in ['id', 'entry', 'category'] if col in df.columns]
+        df = df[keep_cols]
         output_dir.mkdir(parents=True, exist_ok=True)
         df.to_csv(output_csv_path, index=False)
         logging.info(f"Successfully created CSV: {output_csv_path}")
