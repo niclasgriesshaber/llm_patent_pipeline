@@ -32,20 +32,26 @@ except Exception as e:
 
 MAX_RETRIES = 3
 BACKOFF_FACTOR = 2
-MAX_OUTPUT_TOKENS = 8192
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 
-def parse_json_from_response(response_text: str) -> dict:
-    """Extracts and parses a JSON object from a model's text response."""
-    match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", response_text, re.DOTALL)
+def parse_json_from_response(response_text) -> dict:
+    """Extracts and parses a JSON object from a model's text response, robustly."""
+    if not isinstance(response_text, str):
+        logging.warning(f"Model response is not a string (type={type(response_text)}): {repr(response_text)[:200]}")
+        if response_text is None:
+            raise ValueError("Model response is None, cannot parse JSON.")
+        response_text = str(response_text)
+    # Try to extract JSON from code block
+    match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", response_text, re.DOTALL | re.IGNORECASE)
     if match:
         json_str = match.group(1).strip()
+        if json_str.startswith('\ufeff'): json_str = json_str[1:]
     else:
-        # Fallback if no markdown code block is found
-        json_str = response_text.strip()
-    
+        # Fallback: try the whole response, strip backticks and BOM
+        json_str = response_text.strip().strip("`")
+        if json_str.startswith('\ufeff'): json_str = json_str[1:]
     try:
         return json.loads(json_str)
     except json.JSONDecodeError as e:
@@ -56,6 +62,8 @@ def gemini_api_call(model_name: str, prompt: str, pil_image: Image.Image) -> dic
     """
     Makes a call to the Gemini API with a given image and prompt.
     Includes retry logic and model-specific configurations.
+    Now robust to empty/None responses, as in gemini-2.5-parallel.py.
+    Sets max_output_tokens to 50000 for Gemini-2.5 models, 8192 otherwise.
     """
     try:
         client = genai.Client(api_key=API_KEY)
@@ -63,31 +71,35 @@ def gemini_api_call(model_name: str, prompt: str, pil_image: Image.Image) -> dic
         logging.error(f"Failed to initialize Gemini Client: {e}")
         raise
 
-    # --- Model-specific configuration ---
+    # Set max_output_tokens based on model version
+    if "2.5" in model_name:
+        max_output_tokens = 50000
+    else:
+        max_output_tokens = 8192
+
     config_args = {
         "temperature": 0.0,
-        "max_output_tokens": MAX_OUTPUT_TOKENS,
+        "max_output_tokens": max_output_tokens,
         "response_mime_type": "application/json",
     }
 
+    # For gemini-2.5-flash, set thinking_config as in gemini-2.5-parallel.py
     if "2.5" in model_name:
-        logging.info("Using Gemini 2.5-specific config with dynamic thinking budget.")
+        logging.info("Using Gemini 2.5-specific config with dynamic thinking budget and max_output_tokens=50000.")
         config_args["thinking_config"] = types.ThinkingConfig(
             thinking_budget=-1,
             include_thoughts=True
         )
 
     config = types.GenerateContentConfig(**config_args)
-    file_upload = None  # Ensure it exists for the finally block
+    file_upload = None
 
     for attempt in range(MAX_RETRIES):
         try:
             with tempfile.NamedTemporaryFile(suffix=".png", delete=True) as tmp_file:
                 pil_image.save(tmp_file.name, "PNG")
-
                 logging.info(f"Uploading image for API call (Attempt {attempt + 1})...")
                 file_upload = client.files.upload(file=tmp_file.name)
-
                 logging.info(f"Making generate_content call for model {model_name}...")
                 response = client.models.generate_content(
                     model=model_name,
@@ -100,9 +112,24 @@ def gemini_api_call(model_name: str, prompt: str, pil_image: Image.Image) -> dic
                     ],
                     config=config
                 )
-
+                # Robust: check for empty/None response or response.text
+                if not response or not getattr(response, 'text', None):
+                    error_msg = "API returned empty response or no text"
+                    logging.warning(f"API call attempt {attempt + 1} failed: {error_msg}")
+                    if hasattr(response, 'prompt_feedback') and response.prompt_feedback and getattr(response.prompt_feedback, 'block_reason', None):
+                        block_reason = response.prompt_feedback.block_reason
+                        error_msg += f" (Block Reason: {block_reason})"
+                        logging.warning(f"Block Reason: {block_reason}")
+                    if attempt < MAX_RETRIES - 1:
+                        sleep_time = BACKOFF_FACTOR ** attempt
+                        logging.info(f"Retrying in {sleep_time} seconds...")
+                        time.sleep(sleep_time)
+                        continue
+                    else:
+                        logging.error("All API call retries failed due to empty response.")
+                        raise RuntimeError(error_msg)
+                # Only parse if response.text is not None
                 return parse_json_from_response(response.text)
-
         except Exception as e:
             logging.warning(f"API call attempt {attempt + 1} failed: {e}")
             if attempt < MAX_RETRIES - 1:
@@ -119,7 +146,6 @@ def gemini_api_call(model_name: str, prompt: str, pil_image: Image.Image) -> dic
                     logging.debug(f"Deleted temp file on API server: {file_upload.name}")
                 except Exception as e:
                     logging.warning(f"Failed to delete uploaded file {file_upload.name}: {e}")
-
     raise RuntimeError("Should not be reached; indicates a problem in retry logic.")
 
 def process_pdf(model_name: str, prompt_text: str, pdf_path: Path, output_dir: Path):
