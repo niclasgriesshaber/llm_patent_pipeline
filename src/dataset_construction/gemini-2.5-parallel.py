@@ -28,7 +28,6 @@ from PIL import Image
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = PROJECT_ROOT / "data"
 CSVS_DIR = DATA_DIR / "csvs"
-PROMPT_LIB_DIR = PROJECT_ROOT / "src" / "dataset_construction" / "prompt_library"
 PDF_SRC_DIR = DATA_DIR / "pdfs" / "patent_pdfs"
 ENV_PATH = PROJECT_ROOT / "config" / ".env"
 
@@ -697,23 +696,15 @@ def process_specific_pages(pages: List[int], png_dir: Path, json_dir: Path, task
 def main():
     parser = argparse.ArgumentParser(description="Gemini PDF->PNG->JSON->CSV Pipeline (Original API Style)")
     parser.add_argument("--pdf", required=True, help="PDF filename in data/pdfs/patent_pdfs/")
-    parser.add_argument("--prompt", default="prompt.txt", help="Prompt filename in src/dataset_construction/prompt_library/")
     parser.add_argument("--temperature", type=float, default=0.0, help="LLM temperature (default=0.0)")
-    parser.add_argument("--thinking_budget", type=int, default=DEFAULT_THINKING_BUDGET, 
-                       help=f"Thinking budget for the model (default={DEFAULT_THINKING_BUDGET}, max={MAX_THINKING_BUDGET})")
+    parser.add_argument("--thinking_budget", type=int, default=DEFAULT_THINKING_BUDGET, help=f"Thinking budget for the model (default={DEFAULT_THINKING_BUDGET}, max={MAX_THINKING_BUDGET})")
     parser.add_argument("--max_workers", type=int, default=20, help="Max concurrent workers for page processing (default=20)")
-    parser.add_argument("--retry_from_error_file", choices=['yes', 'no'], default='no',
-                       help="Retry failed pages listed in the error file")
+    parser.add_argument("--retry_from_error_file", choices=['yes', 'no'], default='no', help="Retry failed pages listed in the error file")
     parser.add_argument("--page", type=int, help="Process a single specific page number")
 
     args = parser.parse_args()
 
-    # Validate thinking budget
-    if args.thinking_budget < -1 or args.thinking_budget > MAX_THINKING_BUDGET:
-        logging.error(f"Thinking budget must be between -1 (dynamic thinking) and {MAX_THINKING_BUDGET}")
-        sys.exit(1)
-
-    PROMPT_FILE_PATH = PROMPT_LIB_DIR / args.prompt
+    PROMPT_FILE_PATH = Path(__file__).parent / "prompt.txt"
 
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s | %(levelname)s | %(message)s",
