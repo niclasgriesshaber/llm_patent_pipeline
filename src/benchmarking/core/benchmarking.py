@@ -8,6 +8,7 @@ import difflib
 import json
 import logging
 from typing import List, Tuple, Dict, Any
+import math
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -202,16 +203,78 @@ def make_full_html(title: str, sections_html: str, summary_html: str) -> str:
         f'<h1>{title}</h1>{summary_html}{sections_html}</div></body></html>'
     )
 
-def make_diff_html(gt_text: str, llm_text: str, cer: float) -> str:
-    """Creates an HTML diff view."""
-    diff_html = difflib.HtmlDiff(wrapcolumn=80).make_file(
+def extract_year_from_filename(filename: str) -> str:
+    match = re.search(r'(\d{4})', filename)
+    return match.group(1) if match else ''
+
+def compute_levenshtein_stats(gt_text: str, llm_text: str):
+    ops = Levenshtein.editops(gt_text, llm_text)
+    ins = sum(1 for op in ops if op[0] == 'insert')
+    del_ = sum(1 for op in ops if op[0] == 'delete')
+    sub = sum(1 for op in ops if op[0] == 'replace')
+    return ins, del_, sub
+
+def make_summary_table_html(summary_rows):
+    table = [
+        '<table class="summary-table">',
+        '<caption>File-level CER and Edit Statistics</caption>',
+        '<tr><th>File</th><th>Year</th><th>CER</th><th>Words (GT)</th><th>Words (LLM)</th><th>Chars (GT)</th><th>Chars (LLM)</th><th>Insertions</th><th>Deletions</th><th>Substitutions</th></tr>'
+    ]
+    for row in summary_rows:
+        table.append(
+            f'<tr>'
+            f'<td>{html_escape(row["file"])}<br></td>'
+            f'<td>{html_escape(row["year"])}<br></td>'
+            f'<td>{row["cer"]:.2%}</td>'
+            f'<td>{row["words_gt"]}</td>'
+            f'<td>{row["words_llm"]}</td>'
+            f'<td>{row["chars_gt"]}</td>'
+            f'<td>{row["chars_llm"]}</td>'
+            f'<td>{row["ins"]}</td>'
+            f'<td>{row["del"]}</td>'
+            f'<td>{row["sub"]}</td>'
+            f'</tr>'
+        )
+    table.append('</table>')
+    return '\n'.join(table)
+
+def make_interactive_cer_graph(summary_rows):
+    years = [row['year'] for row in summary_rows]
+    cers = [row['cer'] for row in summary_rows]
+    files = [row['file'] for row in summary_rows]
+    return f'''
+<div id="cer-graph" style="height:400px;"></div>
+<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+<script>
+var data = [{{
+    x: {years},
+    y: {cers},
+    text: {files},
+    type: 'scatter',
+    mode: 'markers+lines',
+    marker: {{ size: 12 }},
+    hovertemplate: 'File: %{{text}}<br>Year: %{{x}}<br>CER: %{{y:.2%}}<extra></extra>'
+}}];
+var layout = {{
+    title: 'CER by Year',
+    xaxis: {{ title: 'Year', tickangle: -90 }},
+    yaxis: {{ title: 'CER', tickformat: ',.0%' }},
+    margin: {{ t: 40, b: 120 }}
+}};
+Plotly.newPlot('cer-graph', data, layout);
+</script>
+'''
+
+def make_side_by_side_diff(gt_text, llm_text, file, year, cer):
+    diff_html = difflib.HtmlDiff(wrapcolumn=80).make_table(
         gt_text.splitlines(),
         llm_text.splitlines(),
         fromdesc='Ground Truth',
-        todesc='LLM Output'
+        todesc='LLM Output',
+        context=True,
+        numlines=2
     )
-    cer_html = f'<h2>Character Error Rate (CER): {cer:.2%}</h2>'
-    return f'<!DOCTYPE html><html><head><title>Diff Report</title></head><body>{cer_html}{diff_html}</body></html>'
+    return f'<section class="diff-section"><h2>{html_escape(file)} ({year})</h2><h3>CER: {cer:.2%}</h3>{diff_html}</section>'
 
 # --- Main Comparison Logic ---
 
@@ -278,10 +341,52 @@ def run_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Path, fuzzy
     logging.info(f"Fuzzy report saved to {fuzzy_report_path}")
 
     # --- CER and Diffing ---
-    cer = Levenshtein.normalized_distance(full_gt_text, full_llm_text)
-    diff_html_content = make_diff_html(full_gt_text, full_llm_text, cer)
+    summary_rows = []
+    diff_sections = []
+    cer_definition = '<div class="summary-section"><h2>Character Error Rate (CER) Definition</h2><p>CER = (Levenshtein distance) / (number of characters in ground truth). Insertions, deletions, and substitutions are counted as edit operations. Lower CER means higher similarity.</p></div>'
+
+    for stem in common_stems:
+        gt_df = load_gt_file(gt_xlsx_dir / f"{stem}.xlsx")
+        llm_df = load_llm_file(llm_csv_dir / f"{stem}.csv")
+        if gt_df.empty or llm_df.empty:
+            continue
+        gt_text = "\n".join(gt_df['entry'].tolist())
+        llm_text = "\n".join(llm_df['entry'].tolist())
+        cer = Levenshtein.normalized_distance(gt_text, llm_text)
+        ins, del_, sub = compute_levenshtein_stats(gt_text, llm_text)
+        year = extract_year_from_filename(stem)
+        summary_rows.append({
+            'file': stem,
+            'year': year,
+            'cer': cer,
+            'words_gt': len(gt_text.split()),
+            'words_llm': len(llm_text.split()),
+            'chars_gt': len(gt_text),
+            'chars_llm': len(llm_text),
+            'ins': ins,
+            'del': del_,
+            'sub': sub
+        })
+        diff_sections.append(make_side_by_side_diff(gt_text, llm_text, stem, year, cer))
+
+    summary_table_html = make_summary_table_html(summary_rows)
+    cer_graph_html = make_interactive_cer_graph(summary_rows)
+    full_html = (
+        f'<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">'
+        f'<title>Diff Report</title>'
+        f'<style>'
+        f'body{{{{font-family:sans-serif;background:#f4f4f9;color:#333;}}}}'
+        f'.container{{{{max-width:1200px;margin:auto;padding:20px;}}}}'
+        f'.summary-table{{{{width:100%;border-collapse:collapse;margin-bottom:30px;}}}}'
+        f'.summary-table th,.summary-table td{{{{border:1px solid #ddd;padding:8px;text-align:left;}}}}'
+        f'.summary-table th{{{{background:#f2f2f2;}}}}'
+        f'.diff-section{{{{background:#fff;border:1px solid #ddd;border-radius:8px;margin-bottom:20px;padding:15px;box-shadow:0 2px 4px rgba(0,0,0,0.05);}}}}'
+        f'</style></head><body><div class="container">'
+        f'{cer_definition}{summary_table_html}{cer_graph_html}{"".join(diff_sections)}'
+        f'</div></body></html>'
+    )
     diff_report_path = output_dir / "diff_report.html"
-    diff_report_path.write_text(diff_html_content, encoding='utf-8')
+    diff_report_path.write_text(full_html, encoding='utf-8')
     logging.info(f"Diff report saved to {diff_report_path}")
 
     # --- JSON Results ---
