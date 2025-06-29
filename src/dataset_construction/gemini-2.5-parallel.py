@@ -590,10 +590,6 @@ def main():
             create_consolidated_csv(json_dir, pdf_base_out_dir, pdf_stem)
         else:
             logging.error(f"Failed to process page {args.page}")
-        # Write error file if any failures
-        failed_pages = error_tracker.get_failed_pages()
-        if failed_pages:
-            overwrite_error_file(pdf_base_out_dir, pdf_stem, pdf_name, failed_pages, error_tracker, PROMPT_FILE_PATH)
         return
     else:
         # Parallel processing for full PDF
@@ -650,6 +646,24 @@ def main():
     logging.info(f"PDF {pdf_name} Processing Finished ({format_duration(pdf_duration)})")
     logging.info(f"Global Tokens Running Total: prompt={global_tokens['prompt']:,}, candidate={global_tokens['candidate']:,}, thoughts={global_tokens['thoughts']:,}, total={global_tokens['total']:,}")
     logging.info("-" * 80)
+
+    # --- Copy CSV to data/complete_csvs if all pages succeeded, not in single-page mode, and file does not exist ---
+    if not args.page:
+        failed_pages = error_tracker.get_failed_pages()
+        if not failed_pages:
+            complete_csvs_dir = PROJECT_ROOT / "data" / "complete_csvs"
+            complete_csvs_dir.mkdir(parents=True, exist_ok=True)
+            src_csv = pdf_base_out_dir / f"{pdf_stem}.csv"
+            dst_csv = complete_csvs_dir / f"{pdf_stem}.csv"
+            if not dst_csv.exists():
+                try:
+                    import shutil
+                    shutil.copy2(src_csv, dst_csv)
+                    logging.info(f"Copied CSV to {get_relative_path(dst_csv)} (all pages succeeded, first time)")
+                except Exception as e:
+                    logging.error(f"Failed to copy CSV to {get_relative_path(dst_csv)}: {e}")
+            else:
+                logging.info(f"CSV already exists in {get_relative_path(dst_csv)}; not overwriting.")
     pdf_total_duration = time.time() - pdf_start
     logging.info(f"Finished PDF: {pdf_name} (Total time: {format_duration(pdf_total_duration)})")
     logging.info("")
