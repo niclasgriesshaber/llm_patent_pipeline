@@ -40,8 +40,6 @@ MODEL_NAME = "gemini-2.5-flash"
 MAX_OUTPUT_TOKENS = 60000 # for gemini-2.0-flash
 DEFAULT_THINKING_BUDGET = -1  # Default thinking budget, -1 for dynamic
 MAX_THINKING_BUDGET = 24576  # Maximum thinking budget
-MAX_RETRIES = 3
-BACKOFF_SLEEP_SECONDS = 30
 MAX_FILE_DESCRIPTORS = 10000
 
 # Error type enumeration
@@ -58,79 +56,28 @@ class ErrorType(Enum):
 # Error tracking implementation
 class ErrorTracker:
     """Thread-safe error tracking system for parallel processing."""
-    
     def __init__(self):
         self.errors = defaultdict(list)
         self.error_counts = defaultdict(int)
         self.rate_limit_hits = 0
-        self.retry_counts = defaultdict(int)
-        self.max_retries = MAX_RETRIES
         self._lock = threading.Lock()
-    
     def add_error(self, page_idx: int, error_type: ErrorType, error_msg: str, is_rate_limit: bool = False):
-        """Record an error with thread-safe access."""
         with self._lock:
             self.errors[page_idx].append((error_type, error_msg))
             self.error_counts[error_type] += 1
             if is_rate_limit:
                 self.rate_limit_hits += 1
-    
-    def add_error_and_get_summary(self, page_idx: int, error_type: ErrorType, error_msg: str, is_rate_limit: bool = False) -> Dict[str, int]:
-        """Record an error and return the current error summary atomically."""
-        with self._lock:
-            self.errors[page_idx].append((error_type, error_msg))
-            self.error_counts[error_type] += 1
-            if is_rate_limit:
-                self.rate_limit_hits += 1
-            
-            summary = {error_type.name: count for error_type, count in self.error_counts.items()}
-            summary["RATE_LIMIT_HITS"] = self.rate_limit_hits
-            return summary
-    
-    def increment_retry(self, page_idx: int) -> bool:
-        """Increment retry counter and check if more retries are allowed."""
-        with self._lock:
-            self.retry_counts[page_idx] += 1
-            return self.retry_counts[page_idx] <= self.max_retries
-    
-    def get_retry_count(self, page_idx: int) -> int:
-        """Get the current retry count for a page."""
-        with self._lock:
-            return self.retry_counts[page_idx]
-    
     def get_error_summary(self) -> Dict[str, int]:
-        """Get a summary of error counts by type."""
         with self._lock:
             summary = {error_type.name: count for error_type, count in self.error_counts.items()}
             summary["RATE_LIMIT_HITS"] = self.rate_limit_hits
             return summary
-    
     def get_failed_pages(self) -> Set[int]:
-        """Get the set of pages that have failed."""
         with self._lock:
             return set(self.errors.keys())
-    
     def get_page_errors(self, page_idx: int) -> List[Tuple[ErrorType, str]]:
-        """Get all errors for a specific page."""
         with self._lock:
             return self.errors.get(page_idx, [])
-    
-    def clear_page_errors(self, page_idx: int):
-        """Clear errors for a specific page (used when retrying)."""
-        with self._lock:
-            if page_idx in self.errors:
-                del self.errors[page_idx]
-            if page_idx in self.retry_counts:
-                del self.retry_counts[page_idx]
-    
-    def clear_page_errors_and_get_failed_pages(self, page_idx: int) -> Set[int]:
-        """Clear errors for a page and get the current set of failed pages atomically."""
-        with self._lock:
-            if page_idx in self.errors:
-                del self.errors[page_idx]
-            if page_idx in self.retry_counts:
-                del self.retry_counts[page_idx]
-            return set(self.errors.keys())
 
 # Utility functions
 def format_duration(seconds: float) -> str:
@@ -199,7 +146,7 @@ def get_relative_path(path: Path) -> Path:
 
 # API call
 def gemini_api_call(prompt: str, pil_image: Image.Image, temperature: float, thinking_budget: int) -> Tuple[Optional[dict], str, bool]:
-    """Execute a Gemini API call with retry logic and rate limit handling."""
+    """Execute a Gemini API call with no retry logic and direct error handling."""
     try:
         client = genai.Client(api_key=API_KEY)
     except AttributeError:
@@ -214,101 +161,92 @@ def gemini_api_call(prompt: str, pil_image: Image.Image, temperature: float, thi
     tmp_file_path = None
     file_upload = None
 
-    for attempt in range(MAX_RETRIES):
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+            tmp_file_path_str = tmp.name
+            tmp_file_path = Path(tmp_file_path_str)
+            pil_image.save(tmp_file_path_str, "PNG")
+
         try:
-            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
-                tmp_file_path_str = tmp.name
-                tmp_file_path = Path(tmp_file_path_str)
-                pil_image.save(tmp_file_path_str, "PNG")
+            file_upload = client.files.upload(file=tmp_file_path_str)
+            logging.debug(f"File uploaded via client.files.upload: {file_upload.uri}")
+        except Exception as upload_err:
+            error_msg = f"File upload failed: {upload_err}"
+            logging.warning(error_msg)
+            if tmp_file_path and tmp_file_path.exists():
+                try: 
+                    tmp_file_path.unlink()
+                    logging.debug(f"Deleted temp file after upload failure: {tmp_file_path}")
+                except OSError as e: 
+                    logging.warning(f"Failed to delete temp file {tmp_file_path}: {e}")
+            tmp_file_path = None
+            return (None, error_msg, False)
 
-            try:
-                file_upload = client.files.upload(file=tmp_file_path_str)
-                logging.debug(f"File uploaded via client.files.upload: {file_upload.uri}")
-            except Exception as upload_err:
-                error_msg = f"File upload failed: {upload_err}"
-                logging.warning(f"Attempt {attempt+1}/{MAX_RETRIES}: {error_msg}")
-                if tmp_file_path and tmp_file_path.exists():
-                    try: 
-                        tmp_file_path.unlink()
-                        logging.debug(f"Deleted temp file after upload failure: {tmp_file_path}")
-                    except OSError as e: 
-                        logging.warning(f"Failed to delete temp file {tmp_file_path}: {e}")
-                tmp_file_path = None
-                if attempt < MAX_RETRIES - 1: time.sleep(2); continue
-                else: break
-
-            response = client.models.generate_content(
-                model=MODEL_NAME,
-                contents=[
-                    types.Part.from_uri(
-                        file_uri=file_upload.uri,
-                        mime_type=file_upload.mime_type,
-                    ),
-                    prompt
-                ],
-                config=types.GenerateContentConfig(
-                    temperature=temperature,
-                    max_output_tokens=MAX_OUTPUT_TOKENS,
-                    response_mime_type="application/json",
-                    thinking_config=types.ThinkingConfig(
-                        thinking_budget=thinking_budget,
-                        include_thoughts=True
-                    )
+        response = client.models.generate_content(
+            model=MODEL_NAME,
+            contents=[
+                types.Part.from_uri(
+                    file_uri=file_upload.uri,
+                    mime_type=file_upload.mime_type,
+                ),
+                prompt
+            ],
+            config=types.GenerateContentConfig(
+                temperature=temperature,
+                max_output_tokens=MAX_OUTPUT_TOKENS,
+                response_mime_type="application/json",
+                thinking_config=types.ThinkingConfig(
+                    thinking_budget=thinking_budget,
+                    include_thoughts=True
                 )
             )
+        )
 
-            if not response or not response.text:
-                error_msg = "API returned empty response or no text"
-                logging.warning(f"Attempt {attempt+1}/{MAX_RETRIES}: {error_msg}")
-                if response and response.prompt_feedback and response.prompt_feedback.block_reason:
-                     error_msg += f" (Block Reason: {response.prompt_feedback.block_reason})"
-                     logging.warning(f"Block Reason: {response.prompt_feedback.block_reason}")
-                if attempt < MAX_RETRIES - 1: time.sleep(1); continue
-                else: break
+        if not response or not response.text:
+            error_msg = "API returned empty response or no text"
+            logging.warning(error_msg)
+            if response and response.prompt_feedback and response.prompt_feedback.block_reason:
+                 error_msg += f" (Block Reason: {response.prompt_feedback.block_reason})"
+                 logging.warning(f"Block Reason: {response.prompt_feedback.block_reason}")
+            return (None, error_msg, False)
 
-            usage = response.usage_metadata
-            # Extract all token counts, including thoughts
-            ptk = getattr(usage, 'prompt_token_count', 0) or 0
-            ttk = getattr(usage, 'thoughts_token_count', 0) or 0
-            ctk = getattr(usage, 'candidates_token_count', 0) or 0
-            totk = getattr(usage, 'total_token_count', 0) or 0
+        usage = response.usage_metadata
+        # Extract all token counts, including thoughts
+        ptk = getattr(usage, 'prompt_token_count', 0) or 0
+        ttk = getattr(usage, 'thoughts_token_count', 0) or 0
+        ctk = getattr(usage, 'candidates_token_count', 0) or 0
+        totk = getattr(usage, 'total_token_count', 0) or 0
 
-            return ({"text": response.text, "usage": usage, "prompt_tokens": ptk, "thoughts_tokens": ttk, "candidate_tokens": ctk, "total_tokens": totk}, "", False)
+        return ({"text": response.text, "usage": usage, "prompt_tokens": ptk, "thoughts_tokens": ttk, "candidate_tokens": ctk, "total_tokens": totk}, "", False)
 
-        except google_exceptions.ResourceExhausted as e:
+    except google_exceptions.ResourceExhausted as e:
+        is_rate_limit = True
+        error_msg = f"API Error (Rate Limit): {e}"
+        logging.warning("Rate limit error! Sleeping 30s...")
+        return (None, error_msg, is_rate_limit)
+
+    except Exception as e:
+        msg = str(e)
+        error_msg = f"API Error (General): {type(e).__name__} - {msg}"
+        if "429" in msg or "rate limit" in msg.lower() or "resource has been exhausted" in msg.lower():
             is_rate_limit = True
-            error_msg = f"API Error (Rate Limit): {e}"
-            logging.warning(f"Attempt {attempt+1}/{MAX_RETRIES}: Rate limit error! Sleeping {BACKOFF_SLEEP_SECONDS}s...")
-            if attempt < MAX_RETRIES - 1: time.sleep(BACKOFF_SLEEP_SECONDS)
+            logging.warning("Rate limit detected! Sleeping 30s...")
+        else:
+            logging.warning(error_msg, exc_info=True)
+        return (None, error_msg, is_rate_limit)
 
-        except Exception as e:
-            msg = str(e)
-            error_msg = f"API Error (General): {type(e).__name__} - {msg}"
-            if "429" in msg or "rate limit" in msg.lower() or "resource has been exhausted" in msg.lower():
-                is_rate_limit = True
-                logging.warning(f"Attempt {attempt+1}/{MAX_RETRIES}: Rate limit detected! Sleeping {BACKOFF_SLEEP_SECONDS}s...")
-                if attempt < MAX_RETRIES - 1: time.sleep(BACKOFF_SLEEP_SECONDS)
-            else:
-                logging.warning(f"Attempt {attempt+1}/{MAX_RETRIES}: {error_msg}", exc_info=True)
-                if attempt < MAX_RETRIES - 1: time.sleep(2)
-
-        finally:
-            # Clean up temporary file
-            if tmp_file_path and tmp_file_path.exists():
-                try:
-                    tmp_file_path.unlink()
-                    logging.debug(f"Deleted temp file: {tmp_file_path}")
-                except OSError as del_err:
-                    logging.warning(f"Failed to delete temp file {tmp_file_path}: {del_err}")
-            tmp_file_path = None
-            
-            # Clean up file upload
-            if file_upload:
-                client.files.delete(name=file_upload.name)
-
-    final_error_msg = f"API failed after {MAX_RETRIES} attempts: {error_msg}"
-    logging.error(final_error_msg, exc_info=True)
-    return (None, final_error_msg, is_rate_limit)
+    finally:
+        # Clean up temporary file
+        if tmp_file_path and tmp_file_path.exists():
+            try:
+                tmp_file_path.unlink()
+                logging.debug(f"Deleted temp file: {tmp_file_path}")
+            except OSError as del_err:
+                logging.warning(f"Failed to delete temp file {tmp_file_path}: {del_err}")
+        tmp_file_path = None
+        # Clean up file upload
+        if file_upload:
+            client.files.delete(name=file_upload.name)
 
 # Page processing
 def process_page(page_idx: int,
@@ -337,9 +275,9 @@ def process_page(page_idx: int,
         if not initial_result:
             result_info["error_msg"] = error
             result_info["error_type"] = "api"
-            result_info["api_failures"] = MAX_RETRIES
+            result_info["api_failures"] = 1
             if is_rate_limit: 
-                result_info["rate_limit_failures"] = MAX_RETRIES
+                result_info["rate_limit_failures"] = 1
                 error_tracker.add_error(page_idx, ErrorType.RATE_LIMIT, error, True)
             else:
                 error_tracker.add_error(page_idx, ErrorType.API, error)
@@ -354,62 +292,19 @@ def process_page(page_idx: int,
         resp_text = initial_result["text"]
         logging.info(f"[Worker p.{page_idx:04d}] Initial API usage -> prompt={ptk}, candidate={ctk}, thoughts={thtk}, total={ttk}")
 
-        parse_attempts = 0
-        parsed = None
-        max_parse_retries = MAX_RETRIES  # Limit parse retries
-        
-        while parse_attempts < max_parse_retries:
-            try:
-                parsed = parse_json_str(resp_text)
-                logging.info(f"[Worker p.{page_idx:04d}] Parsed JSON successfully (attempt {parse_attempts+1}).")
-                break
-            except ValueError as ve:
-                parse_attempts += 1
-                result_info["parse_failures"] += 1
-                parse_error_msg = str(ve)
-                result_info["last_parse_error"] = parse_error_msg
-                logging.error(f"[Worker p.{page_idx:04d}] JSON parse error ({parse_attempts}/{max_parse_retries}): {parse_error_msg}")
-                logging.error(f"[Worker p.{page_idx:04d}] RAW RESPONSE:\n{'-'*60}\n{resp_text}\n{'-'*60}")
-
-                if parse_attempts >= max_parse_retries:
-                    logging.error(f"[Worker p.{page_idx:04d}] JSON parse failed after {max_parse_retries} attempts.")
-                    result_info["error_msg"] = f"JSON parse failed after {max_parse_retries} attempts: {parse_error_msg}"
-                    result_info["error_type"] = "parse"
-                    error_tracker.add_error(page_idx, ErrorType.PARSE, parse_error_msg)
-                    break
-
-                # Retry API call if we haven't reached max parse retries
-                logging.info(f"[Worker p.{page_idx:04d}] Re-calling API for parse retry ({parse_attempts+1}/{max_parse_retries})...")
-                recall_res, recall_error, recall_rate_limit = gemini_api_call(prompt_text, pil_image, temperature, thinking_budget)
-                result_info["api_failures"] += 1
-                if recall_rate_limit: 
-                    result_info["rate_limit_failures"] += 1
-                    error_tracker.add_error(page_idx, ErrorType.RATE_LIMIT, recall_error, True)
-
-                if not recall_res:
-                    result_info["error_msg"] = f"API failed during parse retry: {recall_error}"
-                    result_info["error_type"] = "api"
-                    error_tracker.add_error(page_idx, ErrorType.API, recall_error)
-                    logging.error(f"[Worker p.{page_idx:04d}] {result_info['error_msg']}")
-                    break
-
-                usage2 = recall_res["usage"]
-                ptk2 = getattr(usage2, 'prompt_token_count', 0) or 0
-                ctk2 = getattr(usage2, 'candidates_token_count', 0) or 0
-                thtk2 = getattr(usage2, 'thoughts_token_count', 0) or 0
-                ttk2 = getattr(usage2, 'total_token_count', 0) or 0
-                result_info["prompt_tokens"] += ptk2
-                result_info["candidate_tokens"] += ctk2
-                result_info["thoughts_tokens"] += thtk2
-                result_info["total_tokens"] += ttk2
-                resp_text = recall_res["text"]
-                logging.info(f"[Worker p.{page_idx:04d}] Recall API usage -> prompt={ptk2}, candidate={ctk2}, thoughts={thtk2}, total={ttk2}")
-
-        if not parsed:
-            if not result_info["error_msg"]:
-                result_info["error_msg"] = f"Parsing failed after {max_parse_retries} attempts."
-                result_info["error_type"] = "parse"
-                error_tracker.add_error(page_idx, ErrorType.PARSE, result_info["error_msg"])
+        # Only one parse attempt
+        try:
+            parsed = parse_json_str(resp_text)
+            logging.info(f"[Worker p.{page_idx:04d}] Parsed JSON successfully.")
+        except ValueError as ve:
+            result_info["parse_failures"] = 1
+            parse_error_msg = str(ve)
+            result_info["last_parse_error"] = parse_error_msg
+            logging.error(f"[Worker p.{page_idx:04d}] JSON parse error: {parse_error_msg}")
+            logging.error(f"[Worker p.{page_idx:04d}] RAW RESPONSE:\n{'-'*60}\n{resp_text}\n{'-'*60}")
+            result_info["error_msg"] = f"JSON parse failed: {parse_error_msg}"
+            result_info["error_type"] = "parse"
+            error_tracker.add_error(page_idx, ErrorType.PARSE, parse_error_msg)
             if pil_image:
                 try: pil_image.close()
                 except Exception: pass
@@ -451,65 +346,36 @@ def process_page(page_idx: int,
 
     return result_info
 
-# Retry mechanism
-def retry_failed_pages(failed_pages: Set[int], png_files: List[Path], prompt_text: str, 
-                      temperature: float, thinking_budget: int, json_dir: Path, error_tracker: ErrorTracker) -> List[dict]:
-    """Retry processing of failed pages with exponential backoff."""
-    if not failed_pages:
-        return []
-    
-    logging.info(f"Retrying {len(failed_pages)} failed pages...")
-    retry_results = []
-    
-    for page_idx in sorted(failed_pages):
-        if not error_tracker.increment_retry(page_idx):
-            logging.warning(f"Page {page_idx:04d} has already been retried {MAX_RETRIES} times. Skipping.")
-            continue
-        
-        retry_count = error_tracker.get_retry_count(page_idx)
-        logging.info(f"Retry attempt {retry_count}/{MAX_RETRIES} for page {page_idx:04d}")
-        
-        png_file = next((f for f in png_files if f.name.startswith(f"page_{page_idx:04d}")), None)
-        if not png_file:
-            logging.error(f"Could not find PNG file for page {page_idx:04d} during retry")
-            continue
-        
-        result = process_page(page_idx, png_file, prompt_text, temperature, thinking_budget, json_dir, error_tracker)
-        retry_results.append(result)
-        
-        if result["success"]:
-            logging.info(f"Retry successful for page {page_idx:04d}")
-            # Clear errors and get updated failed pages atomically
-            error_tracker.clear_page_errors_and_get_failed_pages(page_idx)
-        else:
-            logging.warning(f"Retry failed for page {page_idx:04d}: {result['error_msg']}")
-    
-    return retry_results
+# Page processing
+def process_specific_pages(pages: List[int], png_dir: Path, json_dir: Path, task_prompt: str, 
+                         temperature: float, thinking_budget: int, error_tracker: ErrorTracker, max_workers: int = 5) -> Tuple[List[dict], Set[int]]:
+    """Process a specific list of pages in parallel. Returns (results, successfully_processed_pages)."""
+    results = []
+    successful_pages = set()
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_page = {}
+        for page_num in pages:
+            if not validate_page_exists(png_dir, page_num):
+                continue
+            if check_json_exists(json_dir, page_num):
+                logging.info(f"Page {page_num:04d} skipped: JSON already exists.")
+                successful_pages.add(page_num)
+                continue
+            png_file = png_dir / f"page_{page_num:04d}.png"
+            future = executor.submit(process_page, page_num, png_file, task_prompt, temperature, thinking_budget, json_dir, error_tracker)
+            future_to_page[future] = page_num
+        for future in as_completed(future_to_page):
+            page_num = future_to_page[future]
+            try:
+                result = future.result()
+                results.append(result)
+                if result["success"]:
+                    successful_pages.add(page_num)
+            except Exception as e:
+                logging.error(f"Error processing page {page_num}: {e}")
+    return results, successful_pages
 
 # After the ErrorTracker class, before main()
-
-def extract_failed_pages_from_error_file(pdf_base_out_dir: Path, pdf_stem: str) -> List[int]:
-    """Extract failed page numbers from error file."""
-    err_file = pdf_base_out_dir / f"errors_{pdf_stem}.txt"
-    if not err_file.exists():
-        logging.error(f"Error file not found: {get_relative_path(err_file)}")
-        return []
-    
-    try:
-        content = err_file.read_text(encoding='utf-8')
-        # Look for the Failed Pages Summary section
-        match = re.search(r'Failed Pages Summary: \[([\d, ]+)\]', content)
-        if not match:
-            logging.error(f"Failed pages summary not found in error file: {get_relative_path(err_file)}")
-            return []
-        
-        # Parse page numbers
-        pages = [int(p.strip()) for p in match.group(1).split(',') if p.strip()]
-        logging.info(f"Found {len(pages)} failed pages in error file: {pages}")
-        return pages
-    except Exception as e:
-        logging.error(f"Error reading/parsing error file {get_relative_path(err_file)}: {e}")
-        return []
 
 def check_json_exists(json_dir: Path, page_num: int) -> bool:
     """Check if JSON file exists for a specific page."""
@@ -614,98 +480,38 @@ def create_consolidated_csv(json_dir: Path, pdf_base_out_dir: Path, pdf_stem: st
 
 def overwrite_error_file(pdf_base_out_dir: Path, pdf_stem: str, pdf_name: str, 
                         failed_pages: Set[int], error_tracker: ErrorTracker, prompt_file_path: Path) -> None:
-    """Overwrite the error file with current error information."""
+    """Overwrite the error file with current error information (minimal, world-class)."""
     err_file = pdf_base_out_dir / f"errors_{pdf_stem}.txt"
     logging.warning(f"{len(failed_pages)} page(s) failed. Writing details to: {get_relative_path(err_file)}")
     pdf_base_out_dir.mkdir(parents=True, exist_ok=True)
-    
     try:
-        total_pages = len(failed_pages)  # We only care about remaining failed pages
-        error_summary = error_tracker.get_error_summary()
-        
         with err_file.open("w", encoding="utf-8") as ef:
-            # Basic Information
+            ef.write(f"Failed Pages: {sorted(list(failed_pages))}\n\n")
             ef.write(f"Errors for PDF: {pdf_name}\n")
             ef.write(f"Report Generated: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
-            ef.write(f"Failed Pages Summary: {sorted(list(failed_pages))}\n")
             ef.write(f"Prompt Used: {prompt_file_path.name}\n")
-            ef.write(f"Total Failed Pages: {total_pages}\n\n")
-            
-            # Error Summary Section
-            ef.write("Error Summary:\n")
-            ef.write("-" * 40 + "\n")
-            ef.write(f"API Call Final Failures (pages): {error_summary.get('API', 0)}\n")
-            ef.write(f"JSON Parse Final Failures (pages): {error_summary.get('PARSE', 0)}\n")
-            ef.write(f"Too Many Open Files (pages): {error_summary.get('FILE_LIMIT', 0)}\n")
-            ef.write(f"Rate Limit Hits (occurrences): {error_summary.get('RATE_LIMIT_HITS', 0)}\n")
-            ef.write(f"Other/Future Failures: {error_summary.get('OTHER', 0) + error_summary.get('FUTURE', 0)}\n\n")
-            
-            # Detailed Error Information:
+            ef.write(f"Total Failed Pages: {len(failed_pages)}\n\n")
             ef.write("Detailed Error Information:\n")
             ef.write("=" * 40 + "\n")
-            
-            # Group errors by type for better organization
-            errors_by_type = defaultdict(list)
             for p_idx in sorted(failed_pages):
                 page_errors = error_tracker.get_page_errors(p_idx)
                 for error_type, error_msg in page_errors:
-                    errors_by_type[error_type].append((p_idx, error_msg))
-            
-            # Write errors grouped by type
-            for error_type in ErrorType:
-                if errors_by_type[error_type]:
-                    ef.write(f"\n{error_type.name} Errors:\n")
-                    ef.write("-" * 20 + "\n")
-                    for page_idx, error_msg in errors_by_type[error_type]:
-                        retry_count = error_tracker.get_retry_count(page_idx)
-                        ef.write(f"Page {page_idx:04d} (Retries: {retry_count+1}/{MAX_RETRIES}):\n")
-                        ef.write(f"  Error: {error_msg}\n")
-                        if "Content snippet" in error_msg:
-                            ef.write("  " + "-" * 18 + "\n")
+                    ef.write(f"\nPage {p_idx:04d}:\n")
+                    ef.write(f"  Error Type: {error_type.name}\n")
+                    ef.write(f"  Error: {error_msg}\n")
     except Exception as e:
         logging.error(f"Failed to write error file {get_relative_path(err_file)}: {e}", exc_info=True)
 
-def process_specific_pages(pages: List[int], png_dir: Path, json_dir: Path, task_prompt: str, 
-                         temperature: float, thinking_budget: int, error_tracker: ErrorTracker, max_workers: int = 5) -> Tuple[List[dict], Set[int]]:
-    """Process a specific list of pages in parallel. Returns (results, successfully_processed_pages)."""
-    results = []
-    successful_pages = set()
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        future_to_page = {}
-        for page_num in pages:
-            if not validate_page_exists(png_dir, page_num):
-                continue
-            if check_json_exists(json_dir, page_num):
-                successful_pages.add(page_num)
-                continue
-            png_file = png_dir / f"page_{page_num:04d}.png"
-            future = executor.submit(process_page, page_num, png_file, task_prompt, temperature, thinking_budget, json_dir, error_tracker)
-            future_to_page[future] = page_num
-        for future in as_completed(future_to_page):
-            page_num = future_to_page[future]
-            try:
-                result = future.result()
-                results.append(result)
-                if result["success"]:
-                    successful_pages.add(page_num)
-            except Exception as e:
-                logging.error(f"Error processing page {page_num}: {e}")
-    return results, successful_pages
-
 # Main execution
 def main():
-    parser = argparse.ArgumentParser(description="Gemini PDF->PNG->JSON->CSV Pipeline (Original API Style)")
+    parser = argparse.ArgumentParser(description="Gemini PDF->PNG->JSON->CSV Pipeline")
     parser.add_argument("--pdf", required=True, help="PDF filename in data/pdfs/patent_pdfs/")
     parser.add_argument("--temperature", type=float, default=0.0, help="LLM temperature (default=0.0)")
     parser.add_argument("--thinking_budget", type=int, default=DEFAULT_THINKING_BUDGET, help=f"Thinking budget for the model (default={DEFAULT_THINKING_BUDGET}, max={MAX_THINKING_BUDGET})")
     parser.add_argument("--max_workers", type=int, default=20, help="Max concurrent workers for page processing (default=20)")
-    parser.add_argument("--retry_from_error_file", choices=['yes', 'no'], default='no', help="Retry failed pages listed in the error file")
     parser.add_argument("--page", type=int, help="Process a single specific page number")
-
     args = parser.parse_args()
-
     PROMPT_FILE_PATH = Path(__file__).parent / "prompt.txt"
-
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s | %(levelname)s | %(message)s",
                         datefmt="%Y-%m-%d %H:%M:%S",
@@ -713,9 +519,7 @@ def main():
     logging.info("")
     logging.info(f"Using Model: {MODEL_NAME}")
     logging.info(f"Thinking Budget: {args.thinking_budget}")
-
     increase_file_descriptor_limit()
-
     logging.info(f"Loading prompt from: {get_relative_path(PROMPT_FILE_PATH)}")
     try:
         task_prompt = PROMPT_FILE_PATH.read_text(encoding="utf-8").strip()
@@ -729,30 +533,24 @@ def main():
     except Exception as e:
         logging.critical(f"FATAL: Failed to read prompt file {get_relative_path(PROMPT_FILE_PATH)}: {e}", exc_info=True)
         sys.exit(1)
-
     logging.info(f"Processing PDF: {args.pdf} | Temperature={args.temperature}")
     logging.info("")
-
     global_tokens = defaultdict(int)
     script_start_time = time.time()
-
     pdf_name = args.pdf
     pdf_path = PDF_SRC_DIR / pdf_name
     if not pdf_path.is_file():
         logging.error(f"PDF not found: {get_relative_path(pdf_path)}. Exiting.")
         sys.exit(1)
-
     pdf_stem = pdf_path.stem
     pdf_start = time.time()
     logging.info(f"Starting PDF: {pdf_name}")
     logging.info("")
-
     pdf_base_out_dir = CSVS_DIR / pdf_stem
     page_by_page_dir = pdf_base_out_dir / "page_by_page"
     png_dir = page_by_page_dir / "PNG"
     json_dir = page_by_page_dir / "JSON"
     png_files = []
-
     try:
         existing = sorted([p for p in png_dir.glob("page_*.png") if p.is_file()])
         if not existing:
@@ -777,79 +575,35 @@ def main():
     except Exception as e:
         logging.error(f"Error during PNG preparation for {pdf_name}: {e}. Exiting.", exc_info=True)
         sys.exit(1)
-
     prompt_start_time = time.time()
     page_results_list = []
-    
     error_tracker = ErrorTracker()
-
-    # Determine pages to process
     if args.page:
         logging.info(f"Processing single page mode: page {args.page}")
         pages_to_process = [args.page]
         results, successful_pages = process_specific_pages(pages_to_process, png_dir, json_dir, 
                                                         task_prompt, args.temperature, args.thinking_budget, error_tracker, args.max_workers)
         page_results_list.extend(results)
-        
         if successful_pages:
             logging.info(f"Successfully processed page {args.page}")
-            # Create/update CSV after successful single page processing
+            # Always recreate CSV after successful single page processing
             create_consolidated_csv(json_dir, pdf_base_out_dir, pdf_stem)
         else:
             logging.error(f"Failed to process page {args.page}")
-    
-    elif args.retry_from_error_file == 'yes':
-        logging.info("Retrying failed pages from error file...")
-        pages_to_process = extract_failed_pages_from_error_file(pdf_base_out_dir, pdf_stem)
-        if pages_to_process:
-            results, successful_pages = process_specific_pages(pages_to_process, png_dir, json_dir,
-                                                            task_prompt, args.temperature, args.thinking_budget, error_tracker, args.max_workers)
-            page_results_list.extend(results)
-            
-            if successful_pages:
-                logging.info(f"Successfully processed pages: {sorted(list(successful_pages))}")
-                # Create/update CSV after successful retry from error file
-                create_consolidated_csv(json_dir, pdf_base_out_dir, pdf_stem)
-                
-                # Update error file if there are still failures
-                failed_pages = set(pages_to_process) - successful_pages
-                if failed_pages:
-                    error_tracker.errors = {p: error_tracker.errors[p] for p in failed_pages}
-                    overwrite_error_file(pdf_base_out_dir, pdf_stem, pdf_name, failed_pages, error_tracker, PROMPT_FILE_PATH)
-            else:
-                logging.warning("No pages were successfully processed")
-            # If error file exists, delete it since there are no failed pages
-            err_file = pdf_base_out_dir / f"errors_{pdf_stem}.txt"
-            if err_file.exists():
-                try:
-                    err_file.unlink()
-                    logging.info(f"Deleted error file as there are no failed pages: {get_relative_path(err_file)}")
-                except Exception as e:
-                    logging.error(f"Failed to delete error file {get_relative_path(err_file)}: {e}")
-            return
-        else:
-            logging.warning("No failed pages found in error file or error file not found.")
-            # If error file exists, delete it since there are no failed pages
-            err_file = pdf_base_out_dir / f"errors_{pdf_stem}.txt"
-            if err_file.exists():
-                try:
-                    err_file.unlink()
-                    logging.info(f"Deleted error file as there are no failed pages: {get_relative_path(err_file)}")
-                except Exception as e:
-                    logging.error(f"Failed to delete error file {get_relative_path(err_file)}: {e}")
-            return
-    
+        # Write error file if any failures
+        failed_pages = error_tracker.get_failed_pages()
+        if failed_pages:
+            overwrite_error_file(pdf_base_out_dir, pdf_stem, pdf_name, failed_pages, error_tracker, PROMPT_FILE_PATH)
+        return
     else:
-        # Original parallel processing logic for full PDF
+        # Parallel processing for full PDF
         logging.info(f"Launching {len(png_files)} page tasks (max_workers={args.max_workers})...")
         with ThreadPoolExecutor(max_workers=args.max_workers) as executor:
             valid_png_files = [png for png in png_files if png.is_file()]
             if len(valid_png_files) != len(png_files):
                 logging.warning(f"{len(png_files) - len(valid_png_files)} PNG file(s) were missing or invalid.")
-
             futures = {executor.submit(process_page, k, png, task_prompt, args.temperature, args.thinking_budget, json_dir, error_tracker): (k, png.name)
                        for k, png in enumerate(valid_png_files, 1)}
-
             processed_count = 0
             total_tasks = len(futures)
             for fut in as_completed(futures):
@@ -859,7 +613,6 @@ def main():
                 try:
                     res = fut.result()
                     page_results_list.append(res)
-                    
                     if not res["success"]:
                         error_type = res.get('error_type', '?')
                         error_msg = res.get('error_msg', 'N/A')
@@ -870,25 +623,16 @@ def main():
                     logging.error(f"[FATAL] Error retrieving result for page {page_idx:04d} ({png_name}): {e}", exc_info=True)
                     error_tracker.add_error(page_idx, ErrorType.FUTURE, str(e))
                     page_results_list.append({"page_idx": page_idx, "success": False, "error_type": "future", "error_msg": str(e)})
-
         logging.info("")
         logging.info(f"Finished processing {total_tasks} pages for PDF {pdf_name}.")
-
-        # Handle retries for the full run
-        failed_pages = error_tracker.get_failed_pages()
-        if failed_pages:
-            logging.info(f"Retrying {len(failed_pages)} failed pages...")
-            retry_results = retry_failed_pages(failed_pages, valid_png_files, task_prompt, args.temperature, args.thinking_budget, json_dir, error_tracker)
-            page_results_list.extend(retry_results)
-
-        # Create CSV after all processing and retries are done
-        create_consolidated_csv(json_dir, pdf_base_out_dir, pdf_stem)
-        
-        # Create error file if there are still failures
+        # Write error file if any failures
         failed_pages = error_tracker.get_failed_pages()
         if failed_pages:
             overwrite_error_file(pdf_base_out_dir, pdf_stem, pdf_name, failed_pages, error_tracker, PROMPT_FILE_PATH)
-
+        # Create CSV after all processing
+        create_consolidated_csv(json_dir, pdf_base_out_dir, pdf_stem)
+    pdf_duration = time.time() - prompt_start_time
+    # After all processing (single-page or multi-page), accumulate tokens
     pdf_tokens = defaultdict(int)
     for r in page_results_list:
         pdf_tokens['prompt'] += r.get("prompt_tokens", 0)
@@ -901,192 +645,13 @@ def main():
     global_tokens['thoughts'] += pdf_tokens['thoughts']
     global_tokens['total'] += pdf_tokens['total']
 
-    error_summary = error_tracker.get_error_summary()
-    failed_pages = error_tracker.get_failed_pages()
-
-    if failed_pages:
-         err_file = pdf_base_out_dir / f"errors_{pdf_stem}.txt"
-         logging.warning(f"{len(failed_pages)} page(s) failed. Writing details to: {get_relative_path(err_file)}")
-         pdf_base_out_dir.mkdir(parents=True, exist_ok=True)
-         try:
-             total_pages = len(png_files)
-             success_rate = ((total_pages - len(failed_pages)) / total_pages) * 100 if total_pages > 0 else 0
-             
-             with err_file.open("w", encoding="utf-8") as ef:
-                 # Basic Information
-                 ef.write(f"Errors for PDF: {pdf_name}\n")
-                 ef.write(f"Report Generated: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
-                 ef.write(f"Failed Pages Summary: {sorted(list(failed_pages))}\n")  # Add failed pages list
-                 ef.write(f"Prompt Used: {PROMPT_FILE_PATH.name}\n")
-                 ef.write(f"Total Pages: {total_pages}\n")
-                 ef.write(f"Total Failed Pages: {len(failed_pages)}\n")
-                 ef.write(f"Success Rate: {success_rate:.1f}%\n\n")
-                 
-                 # Error Summary Section
-                 ef.write("Error Summary:\n")
-                 ef.write("-" * 40 + "\n")
-                 ef.write(f"API Call Final Failures (pages): {error_summary.get('API', 0)}\n")
-                 ef.write(f"JSON Parse Final Failures (pages): {error_summary.get('PARSE', 0)}\n")
-                 ef.write(f"Too Many Open Files (pages): {error_summary.get('FILE_LIMIT', 0)}\n")
-                 ef.write(f"Rate Limit Hits (occurrences): {error_summary.get('RATE_LIMIT_HITS', 0)}\n")
-                 ef.write(f"Other/Future Failures: {error_summary.get('OTHER', 0) + error_summary.get('FUTURE', 0)}\n\n")
-                 
-                 # Detailed Error Information - Organized by Error Type
-                 ef.write("Detailed Error Information:\n")
-                 ef.write("=" * 40 + "\n")
-                 
-                 # Group errors by type for better organization
-                 errors_by_type = defaultdict(list)
-                 for p_idx in sorted(failed_pages):
-                     page_errors = error_tracker.get_page_errors(p_idx)
-                     for error_type, error_msg in page_errors:
-                         errors_by_type[error_type].append((p_idx, error_msg))
-                 
-                 # Write errors grouped by type
-                 for error_type in ErrorType:
-                     if errors_by_type[error_type]:
-                         ef.write(f"\n{error_type.name} Errors:\n")
-                         ef.write("-" * 20 + "\n")
-                         for page_idx, error_msg in errors_by_type[error_type]:
-                             retry_count = error_tracker.get_retry_count(page_idx)
-                             ef.write(f"Page {page_idx:04d} (Retries: {retry_count+1}/{MAX_RETRIES}):\n")
-                             ef.write(f"  Error: {error_msg}\n")
-                             if "Content snippet" in error_msg:
-                                 ef.write("  " + "-" * 18 + "\n")
-         except Exception as e:
-             logging.error(f"Failed to write error file {get_relative_path(err_file)}: {e}", exc_info=True)
-
-    logging.info(f"Starting consolidation for {pdf_stem} (ffill, filter, id, rename, reorder)")
-    all_json_files = sorted(json_dir.glob("page_*.json"))
-    consolidated_data_with_page = []
-    read_json_count = 0
-    read_errors = 0
-    total_items_read = 0
-
-    if not all_json_files:
-        logging.warning(f"No JSON files found in {get_relative_path(json_dir)} to consolidate for {pdf_stem}")
-    else:
-        logging.info(f"Reading content from {len(all_json_files)} JSON files for {pdf_stem}...")
-        for fpath in all_json_files:
-            page_num = -1
-            try:
-                match = re.search(r'page_(\d+)\.json$', fpath.name)
-                if match:
-                    page_num = int(match.group(1))
-                else:
-                    logging.warning(f"Could not extract page number from filename: {fpath.name}. Skipping file.")
-                    continue
-
-                if page_num in failed_pages:
-                    logging.warning(f"Skipping reading failed page's JSON: {fpath.name} (Page {page_num})")
-                    continue
-
-                with fpath.open("r", encoding="utf-8") as jf:
-                    content = json.load(jf)
-                read_json_count += 1
-
-                if isinstance(content, list):
-                    for item in content:
-                        if isinstance(item, dict):
-                            consolidated_data_with_page.append({'data': item, 'page': page_num})
-                            total_items_read += 1
-                        else:
-                            logging.debug(f"Skipping non-dict item within list in {fpath.name}: {type(item)}")
-                elif isinstance(content, dict):
-                    consolidated_data_with_page.append({'data': content, 'page': page_num})
-                    total_items_read += 1
-                else:
-                    logging.warning(f"Unexpected or empty content type ({type(content)}) in {fpath.name}. Skipping content.")
-
-            except json.JSONDecodeError as e:
-                logging.error(f"Error decoding JSON {get_relative_path(fpath)}: {e}. Skipping.")
-                read_errors += 1
-            except ValueError as e:
-                logging.error(f"Error processing page number for {get_relative_path(fpath)}: {e}", exc_info=True)
-                read_errors += 1
-            except Exception as e:
-                logging.error(f"Error reading JSON {get_relative_path(fpath)}: {e}", exc_info=True)
-                read_errors += 1
-
-        logging.info(f"Read {read_json_count} JSON files, found {total_items_read} processable items.")
-        if read_errors > 0:
-            logging.warning(f"Encountered {read_errors} errors during JSON reading/processing.")
-
-    initial_csv_data = []
-    logging.info(f"Generating initial data rows from {len(consolidated_data_with_page)} items...")
-    for record in consolidated_data_with_page:
-        item = record.get('data', {})
-        page_num = record.get('page', None)
-        if isinstance(item, dict):
-            entry_value = item.get("entry", None)
-            category_value = item.get("category", None)
-            initial_csv_data.append({
-                "entry": entry_value,
-                "category": category_value,
-                "page_number": page_num
-            })
-
-    logging.info(f"Generated {len(initial_csv_data)} initial rows.")
-
-    if initial_csv_data:
-        final_csv_path = pdf_base_out_dir / f"{pdf_stem}.csv"
-        try:
-            logging.info("Creating DataFrame...")
-            df = pd.DataFrame(initial_csv_data)
-
-            logging.info("Performing forward fill on 'category' column...")
-            df['category'] = df['category'].ffill()
-            logging.info("Forward fill complete.")
-
-            logging.info("Filtering rows with empty 'entry'...")
-            original_row_count = len(df)
-            df = df[df['entry'].notna() & (df['entry'] != '')]
-            rows_removed = original_row_count - len(df)
-            logging.info(f"Filtering complete. Removed {rows_removed} rows.")
-
-            if not df.empty:
-                logging.info("Renaming 'page_number' column to 'page'...")
-                df.rename(columns={'page_number': 'page'}, inplace=True)
-
-                logging.info("Adding sequential 'id' column...")
-                df['id'] = range(1, len(df) + 1)
-
-                logging.info("Reordering columns to 'id', 'page', 'entry', 'category'...")
-                df = df[['id', 'page', 'entry', 'category']]
-
-                logging.info(f"Saving final DataFrame with {len(df)} rows to CSV...")
-                final_csv_path.parent.mkdir(parents=True, exist_ok=True)
-                df.to_csv(final_csv_path, index=False, encoding='utf-8', quoting=1)
-
-                logging.info(f"Final CSV saved: {get_relative_path(final_csv_path)} ({len(df)} rows)")
-            else:
-                logging.warning(f"DataFrame became empty after filtering for PDF '{pdf_stem}'. Final CSV file will not be created.")
-
-        except Exception as e_pandas:
-            logging.error(f"Error during Pandas manipulation or CSV writing for {get_relative_path(final_csv_path)}: {e_pandas}", exc_info=True)
-    else:
-        if total_items_read > 0:
-            logging.warning(f"No dictionary items found or processed from JSON files for PDF '{pdf_stem}' after initial processing step. Final CSV file will not be created.")
-        elif read_json_count > 0:
-            logging.warning(f"JSON files were read for PDF '{pdf_stem}', but contained no processable dictionary items. Final CSV file will not be created.")
-        else:
-            logging.warning(f"No JSON files were successfully read or no data found for PDF '{pdf_stem}'. Final CSV file will not be created.")
-
-    pdf_duration = time.time() - prompt_start_time
     logging.info(f"Tokens (PDF: {pdf_name}): prompt={pdf_tokens['prompt']:,}, candidate={pdf_tokens['candidate']:,}, thoughts={pdf_tokens['thoughts']:,}, total={pdf_tokens['total']:,}")
     logging.info("")
     logging.info(f"PDF {pdf_name} Processing Finished ({format_duration(pdf_duration)})")
     logging.info(f"Global Tokens Running Total: prompt={global_tokens['prompt']:,}, candidate={global_tokens['candidate']:,}, thoughts={global_tokens['thoughts']:,}, total={global_tokens['total']:,}")
     logging.info("-" * 80)
-
     pdf_total_duration = time.time() - pdf_start
     logging.info(f"Finished PDF: {pdf_name} (Total time: {format_duration(pdf_total_duration)})")
-    
-    if failed_pages:
-        logging.warning(f"PDF Summary: API Failures={error_summary.get('API', 0)}, Parse Failures={error_summary.get('PARSE', 0)}, "
-                       f"File Limit Errors={error_summary.get('FILE_LIMIT', 0)}, Rate Limit Hits={error_summary.get('RATE_LIMIT_HITS', 0)}, "
-                       f"Other Failures={error_summary.get('OTHER', 0) + error_summary.get('FUTURE', 0)}")
-
     logging.info("")
     logging.info(" SCRIPT COMPLETE ".center(80, "="))
     logging.info(" Global Usage Summary ".center(80, "="))
