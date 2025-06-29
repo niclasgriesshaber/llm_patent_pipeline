@@ -37,7 +37,7 @@ API_KEY = os.getenv("GOOGLE_API_KEY")
 
 # Model configuration
 MODEL_NAME = "gemini-2.5-flash"
-MAX_OUTPUT_TOKENS = 50000 # for gemini-2.0-flash
+MAX_OUTPUT_TOKENS = 60000 # for gemini-2.0-flash
 DEFAULT_THINKING_BUDGET = -1  # Default thinking budget, -1 for dynamic
 MAX_THINKING_BUDGET = 24576  # Maximum thinking budget
 MAX_RETRIES = 3
