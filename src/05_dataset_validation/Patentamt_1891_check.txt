@@ -1,0 +1,132 @@
+=== NaN patent_id values ===
+Number of NaN patent_id values: 1
+
+=== Duplicate patent_id entries ===
+patent_id: 55523
+  id: 4075, page: 124
+  id: 4076, page: 124
+
+patent_id: 55565
+  id: 766, page: 24
+  id: 1380, page: 44
+
+patent_id: 55604
+  id: 443, page: 14
+  id: 3821, page: 116
+
+patent_id: 56380
+  id: 1889, page: 59
+  id: 4469, page: 135
+
+patent_id: 56381
+  id: 2259, page: 69
+  id: 4470, page: 135
+
+patent_id: 56401
+  id: 454, page: 15
+  id: 1662, page: 53
+
+patent_id: 57738
+  id: 3433, page: 104
+  id: 4943, page: 149
+
+patent_id: 57801
+  id: 5183, page: 156
+  id: 5186, page: 157
+
+patent_id: 57909
+  id: 1988, page: 62
+  id: 2203, page: 67
+
+patent_id: 57925
+  id: 1242, page: 39
+  id: 4268, page: 129
+
+patent_id: 57950
+  id: 2204, page: 67
+  id: 2766, page: 83
+
+patent_id: 57980
+  id: 1583, page: 50
+  id: 2767, page: 83
+
+patent_id: 58166
+  id: 2272, page: 69
+  id: 3945, page: 119
+
+patent_id: 58650
+  id: 4299, page: 130
+  id: 4497, page: 136
+
+patent_id: 58665
+  id: 4011, page: 121
+  id: 4875, page: 147
+
+patent_id: 58693
+  id: 2017, page: 63
+  id: 2018, page: 63
+
+patent_id: 59008
+  id: 2896, page: 87
+  id: 4149, page: 126
+
+patent_id: 59131
+  id: 4954, page: 150
+  id: 5231, page: 158
+
+patent_id: 59419
+  id: 644, page: 21
+  id: 645, page: 21
+
+patent_id: 59904
+  id: 434, page: 14
+  id: 1525, page: 48
+
+patent_id: 60088
+  id: 40, page: 2
+  id: 3513, page: 106
+
+
+=== patent_id values smaller than start (55471) ===
+patent_id: 735
+  id: 4951, page: 150
+
+patent_id: 55088
+  id: 1389, page: 44
+
+patent_id: 55461
+  id: 442, page: 14
+
+patent_id: 55462
+  id: 3044, page: 91
+
+patent_id: 55463
+  id: 3558, page: 108
+
+patent_id: 55464
+  id: 304, page: 9
+
+patent_id: 55465
+  id: 924, page: 29
+
+patent_id: 55466
+  id: 3325, page: 100
+
+patent_id: 55467
+  id: 3326, page: 100
+
+patent_id: 55468
+  id: 305, page: 9
+
+patent_id: 55469
+  id: 1754, page: 55
+
+patent_id: 55470
+  id: 3327, page: 100
+
+
+=== patent_id values greater than end (61010) ===
+None found.
+
+=== Missing patent_id values (gaps) between 55471 and 61010 ===
+55507, 55517, 55577, 55694, 55723, 55779, 55784, 55787, 55794, 55837, 55865, 55894, 55988, 56017, 56090, 56138, 56188, 56314, 56369, 56379, 56384, 56435, 56463, 56516, 56557, 56558, 56565, 56613, 56705, 56717, 56747, 56867, 56886, 56889, 56940, 57049, 57056, 57119, 57122, 57177, 57199, 57305, 57368, 57398, 57402, 57464, 57494, 57503, 57530, 57698, 57732, 57739, 57827, 57867, 57916, 57927, 57949, 57959, 57989, 57995, 58037, 58070, 58131, 58191, 58222, 58237, 58378, 58391, 58418, 58422, 58430, 58447, 58479, 58498, 58516, 58659, 58660, 58807, 58884, 58885, 58886, 58894, 58901, 58906, 58907, 58910, 58920, 58926, 58929, 58930, 58932, 58963, 58974, 58975, 58990, 59003, 59098, 59152, 59198, 59200, 59219, 59223, 59226, 59316, 59349, 59372, 59375, 59445, 59449, 59493, 59496, 59497, 59501, 59502, 59505, 59506, 59528, 59532, 59534, 59535, 59537, 59541, 59962, 59964, 60085, 60187, 60309, 60311, 60406, 60989
