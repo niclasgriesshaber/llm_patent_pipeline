@@ -37,9 +37,9 @@ API_KEY = os.getenv("GOOGLE_API_KEY")
 
 # Model configuration
 MODEL_NAME = "gemini-2.5-flash"
-MAX_OUTPUT_TOKENS = 40000 # 60000 before
-DEFAULT_THINKING_BUDGET = -1  # Default thinking budget, -1 for dynamic
-MAX_THINKING_BUDGET = 24576  # Maximum thinking budget
+MAX_OUTPUT_TOKENS = 40000 # max output window is 65536
+DEFAULT_THINKING_BUDGET = 24576 #-1  # Default thinking budget, -1 for dynamic
+MAX_THINKING_BUDGET = 24576 # Maximum thinking budget
 MAX_FILE_DESCRIPTORS = 10000
 
 # Error type enumeration
@@ -145,21 +145,22 @@ def get_relative_path(path: Path) -> Path:
         return path
 
 # API call
-def gemini_api_call(prompt: str, pil_image: Image.Image, temperature: float, thinking_budget: int) -> Tuple[Optional[dict], str, bool]:
-    """Execute a Gemini API call with no retry logic and direct error handling."""
+def gemini_api_call(prompt: str, pil_image: Image.Image, temperature: float, thinking_budget: int) -> Tuple[Optional[dict], str, bool, dict]:
+    """Execute a Gemini API call with no retry logic and direct error handling. Returns extra_info dict for error context."""
     try:
         client = genai.Client(api_key=API_KEY)
     except AttributeError:
          logging.critical("FATAL: 'genai.Client' not found. Library version/installation issue?", exc_info=True)
-         return (None, "FATAL: genai.Client not found in library.", False)
+         return (None, "FATAL: genai.Client not found in library.", False, {})
     except Exception as client_e:
          logging.critical(f"FATAL: Failed to initialize Gemini Client: {client_e}", exc_info=True)
-         return (None, f"FATAL: Client init failed: {client_e}", False)
+         return (None, f"FATAL: Client init failed: {client_e}", False, {})
 
     error_msg = ""
     is_rate_limit = False
     tmp_file_path = None
     file_upload = None
+    extra_info = {}
 
     try:
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
@@ -180,7 +181,7 @@ def gemini_api_call(prompt: str, pil_image: Image.Image, temperature: float, thi
                 except OSError as e: 
                     logging.warning(f"Failed to delete temp file {tmp_file_path}: {e}")
             tmp_file_path = None
-            return (None, error_msg, False)
+            return (None, error_msg, False, {})
 
         response = client.models.generate_content(
             model=MODEL_NAME,
@@ -202,13 +203,36 @@ def gemini_api_call(prompt: str, pil_image: Image.Image, temperature: float, thi
             )
         )
 
+        # --- Enhanced error info for empty response ---
         if not response or not response.text:
             error_msg = "API returned empty response or no text"
-            logging.warning(error_msg)
-            if response and response.prompt_feedback and response.prompt_feedback.block_reason:
-                 error_msg += f" (Block Reason: {response.prompt_feedback.block_reason})"
-                 logging.warning(f"Block Reason: {response.prompt_feedback.block_reason}")
-            return (None, error_msg, False)
+            block_reason = None
+            prompt_feedback = None
+            # Try to extract token usage if available
+            usage = getattr(response, 'usage_metadata', None)
+            ptk = getattr(usage, 'prompt_token_count', None) if usage else None
+            ttk = getattr(usage, 'thoughts_token_count', None) if usage else None
+            ctk = getattr(usage, 'candidates_token_count', None) if usage else None
+            totk = getattr(usage, 'total_token_count', None) if usage else None
+            extra_info['prompt_tokens'] = ptk if ptk is not None else 'N/A'
+            extra_info['thoughts_tokens'] = ttk if ttk is not None else 'N/A'
+            extra_info['candidate_tokens'] = ctk if ctk is not None else 'N/A'
+            extra_info['total_tokens'] = totk if totk is not None else 'N/A'
+            if response and hasattr(response, 'prompt_feedback') and response.prompt_feedback:
+                prompt_feedback = response.prompt_feedback
+                block_reason = getattr(prompt_feedback, 'block_reason', None)
+                extra_info['prompt_feedback'] = str(prompt_feedback)
+                if block_reason:
+                    error_msg += f" (Block Reason: {block_reason})"
+                    logging.warning(f"Block Reason: {block_reason}")
+                else:
+                    logging.warning(f"Prompt feedback: {prompt_feedback}")
+            else:
+                logging.warning("No prompt_feedback available in response.")
+            extra_info['block_reason'] = block_reason
+            # Log token usage in terminal
+            logging.warning(f"Token usage for failed page: prompt={extra_info['prompt_tokens']}, candidate={extra_info['candidate_tokens']}, thoughts={extra_info['thoughts_tokens']}, total={extra_info['total_tokens']}")
+            return (None, error_msg, False, extra_info)
 
         usage = response.usage_metadata
         # Extract all token counts, including thoughts
@@ -217,13 +241,13 @@ def gemini_api_call(prompt: str, pil_image: Image.Image, temperature: float, thi
         ctk = getattr(usage, 'candidates_token_count', 0) or 0
         totk = getattr(usage, 'total_token_count', 0) or 0
 
-        return ({"text": response.text, "usage": usage, "prompt_tokens": ptk, "thoughts_tokens": ttk, "candidate_tokens": ctk, "total_tokens": totk}, "", False)
+        return ({"text": response.text, "usage": usage, "prompt_tokens": ptk, "thoughts_tokens": ttk, "candidate_tokens": ctk, "total_tokens": totk}, "", False, {})
 
     except google_exceptions.ResourceExhausted as e:
         is_rate_limit = True
         error_msg = f"API Error (Rate Limit): {e}"
         logging.warning("Rate limit error! Sleeping 30s...")
-        return (None, error_msg, is_rate_limit)
+        return (None, error_msg, is_rate_limit, {})
 
     except Exception as e:
         msg = str(e)
@@ -233,7 +257,7 @@ def gemini_api_call(prompt: str, pil_image: Image.Image, temperature: float, thi
             logging.warning("Rate limit detected! Sleeping 30s...")
         else:
             logging.warning(error_msg, exc_info=True)
-        return (None, error_msg, is_rate_limit)
+        return (None, error_msg, is_rate_limit, {})
 
     finally:
         # Clean up temporary file
@@ -260,7 +284,8 @@ def process_page(page_idx: int,
     result_info = {
         "page_idx": page_idx, "prompt_tokens": 0, "candidate_tokens": 0, "thoughts_tokens": 0, "total_tokens": 0,
         "success": False, "error_msg": "", "error_type": None, "api_failures": 0,
-        "rate_limit_failures": 0, "parse_failures": 0, "last_parse_error": ""
+        "rate_limit_failures": 0, "parse_failures": 0, "last_parse_error": "",
+        "extra_info": {}  # <-- new field for extra error info
     }
     logging.info(f"[Worker p.{page_idx:04d}] Processing {png_path.name}...")
     pil_image = None
@@ -270,12 +295,19 @@ def process_page(page_idx: int,
         w, h = pil_image.size
         #logging.info(f"[Worker p.{page_idx:04d}] PNG info: {w}x{h}")
 
-        initial_result, error, is_rate_limit = gemini_api_call(prompt_text, pil_image, temperature, thinking_budget)
+        initial_result, error, is_rate_limit, extra_info = gemini_api_call(prompt_text, pil_image, temperature, thinking_budget)
 
         if not initial_result:
             result_info["error_msg"] = error
             result_info["error_type"] = "api"
             result_info["api_failures"] = 1
+            result_info["extra_info"] = extra_info or {}
+            # Enhanced terminal logging for extra_info
+            if extra_info:
+                for k, v in extra_info.items():
+                    logging.warning(f"[Worker p.{page_idx:04d}] Extra error info: {k}: {v}")
+                # Log token usage summary for failed page
+                logging.warning(f"[Worker p.{page_idx:04d}] Token usage (failed): prompt={extra_info.get('prompt_tokens','N/A')}, candidate={extra_info.get('candidate_tokens','N/A')}, thoughts={extra_info.get('thoughts_tokens','N/A')}, total={extra_info.get('total_tokens','N/A')}")
             if is_rate_limit: 
                 result_info["rate_limit_failures"] = 1
                 error_tracker.add_error(page_idx, ErrorType.RATE_LIMIT, error, True)
@@ -495,10 +527,21 @@ def overwrite_error_file(pdf_base_out_dir: Path, pdf_stem: str, pdf_name: str,
             ef.write("=" * 40 + "\n")
             for p_idx in sorted(failed_pages):
                 page_errors = error_tracker.get_page_errors(p_idx)
+                # Try to get extra_info from the result_info for this page
+                # We'll look for the JSON file for this page and see if extra_info is present
+                # But since we don't save result_info for failed pages, let's recommend the user to check the terminal logs for full details
                 for error_type, error_msg in page_errors:
                     ef.write(f"\nPage {p_idx:04d}:\n")
                     ef.write(f"  Error Type: {error_type.name}\n")
                     ef.write(f"  Error: {error_msg}\n")
+                # Write token usage if available from extra_info in result_info (if present in error_msg, print it)
+                # For now, recommend user to check terminal logs for full token usage details
+                # But let's try to extract token usage from error_msg if present
+                # If error_msg contains 'Token usage', print it as a separate line
+                # Instead, let's add a placeholder for token usage
+                    ef.write(f"  Token usage: See terminal logs for prompt/candidate/thoughts/total tokens.\n")
+                    if 'Block Reason:' in error_msg:
+                        ef.write(f"  Block Reason: {error_msg.split('Block Reason:')[1].strip()}\n")
     except Exception as e:
         logging.error(f"Failed to write error file {get_relative_path(err_file)}: {e}", exc_info=True)
 
