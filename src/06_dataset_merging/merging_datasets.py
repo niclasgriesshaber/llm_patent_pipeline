@@ -39,16 +39,20 @@ all_dataframes = []
 
 for file_path in csv_files:
     try:
-        # Extract the year from the filename
+        # Extract the book from the filename
         filename_stem = file_path.stem
-        year_str = filename_stem.split('_', 1)[1] # e.g., "1877_1888" or "1889"
-        print(f"  Processing {file_path.name}... extracted year: '{year_str}'")
+        book_str = filename_stem.split('_', 1)[1] # e.g., "1877_1888" or "1889"
+        print(f"  Processing {file_path.name}... extracted book: '{book_str}'")
 
         # Read the current CSV file
         df = pd.read_csv(file_path)
 
-        # Add the 'year' column at the beginning
-        df.insert(0, 'year', year_str)
+        # Add the 'book' column at the beginning
+        df.insert(0, 'book', book_str)
+
+        # Ensure 'id' column is integer (never float)
+        if 'id' in df.columns:
+            df['id'] = pd.to_numeric(df['id'], errors='coerce').fillna(0).astype(int)
 
         # Append the dataframe to the list
         all_dataframes.append(df)
@@ -66,8 +70,14 @@ if not all_dataframes:
 print("\nConcatenating all dataframes...")
 merged_df = pd.concat(all_dataframes, ignore_index=True)
 
+# Sort by 'book' chronologically (assuming book is a year or year range, sorted as string is sufficient for now)
+merged_df = merged_df.sort_values(by='book', kind='stable').reset_index(drop=True)
+
+# Add global_id as the first column, counting from 1 to N
+merged_df.insert(0, 'global_id', range(1, len(merged_df) + 1))
+
 # Column order
-expected_first_columns = ["year", "id", "page", "entry", "category"]
+expected_first_columns = ["global_id", "book", "id", "page", "entry", "category"]
 
 # Check if all expected columns (minus 'year' initially) are present
 original_cols = list(all_dataframes[0].columns) # Get cols from first df after adding year
