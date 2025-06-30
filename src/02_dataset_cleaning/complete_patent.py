@@ -58,6 +58,7 @@ def call_llm(entry: str, prompt_template: str) -> str:
 def process_llm(df, prompt_template):
     results = [None] * len(df)
     failures = 0
+    failed_rows = []  # To store (idx, id, page) for rows that fail twice
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         future_to_idx = {
             executor.submit(call_llm, row["entry"], prompt_template): idx
@@ -67,17 +68,29 @@ def process_llm(df, prompt_template):
             idx = future_to_idx[future]
             try:
                 result = future.result()
-                results[idx] = result
-                logging.info(f"Row {idx+1}: LLM result = {result}")
                 if result == "LLM failed":
-                    failures += 1
+                    # Retry once
+                    logging.info(f"Row {idx+1}: LLM failed, retrying...")
+                    result_retry = call_llm(df.iloc[idx]["entry"], prompt_template)
+                    if result_retry == "LLM failed":
+                        failures += 1
+                        failed_rows.append((idx, df.iloc[idx]["id"], df.iloc[idx]["page"]))
+                        results[idx] = "LLM failed"
+                        logging.error(f"Row {idx+1}: LLM failed after retry.")
+                    else:
+                        results[idx] = result_retry
+                        logging.info(f"Row {idx+1}: LLM retry result = {result_retry}")
+                else:
+                    results[idx] = result
+                    logging.info(f"Row {idx+1}: LLM result = {result}")
             except Exception as e:
                 results[idx] = "LLM failed"
                 failures += 1
+                failed_rows.append((idx, df.iloc[idx]["id"], df.iloc[idx]["page"]))
                 logging.error(f"Row {idx+1}: Exception during LLM processing: {e}")
-    return results, failures
+    return results, failures, failed_rows
 
-def postprocess_and_save(df, xlsx_path, csv_path):
+def postprocess_and_save(df, xlsx_path, csv_path, summary_path, failed_rows):
     # Save xlsx with complete_patent column
     df.to_excel(xlsx_path, index=False)
     logging.info(f"Saved intermediate xlsx to: {xlsx_path}")
@@ -144,8 +157,24 @@ def postprocess_and_save(df, xlsx_path, csv_path):
     # Reassign ids sequentially starting from 1
     df_clean["id"] = range(1, len(df_clean)+1)
 
+    # Remove complete_patent column before saving final CSV
+    if "complete_patent" in df_clean.columns:
+        df_clean = df_clean.drop(columns=["complete_patent"])
+
     df_clean.to_csv(csv_path, index=False)
     logging.info(f"Saved cleaned csv to: {csv_path}")
+
+    # Write summary file
+    with open(summary_path, "w", encoding="utf-8") as f:
+        f.write(f"Isolated incomplete rows removed: {removed_isolated}\n")
+        f.write(f"Pairs of incomplete rows merged: {merged_pairs}\n")
+        f.write(f"Runs of >2 incomplete rows deleted: {deleted_runs}\n")
+        f.write(f"LLM failures: {failed_count}\n")
+        if failed_rows:
+            f.write("\nFailed rows (id,page):\n")
+            for _, id_val, page_val in failed_rows:
+                f.write(f"{id_val},{page_val}\n")
+    logging.info(f"Saved summary file to: {summary_path}")
 
     # Summary
     logging.info("")
@@ -171,6 +200,7 @@ def main():
     filestem = input_csv.stem
     xlsx_path = CLEANED_XLSX_TEMP / f"{filestem}.xlsx"
     csv_path = CLEANED_CSVS / f"{filestem}.csv"
+    summary_path = CLEANED_CSVS / f"summary_{filestem}.txt"
 
     # Load data
     df = pd.read_csv(input_csv)
@@ -184,11 +214,11 @@ def main():
     start_time = time.time()
 
     # LLM processing
-    results, failures = process_llm(df, prompt_template)
+    results, failures, failed_rows = process_llm(df, prompt_template)
     df["complete_patent"] = results
 
-    # Save xlsx and post-process for csv
-    postprocess_and_save(df, xlsx_path, csv_path)
+    # Save xlsx and post-process for csv and summary
+    postprocess_and_save(df, xlsx_path, csv_path, summary_path, failed_rows)
     elapsed = time.time() - start_time
     logging.info(f"Total script time: {elapsed:.1f} seconds")
 
