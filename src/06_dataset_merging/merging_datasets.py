@@ -52,7 +52,8 @@ for file_path in csv_files:
 
         # Ensure 'id' column is integer (never float)
         if 'id' in df.columns:
-            df['id'] = pd.to_numeric(df['id'], errors='coerce').fillna(0).astype(int)
+            df = df.rename(columns={'id': 'book_id'})
+            df['book_id'] = pd.to_numeric(df['book_id'], errors='coerce').fillna(0).astype(int)
 
         # Append the dataframe to the list
         all_dataframes.append(df)
@@ -77,7 +78,7 @@ merged_df = merged_df.sort_values(by='book', kind='stable').reset_index(drop=Tru
 merged_df.insert(0, 'global_id', range(1, len(merged_df) + 1))
 
 # Column order
-expected_first_columns = ["global_id", "book", "id", "page", "entry", "category"]
+expected_first_columns = ["global_id", "book", "book_id", "page", "entry", "category"]
 
 # Check if all expected columns (minus 'year' initially) are present
 original_cols = list(all_dataframes[0].columns) # Get cols from first df after adding year
