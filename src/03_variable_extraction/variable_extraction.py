@@ -153,7 +153,8 @@ def main():
     output_dir = PROJECT_ROOT / "data" / "05_csvs_with_variables"
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / input_filename
-    error_path = PROJECT_ROOT / "data" / "04_cleaned_csvs" / f"error_{input_filename.replace('.csv', '')}.txt"
+    error_path = output_dir / f"error_{input_filename.replace('.csv', '')}.txt"
+    summary_path = output_dir / f"summary_{input_filename}"
 
     df = pd.read_csv(input_path)
 
@@ -161,6 +162,7 @@ def main():
         raise KeyError("Column 'entry' not found in dataset.")
     if "id" not in df.columns:
         raise KeyError("Column 'id' not found in dataset. The input CSV must have an 'id' column.")
+    has_page = "page" in df.columns
 
     prompt_template = load_prompt_template()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(message)s", handlers=[logging.StreamHandler(sys.stdout)])
@@ -180,7 +182,7 @@ def main():
 
     # Create a thread-safe dictionary to store results (dictionaries now)
     results_dict = {}
-    failed_ids = []
+    failed_rows = []  # To store (id, page) for rows that fail
 
     with ThreadPoolExecutor(max_workers=args.max_workers) as executor:
         futures = {executor.submit(classify_entry, row["entry"], prompt_template, args.temperature): idx
@@ -192,28 +194,24 @@ def main():
             progress = f"({processed_count}/{total_tasks})"
             try:
                 result_dict, ptk, ctk, ttk = future.result()
-                # Store result dictionary in thread-safe dictionary
                 results_dict[idx] = result_dict
-
-                # Update global token counters
                 global_tokens['prompt'] += ptk
                 global_tokens['candidate'] += ctk
                 global_tokens['total'] += ttk
-
-                # Log a summary of the result (e.g., patent_id or name if available)
                 log_summary = result_dict.get("patent_id", result_dict.get("name", "N/A"))
                 logging.info(f"[{idx}] {progress} → Processed: {log_summary} (Tokens: input={ptk}, candidate={ctk}, total={ttk})")
-
-                # If all values are 'NaN', consider this a failed row
                 if all(result_dict.get(col, "NaN") == "NaN" for col in output_cols):
-                    failed_ids.append(df.at[idx, "id"])
+                    failed_id = df.at[idx, "id"]
+                    failed_page = df.at[idx, "page"] if has_page else "N/A"
+                    failed_rows.append((failed_id, failed_page))
+                    logging.error(f"LLM failed for id: {failed_id}, page: {failed_page}")
             except Exception as e:
                 logging.error(f"[Row {idx}] {progress} Exception during processing: {e}")
-                # Use default dictionary for errors
                 results_dict[idx] = {col: "NaN" for col in output_cols}
-                failed_ids.append(df.at[idx, "id"])
-
-            # Introduce a small delay to throttle the request rate
+                failed_id = df.at[idx, "id"]
+                failed_page = df.at[idx, "page"] if has_page else "N/A"
+                failed_rows.append((failed_id, failed_page))
+                logging.error(f"LLM failed for id: {failed_id}, page: {failed_page}")
             time.sleep(0.1)
 
     # Update DataFrame after all processing is complete
@@ -227,13 +225,20 @@ def main():
     logging.info(f"Saved to: {output_path}")
 
     # Write error file if there are failed ids
-    if failed_ids:
+    if failed_rows:
         with open(error_path, "w", encoding="utf-8") as ef:
-            for fid in failed_ids:
+            for fid, fpage in failed_rows:
                 ef.write(f"{fid}\n")
+        # Write summary file
+        with open(summary_path, "w", encoding="utf-8") as sf:
+            sf.write(f"Total LLM failures: {len(failed_rows)}\n")
+            sf.write("Failed rows (id, page):\n")
+            for fid, fpage in failed_rows:
+                sf.write(f"id: {fid}, page: {fpage}\n")
         logging.info(f"Failed row IDs saved to: {error_path}")
+        logging.info(f"Summary file saved to: {summary_path}")
     else:
-        logging.info("No failed rows. No error file created.")
+        logging.info("No failed rows. No error file or summary file created.")
 
     script_duration = time.time() - start_time
     logging.info(f"Finished in {format_duration(script_duration)}")
@@ -245,6 +250,7 @@ def main():
     logging.info(f"  Candidate Tokens:  {global_tokens['candidate']:,}")
     logging.info(f"  Total Tokens:      {global_tokens['total']:,}")
     logging.info(f"  Total Script Time: {format_duration(script_duration)}")
+    logging.info(f"  Total LLM Failures: {len(failed_rows)}")
     logging.info("=" * 80)
 
 if __name__ == "__main__":
