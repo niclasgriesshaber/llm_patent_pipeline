@@ -227,16 +227,12 @@ def main():
 
     # Write error file if there are failed ids
     if failed_rows:
-        with open(error_path, "w", encoding="utf-8") as ef:
-            for fid, fpage in failed_rows:
-                ef.write(f"{fid}\n")
         # Write summary file
         with open(summary_path, "w", encoding="utf-8") as sf:
             sf.write(f"Total LLM failures: {len(failed_rows)}\n")
             sf.write("Failed rows (id, page):\n")
             for fid, fpage in failed_rows:
                 sf.write(f"id: {fid}, page: {fpage}\n")
-        logging.info(f"Failed row IDs saved to: {error_path}")
         logging.info(f"Summary file saved to: {summary_path}")
     else:
         logging.info("No failed rows. No error file or summary file created.")
