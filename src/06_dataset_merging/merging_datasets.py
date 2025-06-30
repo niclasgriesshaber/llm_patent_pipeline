@@ -57,7 +57,8 @@ for file_path in csv_files:
 
         # Ensure 'patent_id' column is string (to avoid float formatting in CSV)
         if 'patent_id' in df.columns:
-            df['patent_id'] = df['patent_id'].astype(str)
+            df['patent_id'] = pd.to_numeric(df['patent_id'], errors='coerce')
+            df['patent_id'] = df['patent_id'].apply(lambda x: str(int(x)) if pd.notnull(x) and x == int(x) else str(x))
 
         # Append the dataframe to the list
         all_dataframes.append(df)
