@@ -19,8 +19,10 @@ shift
 CSV_LIST=()
 
 if [ "$1" == "all" ]; then
-    # Find all CSVs in the input directory
-    mapfile -t CSV_LIST < <(find "$INPUT_DIR" -maxdepth 1 -type f -name '*.csv' | sort)
+    for file in "$INPUT_DIR"/*.csv; do
+        [ -e "$file" ] || continue
+        CSV_LIST+=("$file")
+    done
     shift
 else
     # Use provided filenames, check if they exist in the input directory
@@ -56,7 +58,7 @@ for CSV in "${CSV_LIST[@]}"; do
     fi
     echo "----------------------------------------"
     # Continue to next file regardless of error
-fi
+done
 
 echo "\n[SUMMARY]"
 echo "Processed: $((SUCCESS+FAIL)) CSVs"

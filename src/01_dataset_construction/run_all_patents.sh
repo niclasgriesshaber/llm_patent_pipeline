@@ -2,6 +2,8 @@
 
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Set the correct input folder for PDFs
+INPUT_DIR="$SCRIPT_DIR/../../data/pdfs/patent_pdfs"
 
 usage() {
     echo "Usage: $0 --pdfs all | --pdfs <pdf1> <pdf2> ..."
@@ -17,13 +19,16 @@ shift
 PDF_LIST=()
 
 if [ "$1" == "all" ]; then
-    # Find all PDFs in the script's directory
-    mapfile -t PDF_LIST < <(find "$SCRIPT_DIR" -maxdepth 1 -type f -name '*.pdf' | sort)
+    # Find all PDFs in the input directory (POSIX compatible)
+    for file in "$INPUT_DIR"/*.pdf; do
+        [ -e "$file" ] || continue
+        PDF_LIST+=("$file")
+    done
     shift
 else
-    # Use provided filenames, check if they exist in the script's directory
+    # Use provided filenames, check if they exist in the input directory
     while [ "$1" != "" ]; do
-        PDF_PATH="$SCRIPT_DIR/$1"
+        PDF_PATH="$INPUT_DIR/$1"
         if [ -f "$PDF_PATH" ]; then
             PDF_LIST+=("$PDF_PATH")
         else
@@ -54,7 +59,7 @@ for PDF in "${PDF_LIST[@]}"; do
     fi
     echo "----------------------------------------"
     # Continue to next file regardless of error
-fi
+done
 
 echo "\n[SUMMARY]"
 echo "Processed: $((SUCCESS+FAIL)) PDFs"
