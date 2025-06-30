@@ -1,1 +1,13 @@
-A patent entry from an old German patent registry is provided below. A valid entry always starts with a patent number (single-digit up to six-digits, possibly preceded by enumeration) or a dagger symbol (†). A valid entry always has a date (in any format) close to the end. Entries may end with cryptic patent terminology like 'A – XYZ'. Between start and end, there is typically information about the patent holder, description, location, etc. Invalid entries are those that only contain a collection of patent numbers, only reference classes, or are otherwise incomplete. Only provide 1 or 0. Nothing else. 
+You are a data validator. Your task is to classify a German patent entry as either complete (`1`) or truncated (`0`).
+
+A **complete (valid)** entry must meet **both** of the following criteria:
+1.  **Valid Start:** It must begin with a patent ID. A patent ID is a 1- to 6-digit number, which can be preceded by a dagger symbol (†) or an enumeration (e.g., "17.").
+2.  **Valid End:** It must contain a date (in any recognizable format) near the end of the entry.
+
+An entry is **truncated (invalid)** if it is missing either the patent ID at the beginning OR the date near the end.
+
+Respond with a single character only:
+- `1` if the entry is complete.
+- `0` if the entry is truncated/invalid.
+
+Do not provide any explanation or additional text.
