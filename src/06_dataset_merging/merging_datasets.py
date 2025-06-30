@@ -9,10 +9,10 @@ print("Starting the dataset merging script...")
 
 script_location = Path(__file__).resolve().parent
 project_root = script_location.parent.parent
-input_dir = project_root / "data"/ "06_merged_dataset" / "csvs"
-output_dir = project_root / "data" / "06_merged_dataset"
-output_csv_file = output_dir / "imperial-patents.csv"
-output_excel_file = output_dir / "imperial-patents.xlsx"
+input_dir = project_root / "data" / "06_csvs_with_variables_harmonized"
+output_dir = project_root / "data" / "07_merged_csv"
+output_csv_file = output_dir / "imperial-patent-office.csv"
+output_excel_file = output_dir / "imperial-patent-office.xlsx"
 
 print(f"Script location: {script_location}")
 print(f"Project root determined as: {project_root}")
@@ -67,17 +67,20 @@ print("\nConcatenating all dataframes...")
 merged_df = pd.concat(all_dataframes, ignore_index=True)
 
 # Column order
-expected_columns = ["year", "id", "page", "entry", "category"]
+expected_first_columns = ["year", "id", "page", "entry", "category"]
 
 # Check if all expected columns (minus 'year' initially) are present
 original_cols = list(all_dataframes[0].columns) # Get cols from first df after adding year
-missing_original = [col for col in expected_columns if col != 'year' and col not in original_cols]
+missing_original = [col for col in expected_first_columns if col not in original_cols]
 if missing_original:
      print(f"Warning: Original CSVs seem to be missing expected columns: {missing_original}")
 
-# Reorder the columns
+# Reorder the columns: first the expected ones, then any others in their original order
+all_columns = list(merged_df.columns)
+additional_columns = [col for col in all_columns if col not in expected_first_columns]
+final_column_order = expected_first_columns + additional_columns
 try:
-    merged_df = merged_df[expected_columns]
+    merged_df = merged_df[final_column_order]
     print("Columns reordered successfully.")
 except KeyError as e:
      print(f"Error: Could not find expected column {e} in the merged data. Please check input CSVs.")
