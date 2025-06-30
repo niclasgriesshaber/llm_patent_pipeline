@@ -154,7 +154,8 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / input_filename
     error_path = output_dir / f"error_{input_filename.replace('.csv', '')}.txt"
-    summary_path = output_dir / f"summary_{input_filename}"
+    summary_stem = os.path.splitext(input_filename)[0]
+    summary_path = output_dir / f"summary_{summary_stem}.txt"
 
     df = pd.read_csv(input_path)
 
