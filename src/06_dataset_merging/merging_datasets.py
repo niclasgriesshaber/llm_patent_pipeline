@@ -55,6 +55,10 @@ for file_path in csv_files:
             df = df.rename(columns={'id': 'book_id'})
             df['book_id'] = pd.to_numeric(df['book_id'], errors='coerce').fillna(0).astype(int)
 
+        # Ensure 'patent_id' column is string (to avoid float formatting in CSV)
+        if 'patent_id' in df.columns:
+            df['patent_id'] = df['patent_id'].astype(str)
+
         # Append the dataframe to the list
         all_dataframes.append(df)
 
