@@ -1,0 +1,76 @@
+**Objective:** Extract Category Headings and valid Patent Entries sequentially from the two content columns of a German Patent Register page into a flat, strictly valid JSON array.
+
+**Scope & Reading Order:**
+1.  **Extraction Area:** Extract ONLY from the text within the main two content columns. Ignore page headers, footers, and page numbers.
+2.  **Sequence:** Process the LEFT column top-to-bottom, THEN the RIGHT column top-to-bottom. Maintain this exact order.
+3.  **Column Spanning:** An entry starting in the left column may continue in the right column and is thus a single entry.
+
+**Extraction Rules:**
+
+1.  **Line Break Handling:**
+    *   Join words hyphenated across lines (e.g., `Aufbe-\nreitung` becomes `Aufbereitung`).
+    *   Replace all other newlines within an extracted text block with a single space.
+
+2.  **Category Heading:**
+    *   **Identify:** Recognize headings that start *exactly* with `Klasse [num].`, `Kl. [num].`, or a sub-category code like `1a.` or `85g.`.
+    *   **Extract:** Capture the full, verbatim heading text after handling line breaks.
+
+3.  **Patent Entry:**
+    *   **Identify:** Recognize records starting with a patent number that contain substantial descriptive text (holder, location, title, date).
+    *   **CRITICAL EXCLUSION:** **DO NOT EXTRACT** text blocks that are only lists of patent numbers (e.g., `55306 A 115. - 55343 A 131.`). These are INVALID and must be ignored.
+    *   **Extract:** Capture the complete text of *valid* entries only, preserving all original characters (`(†)`, etc.).
+
+---
+
+### **JSON Output Specification (Strict Rules)**
+
+You **MUST** generate a single, machine-readable JSON array that adheres to the following strict syntax rules. **Failure to follow these rules will result in an error.**
+
+1.  **Valid Array Structure:** The entire output must be a single array, starting with `[` and ending with `]`.
+    ```json
+    [
+      {...},
+      {...}
+    ]
+    ```
+
+2.  **Double-Quoted Keys:** **ALL** object keys **MUST** be enclosed in double quotes.
+    *   **Correct:** `{"entry": "..."}`
+    *   **Incorrect:** `{entry: "..."}`
+
+3.  **Correct Object Format:** Each element in the array must be an object with exactly **ONE key-value pair**.
+    *   **Correct:** `{"category": "Klasse 1."}`
+    *   **Incorrect:** `{"Klasse 1."}`
+
+4.  **Comma Delimiters:** Every object in the array **MUST** be separated by a comma, except for the very last one. No trailing commas.
+
+5.  **String Value Escaping:** Within JSON string values, any literal double-quote character (`"`) must be escaped as `\"`, and any literal backslash (`\`) must be escaped as `\\`.
+
+---
+
+**Example of Perfect Output Structure:**
+
+```json
+[
+  {
+    "category": "Klasse 1. Aufbereitung von Erzen, Mineralien und Brennstoffen. Vgl. die Klassen 40 und 50."
+  },
+  {
+    "entry": "55546. — NORDVALL, JOHAN, JOHAN AXEL ESTBERG und MAGNUS MATTSSON, sämmtlich in Ostersund, Schweden; Vertreter: BRYDGES & CO. in Berlin S.W., Königgrätzerstr. 101. Centrifugal-Sortirapparat. 16. März 1890. — A 249."
+  },
+  {		
+    "entry": "55551. — GLASER, F. C., in Berlin S.W., Lindenstraſse 80. Verbundstofsherd. \"Patent Friz\". 10. Juni 1890. — A 249."
+  },
+  {
+    "category": "Klasse 3. Bekleidungsindustrie. Vgl. die Klassen 25, 41, 44, 52, 71."
+  },
+  {
+    "category": "3a."
+  },
+  {
+    "entry": "(†) 55539. — FÜRSTENHEIM, C., in Berlin C., Jerusalemerstraſse 15. Zusammenklappbares Büstengestell. 5. Juni 1890. — A 249."
+  }
+]
+```
+
+**Final Instruction:**  Adhere to all rules. Your output must be **ONLY the JSON array** and nothing else. Before finishing, double-check your output to ensure it is perfectly valid JSON according to the specifications above.
