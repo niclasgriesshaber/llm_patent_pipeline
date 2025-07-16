@@ -3,3 +3,4 @@ data/*
 config/.env
 __pycache__/
 *.pyc
+archive/*

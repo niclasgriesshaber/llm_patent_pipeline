@@ -20,7 +20,7 @@ PROMPTS_DIR = project_root / 'src' / 'benchmarking' / 'prompts'
 GT_XLSX_DIR = BENCHMARKING_ROOT / 'gt_xlsx'
 SAMPLED_PDFS_DIR = BENCHMARKING_ROOT / 'sampled_pdfs'
 
-MODELS = ['gemini-2.0-flash', 'gemini-2.5-flash']
+MODELS = ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-2.5-pro']
 
 # --- Main Functions ---
 
