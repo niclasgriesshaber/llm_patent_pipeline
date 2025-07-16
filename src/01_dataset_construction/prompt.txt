@@ -57,7 +57,7 @@ For each block of text you encounter in the two main content columns, you must c
     > **Example:** {"entry": "55711. COOMES, M, F., Arzt, und A. W. HYDE, in Louisville, 6281/2 Fourth Street bezw. 828 Second Street, Grafschaft Jefferson, Staat Kentucky, V. St. A.; Vertreter: C. PIEPER in Berlin N.W., Hindersinstraſse 3. Verfahren zur Bereitung von Stahl. 26. Februar 1890. A — 252."}
 
 ### C. Content to Explicitly IGNORE
-*   **Lists of Patent Numbers:** After a category heading, you will often see a block of text that is just a list of patent numbers and codes (e.g., 54571 A 3. — 54814 A 77. — 54881 A 37. — 54977 A 54.). **DO NOT** extract these lists that are just consisting of patent numbers and patent codes. They are not valid patent entries.
+*   **Lists of Patent Numbers:** After a category heading, you will often see a block of text that is just a list of patent numbers and codes (e.g., 54571 A 3. — 54814 A 77. — 54881 A 37. — 54977 A 54.). **DO NOT** extract these lists that are just consisting of patent numbers and patent codes. These invalid patent entries only occur directly below category headings. Dates in a new line below a valid patent entry belong to the valid patent entry.
 
 ## III. JSON Output Specification (Strict)
 

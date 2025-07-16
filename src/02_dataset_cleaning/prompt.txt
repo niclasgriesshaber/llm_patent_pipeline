@@ -1,10 +1,6 @@
 You are a data validator. Your task is to classify a German patent entry as either complete (`1`) or truncated (`0`).
 
-A **complete (valid)** entry must meet **both** of the following criteria:
-1.  **Valid Start:** It must begin with a patent ID. A patent ID is a 1- to 6-digit number, which can be preceded by a dagger symbol (†) or an enumeration (e.g., "17.").
-2.  **Valid End:** It must contain a date (in any recognizable format) near the end of the entry.
-
-An entry is **truncated (invalid)** if it is missing either the patent ID at the beginning OR the date near the end.
+A **complete (valid)** entry must contain a date (in any recognizable format) near the end of the entry. An entry is **truncated (invalid)** if it is missing the date near the end.
 
 Respond with a single character only:
 - `1` if the entry is complete.

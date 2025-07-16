@@ -95,14 +95,12 @@ def postprocess_and_save(df, xlsx_path, csv_path, summary_path, failed_rows):
     df.to_excel(xlsx_path, index=False)
     logging.info(f"Saved intermediate xlsx to: {xlsx_path}")
 
-    # Post-processing for CSV
     df_clean = df.copy().reset_index(drop=True)
-    removed_isolated = 0
-    merged_pairs = 0
-    deleted_runs = 0
+    merged_isolated = 0
+    pair_count = 0
+    run_gt2_count = 0
     failed_count = (df_clean["complete_patent"] == "LLM failed").sum()
 
-    # Helper: find runs of 0s (not LLM failed)
     mask = (df_clean["complete_patent"] == "0")
     runs = []
     run_start = None
@@ -117,36 +115,23 @@ def postprocess_and_save(df, xlsx_path, csv_path, summary_path, failed_rows):
     if run_start is not None:
         runs.append((run_start, len(mask)-1))
 
-    # Process runs
     to_remove = set()
-    to_merge = []
     for start, end in runs:
         length = end - start + 1
         if length == 1:
-            # Isolated 0
-            # Check neighbors (not out of bounds, not LLM failed)
-            prev_ok = (start > 0 and df_clean.at[start-1, "complete_patent"] == "1")
-            next_ok = (end < len(df_clean)-1 and df_clean.at[end+1, "complete_patent"] == "1")
-            if prev_ok and next_ok:
-                to_remove.add(start)
-                removed_isolated += 1
+            # Isolated incomplete row: merge with row below if possible
+            if end + 1 < len(df_clean):
+                # Merge entries
+                df_clean.at[start, "entry"] = df_clean.at[start, "entry"] + " " + df_clean.at[end+1, "entry"]
+                # Remove the row below
+                to_remove.add(end+1)
+                merged_isolated += 1
         elif length == 2:
-            # Merge these two
-            to_merge.append((start, end))
-            merged_pairs += 1
-        else:
-            # Delete all
-            for i in range(start, end+1):
-                to_remove.add(i)
-            deleted_runs += 1
-
-    # Merge pairs
-    for start, end in to_merge:
-        # Merge entry, keep category/page from first, id from first
-        merged_entry = df_clean.at[start, "entry"] + " " + df_clean.at[end, "entry"]
-        df_clean.at[start, "entry"] = merged_entry
-        # Remove the second row
-        to_remove.add(end)
+            # Pair: leave as is, count
+            pair_count += 1
+        elif length > 2:
+            # Run >2: leave as is, count
+            run_gt2_count += 1
 
     # Remove rows (sort descending so index stays valid)
     to_remove = sorted(to_remove, reverse=True)
@@ -166,9 +151,9 @@ def postprocess_and_save(df, xlsx_path, csv_path, summary_path, failed_rows):
 
     # Write summary file
     with open(summary_path, "w", encoding="utf-8") as f:
-        f.write(f"Isolated incomplete rows removed: {removed_isolated}\n")
-        f.write(f"Pairs of incomplete rows merged: {merged_pairs}\n")
-        f.write(f"Runs of >2 incomplete rows deleted: {deleted_runs}\n")
+        f.write(f"Isolated incomplete rows merged with below: {merged_isolated}\n")
+        f.write(f"Pairs of incomplete rows: {pair_count}\n")
+        f.write(f"Runs of >2 incomplete rows: {run_gt2_count}\n")
         f.write(f"LLM failures: {failed_count}\n")
         if failed_rows:
             f.write("\nFailed rows (id,page):\n")
@@ -180,9 +165,9 @@ def postprocess_and_save(df, xlsx_path, csv_path, summary_path, failed_rows):
     logging.info("")
     logging.info("Summary".center(60, "-"))
     logging.info(f"LLM failures: {failed_count}")
-    logging.info(f"Isolated incomplete rows removed: {removed_isolated}")
-    logging.info(f"Pairs of incomplete rows merged: {merged_pairs}")
-    logging.info(f"Runs of >2 incomplete rows deleted: {deleted_runs}")
+    logging.info(f"Isolated incomplete rows merged with below: {merged_isolated}")
+    logging.info(f"Pairs of incomplete rows: {pair_count}")
+    logging.info(f"Runs of >2 incomplete rows: {run_gt2_count}")
     logging.info(f"Final row count: {len(df_clean)}")
     logging.info("-"*60)
 
