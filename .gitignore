@@ -6,3 +6,5 @@ __pycache__/
 archive/*
 src/benchmarking/sample_selection/sampled_from_pdfs/*
 src/benchmarking/sample_selection/sample_from_pdfs/
+# Ignore sampled_pdfs output folder from sample_selection
+sampled_pdfs/
