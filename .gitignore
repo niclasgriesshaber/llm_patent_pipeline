@@ -4,3 +4,5 @@ config/.env
 __pycache__/
 *.pyc
 archive/*
+src/benchmarking/sample_selection/sampled_from_pdfs/*
+src/benchmarking/sample_selection/sample_from_pdfs/
