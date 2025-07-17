@@ -91,7 +91,7 @@ Your entire output must be a single, syntactically perfect JSON array. Any devia
     "entry": "56205. — HERBERTZ, F. A., in Köln a. Rh. Schmelzofen mit Dampfstrahl. 12. August 1890. А — 461."
   },
   {
-    "category": "3a."
+    "category": "3a"
   },
   {
     "entry": "(†) 55539. — FÜRSTENHEIM, C., in Berlin C., Jerusalemerstraſse 15. Zusammenklappbares Büstengestell. 5. Juni 1890. A — 249."
