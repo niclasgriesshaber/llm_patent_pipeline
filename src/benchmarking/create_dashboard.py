@@ -22,8 +22,8 @@ def create_dashboard(benchmark_data_dir: Path):
     all_results = []
     for result_file in result_files:
         try:
-            # The structure is data/benchmarking/{model}/{prompt}/results.json
-            # So, parent is {prompt}, and parent.parent is {model}
+            # The structure is data/benchmarking/results/01_dataset_construction/{model}/{prompt}/results.json
+            # So, parent is {prompt}, parent.parent is {model}, parent.parent.parent is {benchmark_type}
             prompt_name = result_file.parent.name
             model_name = result_file.parent.parent.name
             

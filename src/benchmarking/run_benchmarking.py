@@ -17,8 +17,8 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 BENCHMARKING_ROOT = project_root / 'data' / 'benchmarking'
 PROMPTS_DIR = project_root / 'src' / 'benchmarking' / 'prompts'
-GT_XLSX_DIR = BENCHMARKING_ROOT / 'gt_xlsx'
-SAMPLED_PDFS_DIR = BENCHMARKING_ROOT / 'sampled_pdfs'
+GT_XLSX_DIR = BENCHMARKING_ROOT / 'input_data' / 'transcriptions_xlsx' / 'perfect_transcriptions_xlsx'
+SAMPLED_PDFS_DIR = BENCHMARKING_ROOT / 'input_data' / 'sampled_pdfs'
 
 MODELS = ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-2.5-pro']
 
@@ -43,7 +43,7 @@ def run_single_benchmark(model_name: str, prompt_name: str):
 
     # Define output directories
     prompt_stem = prompt_file.stem
-    run_output_dir = BENCHMARKING_ROOT / model_name / prompt_stem
+    run_output_dir = BENCHMARKING_ROOT / 'results' / '01_dataset_construction' / model_name / prompt_stem
     llm_csv_output_dir = run_output_dir / 'llm_csv'
     run_output_dir.mkdir(parents=True, exist_ok=True)
     llm_csv_output_dir.mkdir(exist_ok=True)
