@@ -146,8 +146,8 @@ def create_dashboard(benchmark_data_dir: Path):
 
 def main():
     parser = argparse.ArgumentParser(description="Generate a benchmarking dashboard from results.")
-    # Assuming this script is in src/benchmarking, the project root is 3 levels up
-    project_root = Path(__file__).resolve().parents[2]
+    # Assuming this script is in src/benchmarking/scripts, the project root is 3 levels up
+    project_root = Path(__file__).resolve().parents[3]
     default_data_dir = project_root / 'data' / 'benchmarking'
     
     parser.add_argument(
