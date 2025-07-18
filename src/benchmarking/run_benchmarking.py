@@ -1,5 +1,7 @@
 import argparse
 import logging
+import json
+import pandas as pd
 from pathlib import Path
 import sys
 
@@ -45,34 +47,114 @@ def run_single_benchmark(model_name: str, prompt_name: str):
     prompt_stem = prompt_file.stem
     run_output_dir = BENCHMARKING_ROOT / 'results' / '01_dataset_construction' / model_name / prompt_stem
     llm_csv_output_dir = run_output_dir / 'llm_csv'
+    perfect_comparison_dir = run_output_dir / 'perfect_transcriptions_xlsx'
+    student_comparison_dir = run_output_dir / 'student_transcriptions_xlsx'
+    
     run_output_dir.mkdir(parents=True, exist_ok=True)
     llm_csv_output_dir.mkdir(exist_ok=True)
+    perfect_comparison_dir.mkdir(exist_ok=True)
+    student_comparison_dir.mkdir(exist_ok=True)
     
     logging.info(f"Output will be saved in: {run_output_dir}")
 
-    # 1. Process all PDFs to generate LLM CSVs
+    # 1. Process PDFs to generate LLM CSVs (skip if already exist)
     pdf_files = list(SAMPLED_PDFS_DIR.glob('*.pdf'))
     if not pdf_files:
         logging.error(f"No PDFs found in {SAMPLED_PDFS_DIR}. Cannot proceed.")
         return
 
     logging.info(f"Found {len(pdf_files)} PDFs to process.")
+    processed_count = 0
+    skipped_count = 0
+    
     for pdf_path in pdf_files:
+        csv_filename = f"{pdf_path.stem}.csv"
+        csv_path = llm_csv_output_dir / csv_filename
+        
+        if csv_path.exists():
+            logging.info(f"CSV already exists for {pdf_path.name}, skipping API call.")
+            skipped_count += 1
+            continue
+            
+        logging.info(f"Processing PDF: {pdf_path.name}")
         process_pdf(
             model_name=model_name,
             prompt_text=prompt_text,
             pdf_path=pdf_path,
             output_dir=llm_csv_output_dir
         )
+        processed_count += 1
     
-    logging.info("--- LLM processing complete. Starting comparison. ---")
+    logging.info(f"PDF processing complete. Processed: {processed_count}, Skipped: {skipped_count}")
+    logging.info("--- Starting comparison phase. ---")
 
-    # 2. Run comparison between generated CSVs and ground truth
-    run_comparison(
-        llm_csv_dir=llm_csv_output_dir,
-        gt_xlsx_dir=GT_XLSX_DIR,
-        output_dir=run_output_dir
-    )
+    # 2. Run comparisons against both ground truth types
+    all_results = {}
+    
+    # Perfect transcriptions comparison
+    perfect_gt_dir = BENCHMARKING_ROOT / 'input_data' / 'transcriptions_xlsx' / 'perfect_transcriptions_xlsx'
+    if perfect_gt_dir.exists():
+        logging.info("Running comparison against perfect transcriptions...")
+        perfect_results = run_comparison(
+            llm_csv_dir=llm_csv_output_dir,
+            gt_xlsx_dir=perfect_gt_dir,
+            output_dir=perfect_comparison_dir,
+            comparison_type="perfect"
+        )
+        if perfect_results:
+            all_results['perfect'] = perfect_results
+            logging.info("Perfect transcriptions comparison completed.")
+        else:
+            logging.warning("No perfect transcriptions comparison results generated.")
+    else:
+        logging.warning(f"Perfect transcriptions directory not found: {perfect_gt_dir}")
+    
+    # Student transcriptions comparison
+    student_gt_dir = BENCHMARKING_ROOT / 'input_data' / 'transcriptions_xlsx' / 'student_transcriptions_xlsx'
+    if student_gt_dir.exists():
+        logging.info("Running comparison against student transcriptions...")
+        student_results = run_comparison(
+            llm_csv_dir=llm_csv_output_dir,
+            gt_xlsx_dir=student_gt_dir,
+            output_dir=student_comparison_dir,
+            comparison_type="student"
+        )
+        if student_results:
+            all_results['student'] = student_results
+            logging.info("Student transcriptions comparison completed.")
+        else:
+            logging.warning("No student transcriptions comparison results generated.")
+    else:
+        logging.warning(f"Student transcriptions directory not found: {student_gt_dir}")
+    
+    # 3. Generate combined results.json at prompt level
+    if all_results:
+        combined_results = {
+            'model': model_name,
+            'prompt': prompt_stem,
+            'timestamp': pd.Timestamp.now().isoformat(),
+            'perfect': all_results.get('perfect', {}),
+            'student': all_results.get('student', {}),
+            'summary': {
+                'perfect_cer_normalized': all_results.get('perfect', {}).get('character_error_rate_normalized', 0),
+                'perfect_cer_unnormalized': all_results.get('perfect', {}).get('character_error_rate_unnormalized', 0),
+                'student_cer_normalized': all_results.get('student', {}).get('character_error_rate_normalized', 0),
+                'student_cer_unnormalized': all_results.get('student', {}).get('character_error_rate_unnormalized', 0),
+                'perfect_match_rate': all_results.get('perfect', {}).get('overall_match_rate', 0),
+                'student_match_rate': all_results.get('student', {}).get('overall_match_rate', 0),
+                'files_processed': len(set(
+                    all_results.get('perfect', {}).get('files_with_results', []) +
+                    all_results.get('student', {}).get('files_with_results', [])
+                ))
+            }
+        }
+        
+        results_path = run_output_dir / "results.json"
+        with results_path.open('w', encoding='utf-8') as f:
+            json.dump(combined_results, f, indent=4)
+        logging.info(f"Combined results saved to {results_path}")
+    else:
+        logging.warning("No comparison results generated. Check if ground truth files exist.")
     
     logging.info(f"--- Benchmark finished for model: [{model_name}] with prompt: [{prompt_name}] ---")
 
