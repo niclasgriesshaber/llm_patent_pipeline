@@ -4,6 +4,7 @@ import json
 import pandas as pd
 from pathlib import Path
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Ensure the 'core' module can be found
 # The script is in src/benchmarking, so we add src to the path
@@ -26,7 +27,7 @@ MODELS = ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-2.5-pro']
 
 # --- Main Functions ---
 
-def run_single_benchmark(model_name: str, prompt_name: str):
+def run_single_benchmark(model_name: str, prompt_name: str, max_workers: int = 20):
     """
     Executes the full benchmarking pipeline for a single model and prompt combination.
     """
@@ -67,6 +68,8 @@ def run_single_benchmark(model_name: str, prompt_name: str):
     processed_count = 0
     skipped_count = 0
     
+    # Filter out PDFs that already have corresponding CSV files
+    pdfs_to_process = []
     for pdf_path in pdf_files:
         csv_filename = f"{pdf_path.stem}.csv"
         csv_path = llm_csv_output_dir / csv_filename
@@ -74,16 +77,44 @@ def run_single_benchmark(model_name: str, prompt_name: str):
         if csv_path.exists():
             logging.info(f"CSV already exists for {pdf_path.name}, skipping API call.")
             skipped_count += 1
-            continue
+        else:
+            pdfs_to_process.append(pdf_path)
+    
+    # Process remaining PDFs in parallel
+    if pdfs_to_process:
+        logging.info(f"Processing {len(pdfs_to_process)} PDFs in parallel with {max_workers} workers...")
+        
+        def process_single_pdf(pdf_path):
+            """Process a single PDF and return success status."""
+            try:
+                logging.info(f"Processing PDF: {pdf_path.name}")
+                process_pdf(
+                    model_name=model_name,
+                    prompt_text=prompt_text,
+                    pdf_path=pdf_path,
+                    output_dir=llm_csv_output_dir
+                )
+                return True
+            except Exception as e:
+                logging.error(f"Error processing {pdf_path.name}: {e}")
+                return False
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all tasks
+            future_to_pdf = {executor.submit(process_single_pdf, pdf_path): pdf_path for pdf_path in pdfs_to_process}
             
-        logging.info(f"Processing PDF: {pdf_path.name}")
-        process_pdf(
-            model_name=model_name,
-            prompt_text=prompt_text,
-            pdf_path=pdf_path,
-            output_dir=llm_csv_output_dir
-        )
-        processed_count += 1
+            # Process completed tasks
+            for future in as_completed(future_to_pdf):
+                pdf_path = future_to_pdf[future]
+                try:
+                    success = future.result()
+                    if success:
+                        processed_count += 1
+                        logging.info(f"Successfully processed: {pdf_path.name}")
+                    else:
+                        logging.error(f"Failed to process: {pdf_path.name}")
+                except Exception as e:
+                    logging.error(f"Exception occurred while processing {pdf_path.name}: {e}")
     
     logging.info(f"PDF processing complete. Processed: {processed_count}, Skipped: {skipped_count}")
     logging.info("--- Starting comparison phase. ---")
@@ -179,6 +210,12 @@ def main():
         action='store_true',
         help='Run the pipeline for all available models and prompts.'
     )
+    parser.add_argument(
+        '--max-workers',
+        type=int,
+        default=20,
+        help='Maximum number of worker threads for parallel PDF processing. Default: 20'
+    )
     
     args = parser.parse_args()
 
@@ -188,13 +225,13 @@ def main():
         
         for model_name in MODELS:
             for prompt_name in prompt_files:
-                run_single_benchmark(model_name, prompt_name)
+                run_single_benchmark(model_name, prompt_name, args.max_workers)
         
         logging.info("--- All benchmark runs complete. Generating final dashboard. ---")
         create_dashboard(BENCHMARKING_ROOT)
 
     elif args.model and args.prompt:
-        run_single_benchmark(args.model, args.prompt)
+        run_single_benchmark(args.model, args.prompt, args.max_workers)
         logging.info("--- Single benchmark run complete. ---")
         logging.info(f"To generate/update the main dashboard, run: python src/benchmarking/create_dashboard.py")
 
