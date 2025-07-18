@@ -1,7 +1,6 @@
 import os
 import re
 import json
-import time
 import logging
 import tempfile
 import pandas as pd
@@ -30,8 +29,7 @@ except Exception as e:
 # NOTE: The genai.configure call has been removed as it's not compatible with the user's environment.
 # The API key will be passed directly to the client in the gemini_api_call function.
 
-MAX_RETRIES = 3
-BACKOFF_FACTOR = 2
+# Removed retry logic - single attempt only
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -61,9 +59,9 @@ def parse_json_from_response(response_text) -> dict:
 def gemini_api_call(model_name: str, prompt: str, pil_image: Image.Image) -> dict:
     """
     Makes a call to the Gemini API with a given image and prompt.
-    Includes retry logic and model-specific configurations.
-    Now robust to empty/None responses, as in gemini-2.5-parallel.py.
-    Sets max_output_tokens to 50000 for Gemini-2.5 models, 8192 otherwise.
+    Single attempt only - no retry logic.
+    Robust to empty/None responses, as in gemini-2.5-parallel.py.
+    Sets max_output_tokens to 65536 for Gemini-2.5 models, 8192 otherwise.
     """
     try:
         client = genai.Client(api_key=API_KEY)
@@ -98,59 +96,44 @@ def gemini_api_call(model_name: str, prompt: str, pil_image: Image.Image) -> dic
     config = types.GenerateContentConfig(**config_args)
     file_upload = None
 
-    for attempt in range(MAX_RETRIES):
-        try:
-            with tempfile.NamedTemporaryFile(suffix=".png", delete=True) as tmp_file:
-                pil_image.save(tmp_file.name, "PNG")
-                logging.info(f"Uploading image for API call (Attempt {attempt + 1})...")
-                file_upload = client.files.upload(file=tmp_file.name)
-                logging.info(f"Making generate_content call for model {model_name}...")
-                response = client.models.generate_content(
-                    model=model_name,
-                    contents=[
-                        types.Part.from_uri(
-                            file_uri=file_upload.uri,
-                            mime_type=file_upload.mime_type,
-                        ),
-                        prompt
-                    ],
-                    config=config
-                )
-                # Robust: check for empty/None response or response.text
-                if not response or not getattr(response, 'text', None):
-                    error_msg = "API returned empty response or no text"
-                    logging.warning(f"API call attempt {attempt + 1} failed: {error_msg}")
-                    if hasattr(response, 'prompt_feedback') and response.prompt_feedback and getattr(response.prompt_feedback, 'block_reason', None):
-                        block_reason = response.prompt_feedback.block_reason
-                        error_msg += f" (Block Reason: {block_reason})"
-                        logging.warning(f"Block Reason: {block_reason}")
-                    if attempt < MAX_RETRIES - 1:
-                        sleep_time = BACKOFF_FACTOR ** attempt
-                        logging.info(f"Retrying in {sleep_time} seconds...")
-                        time.sleep(sleep_time)
-                        continue
-                    else:
-                        logging.error("All API call retries failed due to empty response.")
-                        raise RuntimeError(error_msg)
-                # Only parse if response.text is not None
-                return parse_json_from_response(response.text)
-        except Exception as e:
-            logging.warning(f"API call attempt {attempt + 1} failed: {e}")
-            if attempt < MAX_RETRIES - 1:
-                sleep_time = BACKOFF_FACTOR ** attempt
-                logging.info(f"Retrying in {sleep_time} seconds...")
-                time.sleep(sleep_time)
-            else:
-                logging.error("All API call retries failed.")
-                raise
-        finally:
-            if file_upload:
-                try:
-                    client.files.delete(name=file_upload.name)
-                    logging.debug(f"Deleted temp file on API server: {file_upload.name}")
-                except Exception as e:
-                    logging.warning(f"Failed to delete uploaded file {file_upload.name}: {e}")
-    raise RuntimeError("Should not be reached; indicates a problem in retry logic.")
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=True) as tmp_file:
+            pil_image.save(tmp_file.name, "PNG")
+            logging.info("Uploading image for API call...")
+            file_upload = client.files.upload(file=tmp_file.name)
+            logging.info(f"Making generate_content call for model {model_name}...")
+            response = client.models.generate_content(
+                model=model_name,
+                contents=[
+                    types.Part.from_uri(
+                        file_uri=file_upload.uri,
+                        mime_type=file_upload.mime_type,
+                    ),
+                    prompt
+                ],
+                config=config
+            )
+            # Robust: check for empty/None response or response.text
+            if not response or not getattr(response, 'text', None):
+                error_msg = "API returned empty response or no text"
+                if hasattr(response, 'prompt_feedback') and response.prompt_feedback and getattr(response.prompt_feedback, 'block_reason', None):
+                    block_reason = response.prompt_feedback.block_reason
+                    error_msg += f" (Block Reason: {block_reason})"
+                    logging.warning(f"Block Reason: {block_reason}")
+                logging.error(f"API call failed: {error_msg}")
+                raise RuntimeError(error_msg)
+            # Only parse if response.text is not None
+            return parse_json_from_response(response.text)
+    except Exception as e:
+        logging.error(f"API call failed: {e}")
+        raise
+    finally:
+        if file_upload:
+            try:
+                client.files.delete(name=file_upload.name)
+                logging.debug(f"Deleted temp file on API server: {file_upload.name}")
+            except Exception as e:
+                logging.warning(f"Failed to delete uploaded file {file_upload.name}: {e}")
 
 def process_pdf(model_name: str, prompt_text: str, pdf_path: Path, output_dir: Path):
     """
