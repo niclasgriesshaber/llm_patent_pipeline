@@ -73,7 +73,7 @@ def gemini_api_call(model_name: str, prompt: str, pil_image: Image.Image) -> dic
 
     # Set max_output_tokens based on model version
     if "2.5" in model_name:
-        max_output_tokens = 65000
+        max_output_tokens = 65536
     else:
         max_output_tokens = 8192
 
@@ -83,11 +83,15 @@ def gemini_api_call(model_name: str, prompt: str, pil_image: Image.Image) -> dic
         "response_mime_type": "application/json",
     }
 
-    # For gemini-2.5-flash, set thinking_config as in gemini-2.5-parallel.py
+    # For gemini-2.5 models, set thinking_config with model-specific budgets
     if "2.5" in model_name:
-        logging.info("Using Gemini 2.5-specific config with dynamic thinking budget and max_output_tokens=50000.")
+        if "pro" in model_name:
+            thinking_budget = 32768  # For gemini-2.5-pro
+        else:
+            thinking_budget = 24576  # For gemini-2.5-flash
+        logging.info(f"Using Gemini 2.5-specific config with thinking budget {thinking_budget} and max_output_tokens={max_output_tokens}.")
         config_args["thinking_config"] = types.ThinkingConfig(
-            thinking_budget=24576,
+            thinking_budget=thinking_budget,
             include_thoughts=True
         )
 
@@ -218,8 +222,8 @@ def process_pdf(model_name: str, prompt_text: str, pdf_path: Path, output_dir: P
         # Add sequential 'id' column as the first column
         df = df.reset_index(drop=True)
         df.insert(0, 'id', range(1, len(df) + 1))
-        # Only keep 'id', 'entry', and 'category' columns (in that order)
-        keep_cols = [col for col in ['id', 'entry', 'category'] if col in df.columns]
+        # Only keep 'id' and 'entry' columns (category is used internally but removed for final output)
+        keep_cols = [col for col in ['id', 'entry'] if col in df.columns]
         df = df[keep_cols]
         output_dir.mkdir(parents=True, exist_ok=True)
         df.to_csv(output_csv_path, index=False)
