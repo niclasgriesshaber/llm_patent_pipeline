@@ -8,6 +8,7 @@ You will **ONLY** extract information from the two main content columns on the p
 ### IGNORE Absolutely:
 *   **Running Page Headers:** The text at the very top of the page (e.g., "Kl. 18. Nr. 55711." or "Kl. 19. Nr. 57 185." at the top-left and top-right).
 *   **Page Numbers:** Any numbers located in the center of the running header.
+*   **Footer Information:** Any text at the bottom of the page that begins with an asterisk (*), is a correction ("Berichtigung"), or contains standalone numbers (e.g., "2*", "1917") that are clearly not part of the patent entries above.
 
 ### Reading & Processing Order
 Your output must strictly follow this sequence:
@@ -57,7 +58,8 @@ For each block of text you encounter in the two main content columns, you must c
     > **Example:** {"entry": "55711. COOMES, M, F., Arzt, und A. W. HYDE, in Louisville, 6281/2 Fourth Street bezw. 828 Second Street, Grafschaft Jefferson, Staat Kentucky, V. St. A.; Vertreter: C. PIEPER in Berlin N.W., Hindersinstraſse 3. Verfahren zur Bereitung von Stahl. 26. Februar 1890. A — 252."}
 
 ### C. Content to Explicitly IGNORE
-*   **Lists of Patent Numbers:** After a category heading, you will often see a block of text that is just a list of patent numbers and codes (e.g., 54571 A 3. — 54814 A 77. — 54881 A 37. — 54977 A 54.). **DO NOT** extract these lists that are just consisting of patent numbers and patent codes. These invalid patent entries only occur directly below category headings. Dates in a new line below a valid patent entry belong to the valid patent entry.
+*   **Lists of Patent Numbers:** After a category heading, you will often see a block of text that is just a list of patent numbers and codes (e.g., 54571 A 3. — 54814 A 77. — 54881 A 37. — 54977 A 54.). **DO NOT** extract these lists that are just consisting of patent numbers and patent codes. These invalid patent entries only occur directly below category headings. **These lists can span multiple lines and form large blocks of text - ignore the entire block.** Dates in a new line below a valid patent entry belong to the valid patent entry.
+*   **Reference Information ("Vgl."):** Any text that begins with "Vgl." (e.g., "Vgl. Kl. 12 P. R. 21188. – Kl. 45 P. R. 17470, 20344.") that appears between patent entries and class headings. **DO NOT** extract this cross-reference information.
 
 ## III. JSON Output Specification (Strict)
 
