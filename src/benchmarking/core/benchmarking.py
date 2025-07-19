@@ -57,24 +57,22 @@ def create_clean_text_for_cer(df: pd.DataFrame) -> str:
     return "".join(text_blocks)
 
 def create_text_file_from_entries(df: pd.DataFrame) -> str:
-    """
-    Creates a text file content from Excel entries for display.
-    Each entry becomes one line (removing internal line breaks), with line breaks between entries.
-    """
-    if df.empty:
-        return ""
-    
-    text_blocks = []
+    """Create a text file representation for display with line breaks between entries."""
+    entries = []
     for _, row in df.iterrows():
-        entry = row['entry']
-        if pd.isna(entry) or str(entry).strip() == '':
-            continue
-        # Replace line breaks within entries with spaces for clean display
-        clean_entry = str(entry).replace('\n', ' ')
-        text_blocks.append(clean_entry)
+        # Combine all non-null text fields and trim whitespace
+        text_parts = []
+        for col in df.columns:
+            if pd.notna(row[col]) and str(row[col]).strip():
+                text_parts.append(str(row[col]).strip())
+        
+        if text_parts:
+            # Join parts with spaces and trim the final entry
+            entry_text = ' '.join(text_parts).strip()
+            entries.append(entry_text)
     
-    # Join entries with double line breaks to clearly separate them
-    return "\n\n".join(text_blocks)
+    # Join entries with double line breaks (one empty line between entries)
+    return '\n\n'.join(entries)
 
 def create_normalized_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     """Create a normalized version of a dataframe for CER comparison."""
