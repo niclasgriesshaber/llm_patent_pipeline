@@ -36,6 +36,46 @@ def normalize_text_for_cer(text: str) -> str:
     
     return text
 
+def create_clean_text_for_cer(df: pd.DataFrame) -> str:
+    """
+    Creates clean text for CER calculation by concatenating all entries.
+    Keeps line breaks within entries but removes line breaks between entries.
+    """
+    if df.empty:
+        return ""
+    
+    text_blocks = []
+    for _, row in df.iterrows():
+        entry = row['entry']
+        if pd.isna(entry) or str(entry).strip() == '':
+            continue
+        # Replace line breaks within entries with spaces for clean concatenation
+        clean_entry = str(entry).replace('\n', ' ')
+        text_blocks.append(clean_entry)
+    
+    # Join entries without line breaks between them
+    return "".join(text_blocks)
+
+def create_text_file_from_entries(df: pd.DataFrame) -> str:
+    """
+    Creates a text file content from Excel entries for display.
+    Each entry becomes one line (removing internal line breaks), with line breaks between entries.
+    """
+    if df.empty:
+        return ""
+    
+    text_blocks = []
+    for _, row in df.iterrows():
+        entry = row['entry']
+        if pd.isna(entry) or str(entry).strip() == '':
+            continue
+        # Replace line breaks within entries with spaces for clean display
+        clean_entry = str(entry).replace('\n', ' ')
+        text_blocks.append(clean_entry)
+    
+    # Join entries with double line breaks to clearly separate them
+    return "\n\n".join(text_blocks)
+
 def create_normalized_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     """Create a normalized version of a dataframe for CER comparison."""
     if df.empty:
@@ -300,26 +340,56 @@ Plotly.newPlot('cer-graph', data, layout);
 '''
 
 def make_side_by_side_diff(gt_text, llm_text, file, year, cer):
-    """Create a side-by-side diff with minimal highlighting of identical text."""
+    """Create a side-by-side text file comparison with character-level diffing."""
     
-    # Split into lines and normalize whitespace for comparison
-    gt_lines = gt_text.splitlines()
-    llm_lines = llm_text.splitlines()
+    # Use difflib to get character-level differences
+    matcher = difflib.SequenceMatcher(None, gt_text, llm_text)
     
-    # Normalize whitespace for comparison
-    gt_lines_normalized = [line.rstrip() for line in gt_lines]
-    llm_lines_normalized = [line.rstrip() for line in llm_lines]
+    # Create the HTML structure
+    html_parts = [
+        f'<section class="diff-section">',
+        f'<h2 class="diff-file-heading">{html_escape(file)}</h2>',
+        f'<h3 class="diff-cer">CER: {cer:.2%}</h3>',
+        f'<div class="text-file-comparison">',
+        f'<div class="text-file-container">',
+        f'<div class="text-file-header">Ground Truth Text File</div>',
+        f'<div class="text-file-content">'
+    ]
     
-    # Use difflib with minimal context to reduce highlighting of identical text
-    diff_html = difflib.HtmlDiff(wrapcolumn=80).make_table(
-        gt_lines_normalized,
-        llm_lines_normalized,
-        fromdesc='<span class="diff-table-header">Ground Truth</span>',
-        todesc='<span class="diff-table-header">LLM Output</span>',
-        context=True,  # Show context around changes
-        numlines=0     # Minimal context to reduce highlighting of identical text
-    )
-    return f'<section class="diff-section"><h2 class="diff-file-heading">{html_escape(file)}</h2><h3 class="diff-cer">CER: {cer:.2%}</h3>{diff_html}</section>'
+    # Process ground truth text with highlighting
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == 'equal':
+            # Same text - no highlighting, preserve line breaks
+            html_parts.append(html_escape(gt_text[i1:i2]))
+        else:
+            # Different text - highlight with yellow (inline span)
+            html_parts.append(f'<span class="diff-highlight">{html_escape(gt_text[i1:i2])}</span>')
+    
+    html_parts.extend([
+        f'</div>',  # Close text-file-content
+        f'</div>',  # Close text-file-container
+        f'<div class="text-file-container">',
+        f'<div class="text-file-header">LLM Output Text File</div>',
+        f'<div class="text-file-content">'
+    ])
+    
+    # Process LLM text with highlighting
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == 'equal':
+            # Same text - no highlighting, preserve line breaks
+            html_parts.append(html_escape(llm_text[j1:j2]))
+        else:
+            # Different text - highlight with yellow (inline span)
+            html_parts.append(f'<span class="diff-highlight">{html_escape(llm_text[j1:j2])}</span>')
+    
+    html_parts.extend([
+        f'</div>',  # Close text-file-content
+        f'</div>',  # Close text-file-container
+        f'</div>',  # Close text-file-comparison
+        f'</section>'
+    ])
+    
+    return ''.join(html_parts)  # Use join without newlines to prevent artificial breaks
 
 # --- Main Comparison Logic ---
 
@@ -405,18 +475,19 @@ def run_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Path, fuzzy
     .summary-table th,.summary-table td{border:1px solid #ddd;padding:10px 8px;text-align:left;}
     .summary-table th{background:#e9e9f2;font-weight:600;}
     .summary-table caption{font-weight: bold; margin-bottom: 18px; font-size: 1.2em;}
-    .diff-section{background:#f9fafc;border:1px solid #dbe2ea;border-radius:14px;margin-bottom:40px;padding:28px 22px;box-shadow:0 4px 16px rgba(0,0,0,0.06);overflow-x:auto;}
+    .diff-section{background:#f9fafc;border:1px solid #dbe2ea;border-radius:14px;margin-bottom:40px;padding:28px 22px;box-shadow:0 4px 16px rgba(0,0,0,0.06);}
     .diff-file-heading{font-size:1.35em;font-weight:700;margin-bottom:8px;letter-spacing:0.5px;}
     .diff-cer{font-size:1.08em;font-weight:600;margin-bottom:18px;}
-    table.diff{font-size:1em;max-width:100%;width:100%;word-break:break-word;background:#fff;border-radius:8px;border:1.5px solid #e0e0e0;box-shadow:0 1px 4px rgba(0,0,0,0.03);margin-bottom:0;}
-    td.diff_header{background:#f2f2f2;font-weight:bold;font-size:1.08em;}
-    td.diff_next{background:#e9e9f2;}
-    span.diff_add{background:#d4f8e8;color:#228b22;}
-    span.diff_sub{background:#ffe0e0;color:#b22222;}
-    span.diff_chg{background:#fff7cc;color:#b8860b;}
-    td{white-space:pre-wrap;}
-    .diff-table-header{font-size:1.08em;font-weight:700;letter-spacing:0.2px;}
-    table.diff tr:hover td{background:#f6f8fa;transition:background 0.2s;}
+    /* Text file comparison styling */
+    .text-file-comparison{display:flex;gap:20px;margin-top:20px;}
+    .text-file-container{flex:1;background:#fff;border-radius:8px;border:1.5px solid #e0e0e0;box-shadow:0 1px 4px rgba(0,0,0,0.03);}
+    .text-file-header{background:#f2f2f2;font-weight:bold;font-size:1.08em;padding:12px 16px;margin:0;border-radius:8px 8px 0 0;border-bottom:1px solid #e0e0e0;}
+    .text-file-content{padding:16px;background:#fafafa;border-radius:0 0 8px 8px;font-family:monospace;font-size:0.9em;line-height:1.5;white-space:pre-wrap;overflow-x:auto;word-break:break-word;}
+    .text-line{padding:4px 16px;border-bottom:1px solid #f0f0f0;font-family:monospace;font-size:0.9em;line-height:1.4;white-space:pre-wrap;word-break:break-word;}
+    .text-line:last-child{border-bottom:none;}
+    .text-line:hover{background:#f6f8fa;}
+    .text-line.empty-line{height:12px;background:#f8f8f8;border-bottom:1px solid #e8e8e8;}
+    .diff-highlight{background-color:rgba(255,255,0,0.6);padding:1px 2px;border-radius:2px;}
     .normalization-notice{background:#e3f2fd;border:1px solid #2196f3;border-radius:8px;padding:16px;margin-bottom:24px;color:#1565c0;}
     </style>'''
     
@@ -430,8 +501,13 @@ def run_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Path, fuzzy
             continue
             
         # Original text for comparison (unnormalized)
-        gt_text = "\n".join(gt_df['entry'].tolist())
-        llm_text = "\n".join(llm_df['entry'].tolist())
+        # Create text files from Excel entries with proper structure for display
+        gt_text = create_text_file_from_entries(gt_df)
+        llm_text = create_text_file_from_entries(llm_df)
+        
+        # Create clean text files for CER calculation (no line breaks between entries)
+        gt_text_clean = create_clean_text_for_cer(gt_df)
+        llm_text_clean = create_clean_text_for_cer(llm_df)
         
         # Normalized text for normalized CER calculation
         gt_df_normalized = create_normalized_dataframe(gt_df)
@@ -440,11 +516,11 @@ def run_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Path, fuzzy
         llm_text_normalized = " ".join(llm_df_normalized['entry'].tolist())
         
         # Calculate CERs
-        cer_unnormalized = Levenshtein.normalized_distance(gt_text, llm_text)
+        cer_unnormalized = Levenshtein.normalized_distance(gt_text_clean, llm_text_clean)
         cer_normalized = Levenshtein.normalized_distance(gt_text_normalized, llm_text_normalized)
         
         # Get Levenshtein stats
-        ins, del_, sub = compute_levenshtein_stats(gt_text, llm_text)
+        ins, del_, sub = compute_levenshtein_stats(gt_text_clean, llm_text_clean)
         
         year = extract_year_from_filename(stem)
         
@@ -483,8 +559,9 @@ def run_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Path, fuzzy
             if gt_df.empty or llm_df.empty:
                 continue
                 
-            all_gt_text += "\n".join(gt_df['entry'].tolist()) + "\n"
-            all_llm_text += "\n".join(llm_df['entry'].tolist()) + "\n"
+            # Use clean text files for CER calculation
+            all_gt_text += create_clean_text_for_cer(gt_df)
+            all_llm_text += create_clean_text_for_cer(llm_df)
             
             gt_df_normalized = create_normalized_dataframe(gt_df)
             llm_df_normalized = create_normalized_dataframe(llm_df)
@@ -512,12 +589,11 @@ def run_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Path, fuzzy
         
         diff_legend_html = '''
         <div class="diff-legend" style="margin: 36px 0 24px 0; padding: 18px 24px; background: #f8f8fc; border-radius: 8px; border: 1px solid #e0e0e0; max-width: 700px;">
-          <strong>Legend for Side-by-Side Comparison:</strong>
-          <ul style="margin: 10px 0 0 20px; padding: 0; font-size: 1em;">
-            <li><span style="background:#d4f8e8; color:#228b22; padding:2px 6px; border-radius:3px;">Insertion</span>: Text present in the LLM output but not in the ground truth.</li>
-            <li><span style="background:#ffe0e0; color:#b22222; padding:2px 6px; border-radius:3px;">Deletion</span>: Text present in the ground truth but not in the LLM output.</li>
-            <li><span style="background:#fff7cc; color:#b8860b; padding:2px 6px; border-radius:3px;">Substitution</span>: Text that differs between the ground truth and the LLM output.</li>
-          </ul>
+          <strong>Text File Comparison:</strong>
+          <p style="margin: 10px 0 0 0; font-size: 1em;">
+            This comparison shows the complete text files created from Excel entries. Each entry is preserved as a block with its original formatting. 
+            Empty lines between entries show the structure of the original Excel file. The CER is calculated on the complete text files.
+          </p>
         </div>
         '''
 
