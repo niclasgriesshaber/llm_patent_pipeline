@@ -37,33 +37,31 @@ def normalize_text_for_cer(text: str) -> str:
     return text
 
 def create_clean_text_for_cer(df: pd.DataFrame) -> str:
-    """
-    Creates clean text for CER calculation by concatenating all entries.
-    Keeps line breaks within entries but removes line breaks between entries.
-    """
-    if df.empty:
-        return ""
-    
-    text_blocks = []
+    """Create clean text for CER calculation by concatenating entries without line breaks between entries."""
+    entries = []
     for _, row in df.iterrows():
-        entry = row['entry']
-        if pd.isna(entry) or str(entry).strip() == '':
-            continue
-        # Replace line breaks within entries with spaces for clean concatenation
-        clean_entry = str(entry).replace('\n', ' ')
-        text_blocks.append(clean_entry)
+        # Combine all non-null text fields, excluding 'id' column
+        text_parts = []
+        for col in df.columns:
+            if col != 'id' and pd.notna(row[col]) and str(row[col]).strip():
+                text_parts.append(str(row[col]).strip())
+        
+        if text_parts:
+            # Join parts with spaces
+            entry_text = ' '.join(text_parts)
+            entries.append(entry_text)
     
-    # Join entries without line breaks between them
-    return "".join(text_blocks)
+    # Join entries without line breaks between them for CER calculation
+    return ' '.join(entries)
 
 def create_text_file_from_entries(df: pd.DataFrame) -> str:
     """Create a text file representation for display with line breaks between entries."""
     entries = []
     for _, row in df.iterrows():
-        # Combine all non-null text fields and trim whitespace
+        # Combine all non-null text fields and trim whitespace, excluding 'id' column
         text_parts = []
         for col in df.columns:
-            if pd.notna(row[col]) and str(row[col]).strip():
+            if col != 'id' and pd.notna(row[col]) and str(row[col]).strip():
                 text_parts.append(str(row[col]).strip())
         
         if text_parts:
