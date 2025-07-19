@@ -167,10 +167,8 @@ def run_single_benchmark(model_name: str, prompt_name: str, max_workers: int = 2
             'perfect': all_results.get('perfect', {}),
             'student': all_results.get('student', {}),
             'summary': {
-                'perfect_cer_normalized': all_results.get('perfect', {}).get('character_error_rate_normalized', 0),
-                'perfect_cer_unnormalized': all_results.get('perfect', {}).get('character_error_rate_unnormalized', 0),
-                'student_cer_normalized': all_results.get('student', {}).get('character_error_rate_normalized', 0),
-                'student_cer_unnormalized': all_results.get('student', {}).get('character_error_rate_unnormalized', 0),
+                'perfect_cer': all_results.get('perfect', {}).get('character_error_rate', 0),
+                'student_cer': all_results.get('student', {}).get('character_error_rate', 0),
                 'perfect_match_rate': all_results.get('perfect', {}).get('overall_match_rate', 0),
                 'student_match_rate': all_results.get('student', {}).get('overall_match_rate', 0),
                 'files_processed': len(set(

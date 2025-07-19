@@ -380,11 +380,9 @@ def run_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Path, fuzzy
     fuzzy_report_path.write_text(fuzzy_html_content, encoding='utf-8')
     logging.info(f"Fuzzy report saved to {fuzzy_report_path}")
 
-    # --- CER and Diffing (Normalized and Unnormalized) ---
-    summary_rows_normalized = []
-    summary_rows_unnormalized = []
-    diff_sections_normalized = []
-    diff_sections_unnormalized = []
+    # --- CER and Diffing (Normalized) ---
+    summary_rows = []
+    diff_sections = []
     
     # Style section with improved diff table responsiveness
     style = '''<style>
@@ -419,28 +417,20 @@ def run_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Path, fuzzy
         if gt_df.empty or llm_df.empty:
             continue
             
-        # Original text for unnormalized comparison
+        # Original text for comparison (unnormalized)
         gt_text = "\n".join(gt_df['entry'].tolist())
         llm_text = "\n".join(llm_df['entry'].tolist())
         
-        # Normalized text for normalized comparison
-        gt_df_normalized = create_normalized_dataframe(gt_df)
-        llm_df_normalized = create_normalized_dataframe(llm_df)
-        gt_text_normalized = " ".join(gt_df_normalized['entry'].tolist())
-        llm_text_normalized = " ".join(llm_df_normalized['entry'].tolist())
-        
-        # Calculate CERs
+        # Calculate CER
         cer_unnormalized = Levenshtein.normalized_distance(gt_text, llm_text)
-        cer_normalized = Levenshtein.normalized_distance(gt_text_normalized, llm_text_normalized)
         
         # Get Levenshtein stats
         ins, del_, sub = compute_levenshtein_stats(gt_text, llm_text)
-        ins_norm, del_norm, sub_norm = compute_levenshtein_stats(gt_text_normalized, llm_text_normalized)
         
         year = extract_year_from_filename(stem)
         
-        # Unnormalized summary
-        summary_rows_unnormalized.append({
+        # Summary
+        summary_rows.append({
             'file': stem,
             'year': year,
             'cer': cer_unnormalized,
@@ -453,32 +443,17 @@ def run_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Path, fuzzy
             'sub': sub
         })
         
-        # Normalized summary
-        summary_rows_normalized.append({
-            'file': stem,
-            'year': year,
-            'cer': cer_normalized,
-            'words_gt': len(gt_text_normalized.split()),
-            'words_llm': len(llm_text_normalized.split()),
-            'chars_gt': len(gt_text_normalized),
-            'chars_llm': len(llm_text_normalized),
-            'ins': ins_norm,
-            'del': del_norm,
-            'sub': sub_norm
-        })
-        
-        # Create diff sections
-        diff_sections_unnormalized.append(make_side_by_side_diff(gt_text, llm_text, stem, year, cer_unnormalized))
-        diff_sections_normalized.append(make_side_by_side_diff(gt_text_normalized, llm_text_normalized, stem, year, cer_normalized))
+        # Create diff section
+        diff_sections.append(make_side_by_side_diff(gt_text, llm_text, stem, year, cer_unnormalized))
 
-    # Generate normalized report
-    if summary_rows_normalized:
-        summary_table_html_norm = '<div style="margin-top: 32px;">' + make_summary_table_html(summary_rows_normalized) + '</div>'
-        cer_graph_html_norm = make_interactive_cer_graph(summary_rows_normalized)
+    # Generate diff report
+    if summary_rows:
+        summary_table_html = '<div style="margin-top: 32px;">' + make_summary_table_html(summary_rows) + '</div>'
+        cer_graph_html = make_interactive_cer_graph(summary_rows)
         
         normalization_notice = '''
         <div class="normalization-notice">
-            <strong>Normalized Comparison Notice:</strong> This report shows results with text normalized to ASCII letters (a-z), digits (0-9), lowercase, no linebreaks, and trimmed whitespace. This matches academic CER reporting standards.
+            <strong>Text Processing Notice:</strong> This report shows results with original text including all characters, case, linebreaks, and formatting preserved.
         </div>
         '''
         
@@ -493,9 +468,9 @@ def run_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Path, fuzzy
         </div>
         '''
 
-        full_html_normalized = (
+        full_html = (
             '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">'
-            '<title>Diff Report - Normalized</title>'
+            '<title>Diff Report</title>'
             '{mathjax_script}'
             '{style}'
             '</head><body><div class="container">'
@@ -506,80 +481,34 @@ def run_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Path, fuzzy
             style=style,
             normalization_notice=normalization_notice,
             cer_definition=cer_definition,
-            summary_table_html=summary_table_html_norm,
-            cer_graph_html=cer_graph_html_norm,
+            summary_table_html=summary_table_html,
+            cer_graph_html=cer_graph_html,
             diff_legend_html=diff_legend_html,
-            diff_sections=''.join(diff_sections_normalized)
+            diff_sections=''.join(diff_sections)
         )
-        diff_report_normalized_path = output_dir / "diff_report_normalized.html"
-        diff_report_normalized_path.write_text(full_html_normalized, encoding='utf-8')
-        logging.info(f"Normalized diff report saved to {diff_report_normalized_path}")
+        diff_report_path = output_dir / "diff_report.html"
+        diff_report_path.write_text(full_html, encoding='utf-8')
+        logging.info(f"Diff report saved to {diff_report_path}")
 
-    # Generate unnormalized report
-    if summary_rows_unnormalized:
-        summary_table_html_unnorm = '<div style="margin-top: 32px;">' + make_summary_table_html(summary_rows_unnormalized) + '</div>'
-        cer_graph_html_unnorm = make_interactive_cer_graph(summary_rows_unnormalized)
-        
-        normalization_notice = '''
-        <div class="normalization-notice">
-            <strong>Unnormalized Comparison Notice:</strong> This report shows results with original text including all characters, case, linebreaks, and formatting preserved.
-        </div>
-        '''
-        
-        diff_legend_html = '''
-        <div class="diff-legend" style="margin: 36px 0 24px 0; padding: 18px 24px; background: #f8f8fc; border-radius: 8px; border: 1px solid #e0e0e0; max-width: 700px;">
-          <strong>Legend for Side-by-Side Comparison:</strong>
-          <ul style="margin: 10px 0 0 20px; padding: 0; font-size: 1em;">
-            <li><span style="background:#d4f8e8; color:#228b22; padding:2px 6px; border-radius:3px;">Insertion</span>: Text present in the LLM output but not in the ground truth.</li>
-            <li><span style="background:#ffe0e0; color:#b22222; padding:2px 6px; border-radius:3px;">Deletion</span>: Text present in the ground truth but not in the LLM output.</li>
-            <li><span style="background:#fff7cc; color:#b8860b; padding:2px 6px; border-radius:3px;">Substitution</span>: Text that differs between the ground truth and the LLM output.</li>
-          </ul>
-        </div>
-        '''
-
-        full_html_unnormalized = (
-            '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">'
-            '<title>Diff Report - Unnormalized</title>'
-            '{mathjax_script}'
-            '{style}'
-            '</head><body><div class="container">'
-            '{normalization_notice}{cer_definition}{summary_table_html}{cer_graph_html}{diff_legend_html}{diff_sections}'
-            '</div></body></html>'
-        ).format(
-            mathjax_script=mathjax_script,
-            style=style,
-            normalization_notice=normalization_notice,
-            cer_definition=cer_definition,
-            summary_table_html=summary_table_html_unnorm,
-            cer_graph_html=cer_graph_html_unnorm,
-            diff_legend_html=diff_legend_html,
-            diff_sections=''.join(diff_sections_unnormalized)
-        )
-        diff_report_unnormalized_path = output_dir / "diff_report_unnormalized.html"
-        diff_report_unnormalized_path.write_text(full_html_unnormalized, encoding='utf-8')
-        logging.info(f"Unnormalized diff report saved to {diff_report_unnormalized_path}")
-
-    # Calculate overall CER (use normalized for academic standards)
+    # Calculate overall CER
     overall_cer = 0
-    if summary_rows_normalized:
-        total_chars_gt = sum(row['chars_gt'] for row in summary_rows_normalized)
-        total_chars_llm = sum(row['chars_llm'] for row in summary_rows_normalized)
+    if summary_rows:
+        total_chars_gt = sum(row['chars_gt'] for row in summary_rows)
         if total_chars_gt > 0:
-            overall_cer = sum(row['cer'] * row['chars_gt'] for row in summary_rows_normalized) / total_chars_gt
+            overall_cer = sum(row['cer'] * row['chars_gt'] for row in summary_rows) / total_chars_gt
 
     # --- Return Results for JSON Generation ---
     results = {
         'comparison_type': comparison_type,
         'overall_match_rate': round(overall_match_rate, 2),
-        'character_error_rate_normalized': round(overall_cer * 100, 2),
-        'character_error_rate_unnormalized': round(sum(row['cer'] for row in summary_rows_unnormalized) / len(summary_rows_unnormalized) * 100, 2) if summary_rows_unnormalized else 0,
+        'character_error_rate': round(overall_cer * 100, 2),
         'total_gt_entries': total_gt_entries,
         'total_llm_entries': total_llm_entries,
         'total_gt_matched': total_gt_matched,
         'total_llm_matched': total_llm_matched,
         'fuzzy_threshold': fuzzy_threshold,
         'common_files_processed': len(common_stems),
-        'files_with_results': [row['file'] for row in summary_rows_normalized]
+        'files_with_results': [row['file'] for row in summary_rows]
     }
     
     return results 
