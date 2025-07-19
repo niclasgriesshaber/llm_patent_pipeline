@@ -300,8 +300,9 @@ Plotly.newPlot('cer-graph', data, layout);
 '''
 
 def make_side_by_side_diff(gt_text, llm_text, file, year, cer):
-    # Normalize whitespace for comparison to reduce false positives
-    # but keep original text for display
+    """Create a side-by-side diff with minimal highlighting of identical text."""
+    
+    # Split into lines and normalize whitespace for comparison
     gt_lines = gt_text.splitlines()
     llm_lines = llm_text.splitlines()
     
@@ -309,13 +310,14 @@ def make_side_by_side_diff(gt_text, llm_text, file, year, cer):
     gt_lines_normalized = [line.rstrip() for line in gt_lines]
     llm_lines_normalized = [line.rstrip() for line in llm_lines]
     
+    # Use difflib with minimal context to reduce highlighting of identical text
     diff_html = difflib.HtmlDiff(wrapcolumn=80).make_table(
         gt_lines_normalized,
         llm_lines_normalized,
         fromdesc='<span class="diff-table-header">Ground Truth</span>',
         todesc='<span class="diff-table-header">LLM Output</span>',
-        context=False,  # Show all changes, not just context
-        numlines=2
+        context=True,  # Show context around changes
+        numlines=0     # Minimal context to reduce highlighting of identical text
     )
     return f'<section class="diff-section"><h2 class="diff-file-heading">{html_escape(file)}</h2><h3 class="diff-cer">CER: {cer:.2%}</h3>{diff_html}</section>'
 
