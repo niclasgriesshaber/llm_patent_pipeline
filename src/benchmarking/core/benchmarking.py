@@ -251,7 +251,7 @@ def make_summary_table_html(summary_rows):
     table = [
         '<table class="summary-table">',
         '<caption style="font-weight: bold; margin-bottom: 18px; font-size: 1.2em;">File-level CER and Edit Statistics</caption>',
-        '<tr><th>File</th><th>Year</th><th>CER</th><th>Words (GT)</th><th>Words (LLM)</th><th>Chars (GT)</th><th>Chars (LLM)</th><th>Insertions</th><th>Deletions</th><th>Substitutions</th></tr>'
+        '<tr><th>File</th><th>Year</th><th>CER (Unnorm)</th><th>CER (Norm)</th><th>Words (GT)</th><th>Words (LLM)</th><th>Chars (GT)</th><th>Chars (LLM)</th><th>Insertions</th><th>Deletions</th><th>Substitutions</th></tr>'
     ]
     for row in summary_rows:
         table.append(
@@ -259,6 +259,7 @@ def make_summary_table_html(summary_rows):
             f'<td>{html_escape(row["file"])}<br></td>'
             f'<td>{html_escape(row["year"])}<br></td>'
             f'<td>{row["cer"]:.2%}</td>'
+            f'<td>{row["cer_normalized"]:.2%}</td>'
             f'<td>{row["words_gt"]}</td>'
             f'<td>{row["words_llm"]}</td>'
             f'<td>{row["chars_gt"]}</td>'
@@ -299,9 +300,18 @@ Plotly.newPlot('cer-graph', data, layout);
 '''
 
 def make_side_by_side_diff(gt_text, llm_text, file, year, cer):
+    # Normalize whitespace for comparison to reduce false positives
+    # but keep original text for display
+    gt_lines = gt_text.splitlines()
+    llm_lines = llm_text.splitlines()
+    
+    # Normalize whitespace for comparison
+    gt_lines_normalized = [line.rstrip() for line in gt_lines]
+    llm_lines_normalized = [line.rstrip() for line in llm_lines]
+    
     diff_html = difflib.HtmlDiff(wrapcolumn=80).make_table(
-        gt_text.splitlines(),
-        llm_text.splitlines(),
+        gt_lines_normalized,
+        llm_lines_normalized,
         fromdesc='<span class="diff-table-header">Ground Truth</span>',
         todesc='<span class="diff-table-header">LLM Output</span>',
         context=False,  # Show all changes, not just context
@@ -409,7 +419,7 @@ def run_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Path, fuzzy
     </style>'''
     
     mathjax_script = '<script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>\n<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>'
-    cer_definition = '''<div class="summary-section"><h2>Character Error Rate (CER) Definition</h2><p>$$\\mathrm{CER} = \\frac{\\text{Levenshtein distance}}{\\text{number of characters in ground truth}}$$<br>Insertions, deletions, and substitutions are counted as edit operations. Lower CER means higher similarity.</p></div>'''
+    cer_definition = '''<div class="summary-section"><h2>Character Error Rate (CER) Definition</h2><p>$$\\mathrm{CER} = \\frac{\\text{Levenshtein distance}}{\\text{number of characters in ground truth}}$$<br>Insertions, deletions, and substitutions are counted as edit operations. Lower CER means higher similarity.</p><p><strong>Unnormalized CER:</strong> Uses original text with all characters, case, linebreaks, and formatting preserved.</p><p><strong>Normalized CER:</strong> Uses text normalized to ASCII letters (a-z), digits (0-9), lowercase, no linebreaks, and trimmed whitespace (academic standard).</p></div>'''
 
     for stem in common_stems:
         gt_df = load_gt_file(gt_xlsx_dir / f"{stem}.xlsx")
@@ -421,8 +431,15 @@ def run_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Path, fuzzy
         gt_text = "\n".join(gt_df['entry'].tolist())
         llm_text = "\n".join(llm_df['entry'].tolist())
         
-        # Calculate CER
+        # Normalized text for normalized CER calculation
+        gt_df_normalized = create_normalized_dataframe(gt_df)
+        llm_df_normalized = create_normalized_dataframe(llm_df)
+        gt_text_normalized = " ".join(gt_df_normalized['entry'].tolist())
+        llm_text_normalized = " ".join(llm_df_normalized['entry'].tolist())
+        
+        # Calculate CERs
         cer_unnormalized = Levenshtein.normalized_distance(gt_text, llm_text)
+        cer_normalized = Levenshtein.normalized_distance(gt_text_normalized, llm_text_normalized)
         
         # Get Levenshtein stats
         ins, del_, sub = compute_levenshtein_stats(gt_text, llm_text)
@@ -434,6 +451,7 @@ def run_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Path, fuzzy
             'file': stem,
             'year': year,
             'cer': cer_unnormalized,
+            'cer_normalized': cer_normalized,
             'words_gt': len(gt_text.split()),
             'words_llm': len(llm_text.split()),
             'chars_gt': len(gt_text),
@@ -451,9 +469,42 @@ def run_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Path, fuzzy
         summary_table_html = '<div style="margin-top: 32px;">' + make_summary_table_html(summary_rows) + '</div>'
         cer_graph_html = make_interactive_cer_graph(summary_rows)
         
+        # Calculate average CER by concatenating all files
+        all_gt_text = ""
+        all_llm_text = ""
+        all_gt_text_normalized = ""
+        all_llm_text_normalized = ""
+        
+        for stem in common_stems:
+            gt_df = load_gt_file(gt_xlsx_dir / f"{stem}.xlsx")
+            llm_df = load_llm_file(llm_csv_dir / f"{stem}.csv")
+            if gt_df.empty or llm_df.empty:
+                continue
+                
+            all_gt_text += "\n".join(gt_df['entry'].tolist()) + "\n"
+            all_llm_text += "\n".join(llm_df['entry'].tolist()) + "\n"
+            
+            gt_df_normalized = create_normalized_dataframe(gt_df)
+            llm_df_normalized = create_normalized_dataframe(llm_df)
+            all_gt_text_normalized += " ".join(gt_df_normalized['entry'].tolist()) + " "
+            all_llm_text_normalized += " ".join(llm_df_normalized['entry'].tolist()) + " "
+        
+        avg_cer_unnormalized = Levenshtein.normalized_distance(all_gt_text, all_llm_text)
+        avg_cer_normalized = Levenshtein.normalized_distance(all_gt_text_normalized, all_llm_text_normalized)
+        
         normalization_notice = '''
         <div class="normalization-notice">
             <strong>Text Processing Notice:</strong> This report shows results with original text including all characters, case, linebreaks, and formatting preserved.
+        </div>
+        '''
+        
+        # Add average CER section
+        avg_cer_html = f'''
+        <div class="summary-section">
+            <h2>Average Character Error Rate (CER)</h2>
+            <p><strong>Unnormalized CER:</strong> {avg_cer_unnormalized:.2%} (calculated by concatenating all files)</p>
+            <p><strong>Normalized CER:</strong> {avg_cer_normalized:.2%} (calculated by concatenating all normalized files)</p>
+            <p><em>Note: Average CER is computed by concatenating all files and calculating the overall CER, not by averaging individual file CERs.</em></p>
         </div>
         '''
         
@@ -474,7 +525,7 @@ def run_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Path, fuzzy
             '{mathjax_script}'
             '{style}'
             '</head><body><div class="container">'
-            '{normalization_notice}{cer_definition}{summary_table_html}{cer_graph_html}{diff_legend_html}{diff_sections}'
+            '{normalization_notice}{cer_definition}{summary_table_html}{avg_cer_html}{cer_graph_html}{diff_legend_html}{diff_sections}'
             '</div></body></html>'
         ).format(
             mathjax_script=mathjax_script,
@@ -482,6 +533,7 @@ def run_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Path, fuzzy
             normalization_notice=normalization_notice,
             cer_definition=cer_definition,
             summary_table_html=summary_table_html,
+            avg_cer_html=avg_cer_html,
             cer_graph_html=cer_graph_html,
             diff_legend_html=diff_legend_html,
             diff_sections=''.join(diff_sections)
@@ -490,12 +542,11 @@ def run_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Path, fuzzy
         diff_report_path.write_text(full_html, encoding='utf-8')
         logging.info(f"Diff report saved to {diff_report_path}")
 
-    # Calculate overall CER
+    # Calculate overall CER (use concatenated approach)
     overall_cer = 0
     if summary_rows:
-        total_chars_gt = sum(row['chars_gt'] for row in summary_rows)
-        if total_chars_gt > 0:
-            overall_cer = sum(row['cer'] * row['chars_gt'] for row in summary_rows) / total_chars_gt
+        # Use the concatenated CER calculation
+        overall_cer = avg_cer_unnormalized
 
     # --- Return Results for JSON Generation ---
     results = {

@@ -37,10 +37,8 @@ def create_dashboard(benchmark_data_dir: Path):
                 result_entry = {
                     'model': model_name,
                     'prompt': prompt_name,
-                    'perfect_cer_normalized': summary.get('perfect_cer_normalized', 0),
-                    'perfect_cer_unnormalized': summary.get('perfect_cer_unnormalized', 0),
-                    'student_cer_normalized': summary.get('student_cer_normalized', 0),
-                    'student_cer_unnormalized': summary.get('student_cer_unnormalized', 0),
+                    'perfect_cer': summary.get('perfect_cer', 0),
+                    'student_cer': summary.get('student_cer', 0),
                     'perfect_match_rate': summary.get('perfect_match_rate', 0),
                     'student_match_rate': summary.get('student_match_rate', 0),
                     'files_processed': summary.get('files_processed', 0)
@@ -50,10 +48,8 @@ def create_dashboard(benchmark_data_dir: Path):
                 result_entry = {
                     'model': model_name,
                     'prompt': prompt_name,
-                    'perfect_cer_normalized': data.get('character_error_rate', 0),
-                    'perfect_cer_unnormalized': data.get('character_error_rate', 0),
-                    'student_cer_normalized': 0,
-                    'student_cer_unnormalized': 0,
+                    'perfect_cer': data.get('character_error_rate', 0),
+                    'student_cer': 0,
                     'perfect_match_rate': data.get('overall_match_rate', 0),
                     'student_match_rate': 0,
                     'files_processed': data.get('common_files_processed', 0)
@@ -73,7 +69,7 @@ def create_dashboard(benchmark_data_dir: Path):
     
     # Reorder columns for better readability
     column_order = [
-        'model', 'prompt', 'perfect_cer_normalized', 'student_cer_normalized',
+        'model', 'prompt', 'perfect_cer', 'student_cer',
         'perfect_match_rate', 'student_match_rate', 'files_processed'
     ]
     # Add any columns that might be in the data but not in the list to the end
@@ -81,13 +77,11 @@ def create_dashboard(benchmark_data_dir: Path):
     df = df[df_cols]
     
     # Sort by the most important metrics (normalized CER for perfect transcriptions)
-    df = df.sort_values(by=['perfect_cer_normalized'], ascending=[True])
+    df = df.sort_values(by=['perfect_cer'], ascending=[True])
     
     df = df.rename(columns={
-        'perfect_cer_normalized': 'Perfect CER (Norm) (%)',
-        'perfect_cer_unnormalized': 'Perfect CER (Unnorm) (%)',
-        'student_cer_normalized': 'Student CER (Norm) (%)',
-        'student_cer_unnormalized': 'Student CER (Unnorm) (%)',
+        'perfect_cer': 'Perfect CER (%)',
+        'student_cer': 'Student CER (%)',
         'perfect_match_rate': 'Perfect Match Rate (%)',
         'student_match_rate': 'Student Match Rate (%)',
         'files_processed': 'Files'
