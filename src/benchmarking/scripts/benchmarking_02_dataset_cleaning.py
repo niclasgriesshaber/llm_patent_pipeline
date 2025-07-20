@@ -232,7 +232,7 @@ def run_single_benchmark(model_name: str, prompt_name: str):
     # Define input and output directories
     prompt_stem = Path(prompt_name).stem
     input_dir = BENCHMARKING_ROOT / 'results' / '01_dataset_construction' / model_name / prompt_stem / 'llm_csv'
-    run_output_dir = BENCHMARKING_ROOT / 'results' / '02_dataset_cleaning' / model_name / prompt_stem
+    run_output_dir = BENCHMARKING_ROOT / 'results' / '02_dataset_cleaning'
     llm_csv_output_dir = run_output_dir / 'llm_csv'
     perfect_comparison_dir = run_output_dir / 'perfect_transcriptions_xlsx'
     student_comparison_dir = run_output_dir / 'student_transcriptions_xlsx'
