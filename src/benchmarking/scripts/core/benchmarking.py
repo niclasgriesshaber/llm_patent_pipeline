@@ -131,7 +131,7 @@ def load_llm_file(filepath: Path) -> pd.DataFrame:
 # --- Fuzzy Matching Logic ---
 
 def match_entries_fuzzy(gt_df: pd.DataFrame, llm_df: pd.DataFrame, threshold: float = 0.85) -> Tuple[List[bool], List[bool], List[str], List[str]]:
-    """Performs bidirectional fuzzy matching between two dataframes."""
+    """Performs mutual best fuzzy matching between two dataframes."""
     gt_entries = gt_df['entry'].astype(str).tolist()
     llm_entries = llm_df['entry'].astype(str).tolist()
     gt_ids = gt_df['id'].astype(str).tolist()
@@ -142,51 +142,49 @@ def match_entries_fuzzy(gt_df: pd.DataFrame, llm_df: pd.DataFrame, threshold: fl
     gt_match_ids = ['—'] * len(gt_entries)
     llm_match_ids = ['—'] * len(llm_entries)
 
-    # Use a set to track matched indices to avoid re-matching
-    used_llm_indices = set()
-    used_gt_indices = set()
-
-    # Match from GT to LLM
+    # Step 1: Calculate all similarity scores
+    similarity_matrix = []
     for i, gt_entry in enumerate(gt_entries):
-        best_score = -1
-        best_idx = -1
+        row = []
         for j, llm_entry in enumerate(llm_entries):
-            if j in used_llm_indices:
-                continue
             score = Levenshtein.normalized_similarity(gt_entry, llm_entry)
-            if score > best_score:
-                best_score = score
-                best_idx = j
-        if best_score >= threshold and best_idx != -1:
-            gt_matches[i] = True
-            llm_matches[best_idx] = True
-            gt_match_ids[i] = llm_ids[best_idx]
-            llm_match_ids[best_idx] = gt_ids[i]
-            used_llm_indices.add(best_idx)
-            used_gt_indices.add(i)
+            row.append(score)
+        similarity_matrix.append(row)
 
-    # Match from LLM to GT (for any LLM entries not yet matched)
-    for j, llm_entry in enumerate(llm_entries):
-        if j in used_llm_indices:
-            continue
+    # Step 2: Find mutual best matches
+    # Track which entries are already matched
+    used_gt_indices = set()
+    used_llm_indices = set()
+    
+    # Continue until no more matches can be made
+    while True:
+        best_match = None
         best_score = -1
-        best_idx = -1
-        for i, gt_entry in enumerate(gt_entries):
+        
+        # Find the highest scoring unmatched pair
+        for i in range(len(gt_entries)):
             if i in used_gt_indices:
                 continue
-            score = Levenshtein.normalized_similarity(llm_entry, gt_entry)
-            if score > best_score:
-                best_score = score
-                best_idx = i
-        if best_score >= threshold and best_idx != -1:
-            llm_matches[j] = True
-            gt_matches[best_idx] = True
-            llm_match_ids[j] = gt_ids[best_idx]
-            # Ensure the GT match ID is also updated if it wasn't before
-            if gt_match_ids[best_idx] == '—':
-                gt_match_ids[best_idx] = llm_ids[j]
-            used_llm_indices.add(j)
-            used_gt_indices.add(i)
+            for j in range(len(llm_entries)):
+                if j in used_llm_indices:
+                    continue
+                score = similarity_matrix[i][j]
+                if score > best_score and score >= threshold:
+                    best_score = score
+                    best_match = (i, j)
+        
+        # If no more matches above threshold, stop
+        if best_match is None:
+            break
+            
+        # Make the match
+        gt_idx, llm_idx = best_match
+        gt_matches[gt_idx] = True
+        llm_matches[llm_idx] = True
+        gt_match_ids[gt_idx] = llm_ids[llm_idx]
+        llm_match_ids[llm_idx] = gt_ids[gt_idx]
+        used_gt_indices.add(gt_idx)
+        used_llm_indices.add(llm_idx)
             
     return gt_matches, llm_matches, gt_match_ids, llm_match_ids
 
