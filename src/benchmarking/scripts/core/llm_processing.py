@@ -15,8 +15,8 @@ from PIL import Image
 # Load environment variables
 try:
     # Adjust path to be relative to this script's location
-    # src/benchmarking/core/llm_processing.py -> project_root
-    project_root = Path(__file__).resolve().parents[3]
+    # src/benchmarking/scripts/core/llm_processing.py -> project_root
+    project_root = Path(__file__).resolve().parents[4]
     env_path = project_root / "config" / ".env"
     load_dotenv(dotenv_path=env_path)
     API_KEY = os.getenv("GOOGLE_API_KEY")

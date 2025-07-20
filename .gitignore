@@ -4,7 +4,7 @@ config/.env
 __pycache__/
 *.pyc
 archive/*
-src/benchmarking/sample_selection/sampled_from_pdfs/*
-src/benchmarking/sample_selection/sample_from_pdfs/
-# Ignore sampled_pdfs output folder from sample_selection
-sampled_pdfs/
+# Ignore PDF files and sample selection data
+src/benchmarking/scripts/sample_selection/sampled_pdfs/
+src/benchmarking/scripts/sample_selection/sample_from_pdfs/
+*.pdf

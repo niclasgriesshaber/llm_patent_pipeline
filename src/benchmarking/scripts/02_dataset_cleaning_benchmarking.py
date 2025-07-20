@@ -11,12 +11,8 @@ from dotenv import load_dotenv
 import google.genai as genai
 from google.genai import types
 
-# Ensure the 'core' module can be found
-# The script is in src/benchmarking/scripts, so we add src to the path
-project_root = Path(__file__).resolve().parents[3]
-sys.path.append(str(project_root / 'src'))
-
-from benchmarking.core.benchmarking import run_comparison
+# Core modules are now in the same directory
+from core.benchmarking import run_comparison
 from create_dashboard import create_dashboard
 
 # --- Configuration ---

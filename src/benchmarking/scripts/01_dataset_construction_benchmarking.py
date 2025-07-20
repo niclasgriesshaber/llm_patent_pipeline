@@ -6,13 +6,9 @@ from pathlib import Path
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# Ensure the 'core' module can be found
-# The script is in src/benchmarking/scripts, so we add src to the path
-project_root = Path(__file__).resolve().parents[3]
-sys.path.append(str(project_root / 'src'))
-
-from benchmarking.core.llm_processing import process_pdf
-from benchmarking.core.benchmarking import run_comparison
+# Core modules are now in the same directory
+from core.llm_processing import process_pdf
+from core.benchmarking import run_comparison
 from create_dashboard import create_dashboard
 
 # --- Configuration ---
