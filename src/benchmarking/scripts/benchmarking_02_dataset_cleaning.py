@@ -23,15 +23,14 @@ from create_dashboard import create_dashboard
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 BENCHMARKING_ROOT = project_root / 'data' / 'benchmarking'
-PROMPT_PATH = project_root / 'src' / '02_dataset_cleaning' / 'prompt.txt'
+PROMPTS_DIR = project_root / 'src' / 'benchmarking' / 'prompts' / '02_dataset_cleaning'
 ENV_PATH = project_root / 'config' / '.env'
 
 # Load environment
 load_dotenv(dotenv_path=ENV_PATH)
 API_KEY = os.getenv("GOOGLE_API_KEY")
 
-# LLM config (identical to complete_patent.py)
-FULL_MODEL_NAME = "gemini-2.0-flash"
+# LLM config
 MAX_OUTPUT_TOKENS = 128
 MAX_WORKERS = 8
 
@@ -39,22 +38,36 @@ MODELS = ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-2.5-pro']
 
 # --- LLM Processing Functions (adapted from complete_patent.py) ---
 
-def load_prompt() -> str:
+def load_prompt(prompt_name: str) -> str:
     """Load the dataset cleaning prompt."""
-    return PROMPT_PATH.read_text(encoding="utf-8")
+    prompt_path = PROMPTS_DIR / prompt_name
+    return prompt_path.read_text(encoding="utf-8")
 
-def call_llm(entry: str, prompt_template: str) -> str:
+def call_llm(entry: str, prompt_template: str, model_name: str) -> str:
     """Call the LLM to classify an entry as complete (1) or truncated (0)."""
     client = genai.Client(api_key=API_KEY)
     prompt = f"{prompt_template}\n{entry.strip()}"
+    
+    # Configure model-specific settings
+    config_args = {
+        "temperature": 0.0,
+        "max_output_tokens": MAX_OUTPUT_TOKENS,
+    }
+    
+    # For gemini-2.5 models, set thinking_config with minimum thinking_budget
+    if "2.5" in model_name:
+        config_args["thinking_config"] = types.ThinkingConfig(
+            thinking_budget=1,  # Minimum required for 2.5 models
+            include_thoughts=True
+        )
+    
+    config = types.GenerateContentConfig(**config_args)
+    
     try:
         response = client.models.generate_content(
-            model=FULL_MODEL_NAME,
+            model=model_name,
             contents=[prompt],
-            config=types.GenerateContentConfig(
-                temperature=0.0,
-                max_output_tokens=MAX_OUTPUT_TOKENS,
-            ),
+            config=config,
         )
         if not response or not response.text:
             return "LLM failed"
@@ -66,14 +79,14 @@ def call_llm(entry: str, prompt_template: str) -> str:
         logging.error(f"LLM call failed: {e}")
         return "LLM failed"
 
-def process_llm(df, prompt_template):
+def process_llm(df, prompt_template, model_name):
     """Process all entries in a dataframe using LLM."""
     results = [None] * len(df)
     failures = 0
     failed_rows = []  # To store (idx, id, page) for rows that fail twice
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         future_to_idx = {
-            executor.submit(call_llm, row["entry"], prompt_template): idx
+            executor.submit(call_llm, row["entry"], prompt_template, model_name): idx
             for idx, row in df.iterrows()
         }
         for future in as_completed(future_to_idx):
@@ -83,7 +96,7 @@ def process_llm(df, prompt_template):
                 if result == "LLM failed":
                     # Retry once
                     logging.info(f"Row {idx+1}: LLM failed, retrying...")
-                    result_retry = call_llm(df.iloc[idx]["entry"], prompt_template)
+                    result_retry = call_llm(df.iloc[idx]["entry"], prompt_template, model_name)
                     if result_retry == "LLM failed":
                         failures += 1
                         failed_rows.append((idx, df.iloc[idx]["id"], df.iloc[idx]["page"]))
@@ -182,7 +195,7 @@ def postprocess_and_save(df, csv_path, summary_path, failed_rows):
 
     return df_clean
 
-def process_single_csv(csv_path: Path, output_dir: Path, prompt_template: str) -> bool:
+def process_single_csv(csv_path: Path, output_dir: Path, prompt_template: str, model_name: str) -> bool:
     """Process a single CSV file for dataset cleaning."""
     try:
         logging.info(f"Processing CSV: {csv_path.name}")
@@ -196,7 +209,7 @@ def process_single_csv(csv_path: Path, output_dir: Path, prompt_template: str) -
             return False
 
         # LLM processing
-        results, failures, failed_rows = process_llm(df, prompt_template)
+        results, failures, failed_rows = process_llm(df, prompt_template, model_name)
         df["complete_patent"] = results
 
         # Output paths
@@ -216,23 +229,40 @@ def process_single_csv(csv_path: Path, output_dir: Path, prompt_template: str) -
 
 # --- Main Functions ---
 
-def run_single_benchmark(model_name: str, prompt_name: str):
+def run_single_benchmark(dataset_construction_model: str, dataset_construction_prompt: str, model: str, prompt: str):
     """
     Executes the full benchmarking pipeline for dataset cleaning for a single model and prompt combination.
     """
-    logging.info(f"--- Starting dataset cleaning benchmark for model: [{model_name}] with prompt: [{prompt_name}] ---")
+    logging.info(f"--- Starting dataset cleaning benchmark ---")
+    logging.info(f"Input: model=[{dataset_construction_model}] prompt=[{dataset_construction_prompt}]")
+    logging.info(f"Processing: model=[{model}] prompt=[{prompt}]")
 
     # Load the dataset cleaning prompt
     try:
-        prompt_template = load_prompt()
+        prompt_template = load_prompt(prompt)
     except Exception as e:
-        logging.error(f"Failed to load prompt file {PROMPT_PATH}: {e}")
+        logging.error(f"Failed to load prompt file {prompt}: {e}")
         return
 
     # Define input and output directories
-    prompt_stem = Path(prompt_name).stem
-    input_dir = BENCHMARKING_ROOT / 'results' / '01_dataset_construction' / model_name / prompt_stem / 'llm_csv'
-    run_output_dir = BENCHMARKING_ROOT / 'results' / '02_dataset_cleaning'
+    dataset_construction_prompt_stem = Path(dataset_construction_prompt).stem
+    
+    # Check if the prerequisite dataset construction step has been completed
+    base_construction_dir = BENCHMARKING_ROOT / 'results' / '01_dataset_construction' / dataset_construction_model / dataset_construction_prompt_stem
+    if not base_construction_dir.exists():
+        logging.error(f"Prerequisite dataset construction results not found: {base_construction_dir}")
+        logging.error(f"Please run the dataset construction benchmark first for model: {dataset_construction_model}, prompt: {dataset_construction_prompt}")
+        return
+    
+    input_dir = base_construction_dir / 'llm_csv'
+    if not input_dir.exists():
+        logging.error(f"Input directory not found: {input_dir}")
+        logging.error(f"Please ensure the dataset construction step completed successfully")
+        return
+    
+    # New structure: dataset cleaning results go to model/prompt subfolders
+    prompt_stem = Path(prompt).stem
+    run_output_dir = BENCHMARKING_ROOT / 'results' / '02_dataset_cleaning' / model / prompt_stem
     llm_csv_output_dir = run_output_dir / 'llm_csv'
     perfect_comparison_dir = run_output_dir / 'perfect_transcriptions_xlsx'
     student_comparison_dir = run_output_dir / 'student_transcriptions_xlsx'
@@ -276,7 +306,7 @@ def run_single_benchmark(model_name: str, prompt_name: str):
         logging.info(f"Processing {len(csvs_to_process)} CSV files sequentially...")
         
         for csv_path in csvs_to_process:
-            success = process_single_csv(csv_path, llm_csv_output_dir, prompt_template)
+            success = process_single_csv(csv_path, llm_csv_output_dir, prompt_template, model)
             if success:
                 processed_count += 1
             else:
@@ -342,7 +372,7 @@ def run_single_benchmark(model_name: str, prompt_name: str):
     # 3. Generate combined results.json at prompt level
     if all_results:
         combined_results = {
-            'model': model_name,
+            'model': model,
             'prompt': prompt_stem,
             'timestamp': pd.Timestamp.now().isoformat(),
             'perfect': all_results.get('perfect', {}),
@@ -366,7 +396,7 @@ def run_single_benchmark(model_name: str, prompt_name: str):
     else:
         logging.warning("No comparison results generated. Check if ground truth files exist.")
     
-    logging.info(f"--- Dataset cleaning benchmark finished for model: [{model_name}] with prompt: [{prompt_name}] ---")
+    logging.info(f"--- Dataset cleaning benchmark finished ---")
 
 def main():
     """
@@ -377,23 +407,34 @@ def main():
         '--dataset_construction_model',
         type=str,
         choices=MODELS,
-        help='The name of the model to benchmark.'
+        help='The name of the model used in the previous dataset construction step.'
     )
     parser.add_argument(
         '--dataset_construction_prompt',
         type=str,
-        help='The filename of the prompt from the previous benchmarking step (e.g., "v0.4_prompt.txt").'
+        help='The filename of the prompt used in the previous dataset construction step (e.g., "v0.4_prompt.txt").'
+    )
+    parser.add_argument(
+        '--model',
+        type=str,
+        choices=MODELS,
+        help='The name of the model to use for dataset cleaning.'
+    )
+    parser.add_argument(
+        '--prompt',
+        type=str,
+        help='The filename of the prompt to use for dataset cleaning (e.g., "v0.0_prompt.txt").'
     )
 
     
     args = parser.parse_args()
 
-    if args.dataset_construction_model and args.dataset_construction_prompt:
-        run_single_benchmark(args.dataset_construction_model, args.dataset_construction_prompt)
+    if args.dataset_construction_model and args.dataset_construction_prompt and args.model and args.prompt:
+        run_single_benchmark(args.dataset_construction_model, args.dataset_construction_prompt, args.model, args.prompt)
         logging.info("--- Single dataset cleaning benchmark run complete. ---")
     else:
         parser.print_help()
-        logging.warning("Please specify --dataset_construction_model and --dataset_construction_prompt.")
+        logging.warning("Please specify --dataset_construction_model, --dataset_construction_prompt, --model, and --prompt.")
 
 if __name__ == "__main__":
     main() 

@@ -19,7 +19,7 @@ from create_dashboard import create_dashboard
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 BENCHMARKING_ROOT = project_root / 'data' / 'benchmarking'
-PROMPTS_DIR = project_root / 'src' / 'benchmarking' / 'prompts'
+PROMPTS_DIR = project_root / 'src' / 'benchmarking' / 'prompts' / '01_dataset_construction'
 GT_XLSX_DIR = BENCHMARKING_ROOT / 'input_data' / 'transcriptions_xlsx' / 'perfect_transcriptions_xlsx'
 SAMPLED_PDFS_DIR = BENCHMARKING_ROOT / 'input_data' / 'sampled_pdfs'
 
