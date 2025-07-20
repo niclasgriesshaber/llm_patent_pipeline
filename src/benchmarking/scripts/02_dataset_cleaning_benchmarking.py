@@ -83,7 +83,7 @@ def process_llm(df, prompt_template, model_name):
     """Process all entries in a dataframe using LLM."""
     results = [None] * len(df)
     failures = 0
-    failed_rows = []  # To store (idx, id, page) for rows that fail twice
+    failed_rows = []  # To store (idx, id) for rows that fail twice
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         future_to_idx = {
             executor.submit(call_llm, row["entry"], prompt_template, model_name): idx
@@ -99,7 +99,7 @@ def process_llm(df, prompt_template, model_name):
                     result_retry = call_llm(df.iloc[idx]["entry"], prompt_template, model_name)
                     if result_retry == "LLM failed":
                         failures += 1
-                        failed_rows.append((idx, df.iloc[idx]["id"], df.iloc[idx]["page"]))
+                        failed_rows.append((idx, df.iloc[idx]["id"]))
                         results[idx] = "LLM failed"
                         logging.error(f"Row {idx+1}: LLM failed after retry.")
                     else:
@@ -111,7 +111,7 @@ def process_llm(df, prompt_template, model_name):
             except Exception as e:
                 results[idx] = "LLM failed"
                 failures += 1
-                failed_rows.append((idx, df.iloc[idx]["id"], df.iloc[idx]["page"]))
+                failed_rows.append((idx, df.iloc[idx]["id"]))
                 logging.error(f"Row {idx+1}: Exception during LLM processing: {e}")
     return results, failures, failed_rows
 
@@ -178,9 +178,9 @@ def postprocess_and_save(df, csv_path, summary_path, failed_rows):
         f.write(f"Runs of >2 incomplete rows: {run_gt2_count}\n")
         f.write(f"LLM failures: {failed_count}\n")
         if failed_rows:
-            f.write("\nFailed rows (id,page):\n")
-            for _, id_val, page_val in failed_rows:
-                f.write(f"{id_val},{page_val}\n")
+            f.write("\nFailed rows (id):\n")
+            for _, id_val in failed_rows:
+                f.write(f"{id_val}\n")
     logging.info(f"Saved summary file to: {summary_path}")
 
     # Summary
