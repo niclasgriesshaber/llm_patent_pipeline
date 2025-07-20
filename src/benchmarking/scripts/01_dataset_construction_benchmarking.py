@@ -201,7 +201,7 @@ def main():
     parser.add_argument(
         '--prompt',
         type=str,
-        help='The filename of the prompt to use (e.g., "v0.0_prompt.txt").'
+        help='The filename of the prompt to use (e.g., "construction_v0.0_prompt.txt").'
     )
     parser.add_argument(
         '--run-all',

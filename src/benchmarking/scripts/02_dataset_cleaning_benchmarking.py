@@ -412,7 +412,7 @@ def main():
     parser.add_argument(
         '--dataset_construction_prompt',
         type=str,
-        help='The filename of the prompt used in the previous dataset construction step (e.g., "v0.4_prompt.txt").'
+        help='The filename of the prompt used in the previous dataset construction step (e.g., "construction_v0.4_prompt.txt").'
     )
     parser.add_argument(
         '--model',
@@ -423,7 +423,7 @@ def main():
     parser.add_argument(
         '--prompt',
         type=str,
-        help='The filename of the prompt to use for dataset cleaning (e.g., "v0.0_prompt.txt").'
+        help='The filename of the prompt to use for dataset cleaning (e.g., "cleaning_v0.0_prompt.txt").'
     )
 
     
