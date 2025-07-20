@@ -18,6 +18,8 @@ from create_dashboard import create_dashboard
 # --- Configuration ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
+# Define project root
+project_root = Path(__file__).parent.parent.parent.parent
 BENCHMARKING_ROOT = project_root / 'data' / 'benchmarking'
 PROMPTS_DIR = project_root / 'src' / 'benchmarking' / 'prompts' / '02_dataset_cleaning'
 ENV_PATH = project_root / 'config' / '.env'
