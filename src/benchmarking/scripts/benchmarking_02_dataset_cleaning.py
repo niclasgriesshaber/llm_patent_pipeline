@@ -57,7 +57,7 @@ def call_llm(entry: str, prompt_template: str, model_name: str) -> str:
     # For gemini-2.5 models, set thinking_config with minimum thinking_budget
     if "2.5" in model_name:
         config_args["thinking_config"] = types.ThinkingConfig(
-            thinking_budget=1,  # Minimum required for 2.5 models
+            thinking_budget=128,  # Minimum required for 2.5 models
             include_thoughts=True
         )
     
