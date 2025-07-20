@@ -374,13 +374,13 @@ def main():
     """
     parser = argparse.ArgumentParser(description="Run the dataset cleaning benchmarking pipeline.")
     parser.add_argument(
-        '--model',
+        '--dataset_construction_model',
         type=str,
         choices=MODELS,
         help='The name of the model to benchmark.'
     )
     parser.add_argument(
-        '--prompt',
+        '--dataset_construction_prompt',
         type=str,
         help='The filename of the prompt from the previous benchmarking step (e.g., "v0.4_prompt.txt").'
     )
@@ -388,12 +388,12 @@ def main():
     
     args = parser.parse_args()
 
-    if args.model and args.prompt:
-        run_single_benchmark(args.model, args.prompt)
+    if args.dataset_construction_model and args.dataset_construction_prompt:
+        run_single_benchmark(args.dataset_construction_model, args.dataset_construction_prompt)
         logging.info("--- Single dataset cleaning benchmark run complete. ---")
     else:
         parser.print_help()
-        logging.warning("Please specify --model and --prompt.")
+        logging.warning("Please specify --dataset_construction_model and --dataset_construction_prompt.")
 
 if __name__ == "__main__":
     main() 
