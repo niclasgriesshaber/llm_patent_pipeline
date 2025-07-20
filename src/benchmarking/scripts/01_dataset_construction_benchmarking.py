@@ -14,6 +14,8 @@ from create_dashboard import create_dashboard
 # --- Configuration ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
+# Define project root (scripts directory is 3 levels down from project root)
+project_root = Path(__file__).resolve().parents[3]
 BENCHMARKING_ROOT = project_root / 'data' / 'benchmarking'
 PROMPTS_DIR = project_root / 'src' / 'benchmarking' / 'prompts' / '01_dataset_construction'
 GT_XLSX_DIR = BENCHMARKING_ROOT / 'input_data' / 'transcriptions_xlsx' / 'perfect_transcriptions_xlsx'
