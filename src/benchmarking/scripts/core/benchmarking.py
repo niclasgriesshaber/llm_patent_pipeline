@@ -438,16 +438,17 @@ def run_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Path, fuzzy
         total_llm_matched += sum(llm_matches)
 
     # --- Aggregation and Report Generation ---
-    overall_match_rate = (total_gt_matched / total_gt_entries * 100) if total_gt_entries > 0 else 0
+    overall_match_rate_gt = (total_gt_matched / total_gt_entries * 100) if total_gt_entries > 0 else 0
+    overall_match_rate_llm = (total_llm_matched / total_llm_entries * 100) if total_llm_entries > 0 else 0
     
     summary_html = (
         f'<div class="summary-section">'
         f'<h2>Overall Summary - {comparison_type.title()} Comparison</h2>'
         f'<p><b>Total GT Entries:</b> {total_gt_entries}</p>'
         f'<p><b>Total LLM Entries:</b> {total_llm_entries}</p>'
-        f'<p><b>Total GT Matched:</b> {total_gt_matched}</p>'
-        f'<p><b>Total LLM Matched:</b> {total_llm_matched}</p>'
-        f'<p><b>Overall Match Rate (GT perspective):</b> {overall_match_rate:.2f}%</p>'
+        f'<p><b>Total Matches:</b> {total_gt_matched}</p>'
+        f'<p><b>Overall Match Rate (GT perspective):</b> {overall_match_rate_gt:.2f}%</p>'
+        f'<p><b>Overall Match Rate (LLM perspective):</b> {overall_match_rate_llm:.2f}%</p>'
         f'</div>'
     )
     
@@ -623,7 +624,7 @@ def run_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Path, fuzzy
     # --- Return Results for JSON Generation ---
     results = {
         'comparison_type': comparison_type,
-        'overall_match_rate': round(overall_match_rate, 2),
+        'overall_match_rate': round(overall_match_rate_gt, 2),
         'character_error_rate': round(overall_cer * 100, 2),
         'total_gt_entries': total_gt_entries,
         'total_llm_entries': total_llm_entries,
