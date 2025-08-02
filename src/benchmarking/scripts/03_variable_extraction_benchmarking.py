@@ -197,6 +197,9 @@ def load_gt_variables(gt_xlsx_path: Path) -> pd.DataFrame:
         for field in VARIABLE_FIELDS:
             if field not in df.columns:
                 df[field] = "NaN"
+            else:
+                # Ensure all variable fields are strings
+                df[field] = df[field].astype(str)
         return df
     except Exception as e:
         logging.error(f"Error loading GT file {gt_xlsx_path}: {e}")
@@ -210,6 +213,9 @@ def load_llm_variables(llm_csv_path: Path) -> pd.DataFrame:
         for field in VARIABLE_FIELDS:
             if field not in df.columns:
                 df[field] = "NaN"
+            else:
+                # Ensure all variable fields are strings
+                df[field] = df[field].astype(str)
         return df
     except Exception as e:
         logging.error(f"Error loading LLM file {llm_csv_path}: {e}")
@@ -273,8 +279,12 @@ def compare_variables(gt_value: str, llm_value: str, threshold: float = 0.85) ->
     if pd.isna(gt_value) or pd.isna(llm_value):
         return False
     
-    gt_str = str(gt_value).strip()
-    llm_str = str(llm_value).strip()
+    # Ensure both values are strings and handle any conversion errors
+    try:
+        gt_str = str(gt_value).strip()
+        llm_str = str(llm_value).strip()
+    except (TypeError, ValueError):
+        return False
     
     if gt_str == "" or llm_str == "":
         return False
@@ -319,7 +329,10 @@ def make_variable_table_html(gt_df: pd.DataFrame, llm_df: pd.DataFrame, gt_match
             else:
                 bg_color = "#f8d7da"  # Red
             
-            cell_content = f"{gt_value} / {llm_value}"
+            # Ensure safe HTML display
+            safe_gt_value = str(gt_value).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
+            safe_llm_value = str(llm_value).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
+            cell_content = f"{safe_gt_value} / {safe_llm_value}"
             row_cells.append(f'<td style="background-color:{bg_color}">{cell_content}</td>')
         
         table_rows.append(f"<tr>{''.join(row_cells)}</tr>")
