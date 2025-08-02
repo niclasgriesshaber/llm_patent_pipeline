@@ -41,7 +41,7 @@ MAX_RETRIES = 3
 MODELS = ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-2.5-pro']
 
 # Variable fields to extract and compare
-VARIABLE_FIELDS = ['patent_id', 'name', 'address', 'description', 'date']
+VARIABLE_FIELDS = ['patent_id', 'name', 'location', 'description', 'date']
 
 # --- LLM Processing Functions ---
 

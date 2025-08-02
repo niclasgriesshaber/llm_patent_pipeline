@@ -172,7 +172,7 @@ def create_variable_extraction_overview(extraction_results):
             'Matched Cells': perfect_data.get('matched_cells', 0),
             'Patent ID (%)': round(perfect_variable_rates.get('patent_id', 0), 2),
             'Name (%)': round(perfect_variable_rates.get('name', 0), 2),
-            'Address (%)': round(perfect_variable_rates.get('address', 0), 2),
+            'Location (%)': round(perfect_variable_rates.get('location', 0), 2),
             'Description (%)': round(perfect_variable_rates.get('description', 0), 2),
             'Date (%)': round(perfect_variable_rates.get('date', 0), 2),
             'Files Processed': perfect_data.get('files_processed', 0)
@@ -187,7 +187,7 @@ def create_variable_extraction_overview(extraction_results):
             'Matched Cells': student_data.get('matched_cells', 0),
             'Patent ID (%)': round(student_variable_rates.get('patent_id', 0), 2),
             'Name (%)': round(student_variable_rates.get('name', 0), 2),
-            'Address (%)': round(student_variable_rates.get('address', 0), 2),
+            'Location (%)': round(student_variable_rates.get('location', 0), 2),
             'Description (%)': round(student_variable_rates.get('description', 0), 2),
             'Date (%)': round(student_variable_rates.get('date', 0), 2),
             'Files Processed': student_data.get('files_processed', 0)
@@ -346,7 +346,7 @@ def create_metrics_explanation():
                 <li><span class="metric-highlight">LLM Match Rate:</span>&nbsp;Percentage of LLM-generated entries successfully matched with ground truth entries.</li>
                 <li><span class="metric-highlight">GT Perspective:</span>&nbsp;Evaluation from ground truth perspective - how many GT entries were successfully matched by the LLM output.</li>
                 <li><span class="metric-highlight">Perfect vs Student:</span>&nbsp;Comparison between perfect transcriptions and student transcriptions (includes errors) to assess robustness.</li>
-                <li><span class="metric-highlight">Variable Extraction:</span>&nbsp;Field-specific accuracy for individual patent attributes (patent_id, name, address, description, date).</li>
+                <li><span class="metric-highlight">Variable Extraction:</span>&nbsp;Field-specific accuracy for individual patent attributes (patent_id, name, location, description, date).</li>
             </ul>
         </div>
     """
