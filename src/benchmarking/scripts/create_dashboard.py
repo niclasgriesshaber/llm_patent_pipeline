@@ -345,7 +345,7 @@ def create_metrics_explanation():
                 <li><span class="metric-highlight">GT Match Rate:</span>&nbsp;Percentage of ground truth entries successfully matched with LLM output using fuzzy string matching algorithms.</li>
                 <li><span class="metric-highlight">LLM Match Rate:</span>&nbsp;Percentage of LLM-generated entries successfully matched with ground truth entries.</li>
                 <li><span class="metric-highlight">GT Perspective:</span>&nbsp;Evaluation from ground truth perspective - how many GT entries were successfully matched by the LLM output.</li>
-                <li><span class="metric-highlight">Perfect vs Student:</span>&nbsp;Comparison between perfect transcriptions (high quality) and student transcriptions (variable quality) to assess robustness.</li>
+                <li><span class="metric-highlight">Perfect vs Student:</span>&nbsp;Comparison between perfect transcriptions and student transcriptions (includes errors) to assess robustness.</li>
                 <li><span class="metric-highlight">Variable Extraction:</span>&nbsp;Field-specific accuracy for individual patent attributes (patent_id, name, address, description, date).</li>
             </ul>
         </div>
