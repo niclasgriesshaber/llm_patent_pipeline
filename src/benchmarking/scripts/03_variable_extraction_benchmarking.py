@@ -190,32 +190,46 @@ def process_single_csv(csv_path: Path, output_dir: Path, prompt_template: str, m
 # --- Variable Comparison Functions ---
 
 def load_gt_variables(gt_xlsx_path: Path) -> pd.DataFrame:
-    """Load ground truth variables from Excel file."""
+    """Load ground truth variables from Excel file with whitespace trimming and validation."""
     try:
         df = pd.read_excel(gt_xlsx_path)
-        # Check if variable columns exist, if not create them with NaN
+        
+        # Trim whitespace from all column names
+        df.columns = df.columns.str.strip()
+        
+        # Check if required variable columns exist after trimming
+        missing_variables = []
         for field in VARIABLE_FIELDS:
             if field not in df.columns:
+                missing_variables.append(field)
                 df[field] = "NaN"
             else:
-                # Ensure all variable fields are strings
-                df[field] = df[field].astype(str)
+                # Ensure all variable fields are strings and trim whitespace
+                df[field] = df[field].astype(str).str.strip()
+        
+        # Store missing variables info for summary
+        df.attrs['missing_variables'] = missing_variables
+        
         return df
     except Exception as e:
         logging.error(f"Error loading GT file {gt_xlsx_path}: {e}")
         return pd.DataFrame()
 
 def load_llm_variables(llm_csv_path: Path) -> pd.DataFrame:
-    """Load LLM extracted variables from CSV file."""
+    """Load LLM extracted variables from CSV file with whitespace trimming."""
     try:
         df = pd.read_csv(llm_csv_path)
+        
+        # Trim whitespace from all column names
+        df.columns = df.columns.str.strip()
+        
         # Check if variable columns exist, if not create them with NaN
         for field in VARIABLE_FIELDS:
             if field not in df.columns:
                 df[field] = "NaN"
             else:
-                # Ensure all variable fields are strings
-                df[field] = df[field].astype(str)
+                # Ensure all variable fields are strings and trim whitespace
+                df[field] = df[field].astype(str).str.strip()
         return df
     except Exception as e:
         logging.error(f"Error loading LLM file {llm_csv_path}: {e}")
@@ -292,10 +306,38 @@ def compare_variables(gt_value: str, llm_value: str, threshold: float = 0.85) ->
     similarity = Levenshtein.normalized_similarity(gt_str, llm_str)
     return similarity >= threshold
 
+def create_summary_file(gt_df: pd.DataFrame, llm_df: pd.DataFrame, failed_rows: list, 
+                       filename_stem: str, output_dir: Path) -> None:
+    """Create a summary file for variable extraction results."""
+    summary_path = output_dir / f"summary_{filename_stem}.txt"
+    
+    with open(summary_path, "w", encoding="utf-8") as f:
+        # Check for missing variables in ground truth
+        missing_variables = gt_df.attrs.get('missing_variables', [])
+        if missing_variables:
+            f.write(f"WARNING: Missing required variables in ground truth: {', '.join(missing_variables)}\n")
+            f.write("Required variables: patent_id, name, location, description, date\n\n")
+        else:
+            f.write("All required variables present in ground truth.\n\n")
+        
+        # Summary statistics
+        f.write(f"Ground truth rows: {len(gt_df)}\n")
+        f.write(f"LLM processed rows: {len(llm_df)}\n")
+        f.write(f"Failed LLM extractions: {len(failed_rows)}\n\n")
+        
+        if failed_rows:
+            f.write("Failed LLM extraction rows (id):\n")
+            for row_id in failed_rows:
+                f.write(f"{row_id}\n")
+        else:
+            f.write("No failed LLM extractions.\n")
+    
+    logging.info(f"Saved summary file to: {summary_path}")
+
 def make_variable_table_html(gt_df: pd.DataFrame, llm_df: pd.DataFrame, gt_matches: list, 
                            llm_matches: list, gt_match_ids: list, llm_match_ids: list, 
-                           filename_stem: str) -> str:
-    """Create HTML table for variable comparison."""
+                           filename_stem: str) -> tuple:
+    """Create HTML table for variable comparison with ground truth / LLM labels."""
     # Get matched pairs
     matched_pairs = []
     for i, gt_matched in enumerate(gt_matches):
@@ -305,7 +347,7 @@ def make_variable_table_html(gt_df: pd.DataFrame, llm_df: pd.DataFrame, gt_match
                 matched_pairs.append((i, llm_idx))
     
     if not matched_pairs:
-        return f"<p>No matches found for {filename_stem}</p>"
+        return f"<p>No matches found for {filename_stem}</p>", "", {}
     
     # Calculate variable-level statistics
     total_cells = len(matched_pairs) * len(VARIABLE_FIELDS)
@@ -332,7 +374,7 @@ def make_variable_table_html(gt_df: pd.DataFrame, llm_df: pd.DataFrame, gt_match
             # Ensure safe HTML display
             safe_gt_value = str(gt_value).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
             safe_llm_value = str(llm_value).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
-            cell_content = f"{safe_gt_value} / {safe_llm_value}"
+            cell_content = f"[GT] {safe_gt_value} / [LLM] {safe_llm_value}"
             row_cells.append(f'<td style="background-color:{bg_color}">{cell_content}</td>')
         
         table_rows.append(f"<tr>{''.join(row_cells)}</tr>")
@@ -356,9 +398,12 @@ def make_variable_table_html(gt_df: pd.DataFrame, llm_df: pd.DataFrame, gt_match
     </div>
     """
     
-    # Create table HTML
+    # Create table HTML with legend
     header_cells = ''.join([f'<th>{field}</th>' for field in VARIABLE_FIELDS])
     table_html = f"""
+    <div class="table-legend">
+        <p><strong>Legend:</strong> [GT] = Ground Truth, [LLM] = LLM Generated</p>
+    </div>
     <table class="benchmark-table">
         <caption>Variable Comparison - {filename_stem}</caption>
         <tr>{header_cells}</tr>
@@ -420,6 +465,16 @@ def run_variable_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Pa
         
         if gt_df.empty or llm_df.empty:
             continue
+        
+        # Track failed LLM extractions (rows where all variables are NaN)
+        failed_rows = []
+        for idx, row in llm_df.iterrows():
+            all_nan = all(str(row.get(field, "NaN")).strip() == "NaN" for field in VARIABLE_FIELDS)
+            if all_nan:
+                failed_rows.append(row.get('id', idx + 1))
+        
+        # Create summary file for this file pair
+        create_summary_file(gt_df, llm_df, failed_rows, stem, output_dir)
         
         # Perform fuzzy matching on entry field
         gt_matches, llm_matches, gt_match_ids, llm_match_ids = match_entries_fuzzy(
