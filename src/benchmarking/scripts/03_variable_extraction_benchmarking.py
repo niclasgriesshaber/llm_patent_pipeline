@@ -116,8 +116,10 @@ def call_llm(entry: str, prompt_template: str, model_name: str) -> dict:
 def process_llm(df, prompt_template, model_name):
     """Process all entries in a dataframe using LLM."""
     results = [None] * len(df)
-    failures = 0
-    failed_rows = []
+    complete_failures = 0
+    partial_failures = 0
+    failed_rows = []  # Complete failures (exceptions)
+    partial_failure_rows = []  # Partial failures (some variables NaN)
     
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         future_to_idx = {
@@ -133,17 +135,19 @@ def process_llm(df, prompt_template, model_name):
                     results[idx] = result
                     logging.info(f"Row {idx+1}: Successfully extracted variables")
                 else:
-                    failures += 1
-                    failed_rows.append((idx, df.iloc[idx]["id"]))
+                    # Partial failure - some variables are NaN
+                    partial_failures += 1
+                    partial_failure_rows.append((idx, df.iloc[idx]["id"]))
                     results[idx] = result
                     logging.warning(f"Row {idx+1}: Some variables failed to extract")
             except Exception as e:
+                # Complete failure - exception occurred
                 results[idx] = {field: "NaN" for field in VARIABLE_FIELDS}
-                failures += 1
+                complete_failures += 1
                 failed_rows.append((idx, df.iloc[idx]["id"]))
                 logging.error(f"Row {idx+1}: Exception during LLM processing: {e}")
     
-    return results, failures, failed_rows
+    return results, complete_failures, failed_rows, partial_failures, partial_failure_rows
 
 def process_single_csv(csv_path: Path, output_dir: Path, prompt_template: str, model_name: str) -> bool:
     """Process a single CSV file for variable extraction."""
@@ -157,7 +161,7 @@ def process_single_csv(csv_path: Path, output_dir: Path, prompt_template: str, m
             return False
         
         # Process with LLM
-        results, failures, failed_rows = process_llm(df, prompt_template, model_name)
+        results, complete_failures, failed_rows, partial_failures, partial_failure_rows = process_llm(df, prompt_template, model_name)
         
         # Add extracted variables to dataframe
         for field in VARIABLE_FIELDS:
@@ -172,11 +176,22 @@ def process_single_csv(csv_path: Path, output_dir: Path, prompt_template: str, m
         summary_filename = f"summary_{csv_path.stem}.txt"
         summary_path = output_dir / summary_filename
         with open(summary_path, "w", encoding="utf-8") as f:
-            f.write(f"Total LLM failures: {failures}\n")
+            f.write(f"Total rows processed: {len(df)}\n")
+            f.write(f"Complete LLM failures (exceptions): {complete_failures}\n")
+            f.write(f"Partial LLM failures (some variables NaN): {partial_failures}\n")
+            f.write(f"Total failures: {complete_failures + partial_failures}\n\n")
+            
             if failed_rows:
-                f.write("Failed rows (id):\n")
+                f.write("Complete failures - rows with exceptions (id):\n")
                 for _, id_val in failed_rows:
                     f.write(f"{id_val}\n")
+                f.write("\n")
+            
+            if partial_failure_rows:
+                f.write("Partial failures - rows with some variables NaN (id):\n")
+                for _, id_val in partial_failure_rows:
+                    f.write(f"{id_val}\n")
+                f.write("\n")
         
         logging.info(f"Saved processed CSV to: {output_path}")
         logging.info(f"Saved summary to: {summary_path}")
@@ -307,9 +322,24 @@ def compare_variables(gt_value: str, llm_value: str, threshold: float = 0.85) ->
     return similarity >= threshold
 
 def create_summary_file(gt_df: pd.DataFrame, llm_df: pd.DataFrame, failed_rows: list, 
-                       filename_stem: str, output_dir: Path) -> None:
-    """Create a summary file for variable extraction results."""
-    summary_path = output_dir / f"summary_{filename_stem}.txt"
+                       filename_stem: str, llm_csv_dir: Path) -> None:
+    """Create a summary file for variable extraction results in the LLM CSV directory."""
+    summary_path = llm_csv_dir / f"summary_{filename_stem}.txt"
+    
+    # Analyze LLM results for partial failures
+    complete_failures = []
+    partial_failures = []
+    
+    for idx, row in llm_df.iterrows():
+        row_id = row.get('id', idx + 1)
+        nan_count = sum(1 for field in VARIABLE_FIELDS if str(row.get(field, "NaN")).strip() == "NaN")
+        
+        if nan_count == len(VARIABLE_FIELDS):
+            # All variables are NaN - complete failure
+            complete_failures.append(row_id)
+        elif nan_count > 0:
+            # Some variables are NaN - partial failure
+            partial_failures.append(row_id)
     
     with open(summary_path, "w", encoding="utf-8") as f:
         # Check for missing variables in ground truth
@@ -323,13 +353,23 @@ def create_summary_file(gt_df: pd.DataFrame, llm_df: pd.DataFrame, failed_rows: 
         # Summary statistics
         f.write(f"Ground truth rows: {len(gt_df)}\n")
         f.write(f"LLM processed rows: {len(llm_df)}\n")
-        f.write(f"Failed LLM extractions: {len(failed_rows)}\n\n")
+        f.write(f"Complete LLM failures (all variables NaN): {len(complete_failures)}\n")
+        f.write(f"Partial LLM failures (some variables NaN): {len(partial_failures)}\n")
+        f.write(f"Total LLM failures: {len(complete_failures) + len(partial_failures)}\n\n")
         
-        if failed_rows:
-            f.write("Failed LLM extraction rows (id):\n")
-            for row_id in failed_rows:
+        if complete_failures:
+            f.write("Complete failures - rows with all variables NaN (id):\n")
+            for row_id in complete_failures:
                 f.write(f"{row_id}\n")
-        else:
+            f.write("\n")
+        
+        if partial_failures:
+            f.write("Partial failures - rows with some variables NaN (id):\n")
+            for row_id in partial_failures:
+                f.write(f"{row_id}\n")
+            f.write("\n")
+        
+        if not complete_failures and not partial_failures:
             f.write("No failed LLM extractions.\n")
     
     logging.info(f"Saved summary file to: {summary_path}")
@@ -473,8 +513,8 @@ def run_variable_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Pa
             if all_nan:
                 failed_rows.append(row.get('id', idx + 1))
         
-        # Create summary file for this file pair
-        create_summary_file(gt_df, llm_df, failed_rows, stem, output_dir)
+        # Create summary file for this file pair (save in LLM CSV directory)
+        create_summary_file(gt_df, llm_df, failed_rows, stem, llm_files[0].parent)
         
         # Perform fuzzy matching on entry field
         gt_matches, llm_matches, gt_match_ids, llm_match_ids = match_entries_fuzzy(
