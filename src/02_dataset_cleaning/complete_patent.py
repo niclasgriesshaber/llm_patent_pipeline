@@ -90,7 +90,7 @@ def process_llm(df, prompt_template):
                 logging.error(f"Row {idx+1}: Exception during LLM processing: {e}")
     return results, failures, failed_rows
 
-def postprocess_and_save(df, xlsx_path, csv_path, summary_path, failed_rows):
+def postprocess_and_save(df, xlsx_path, csv_path, failed_rows):
     # Save xlsx with complete_patent column
     df.to_excel(xlsx_path, index=False)
     logging.info(f"Saved intermediate xlsx to: {xlsx_path}")
@@ -149,17 +149,7 @@ def postprocess_and_save(df, xlsx_path, csv_path, summary_path, failed_rows):
     df_clean.to_csv(csv_path, index=False)
     logging.info(f"Saved cleaned csv to: {csv_path}")
 
-    # Write summary file
-    with open(summary_path, "w", encoding="utf-8") as f:
-        f.write(f"Isolated incomplete rows merged with below: {merged_isolated}\n")
-        f.write(f"Pairs of incomplete rows: {pair_count}\n")
-        f.write(f"Runs of >2 incomplete rows: {run_gt2_count}\n")
-        f.write(f"LLM failures: {failed_count}\n")
-        if failed_rows:
-            f.write("\nFailed rows (id,page):\n")
-            for _, id_val, page_val in failed_rows:
-                f.write(f"{id_val},{page_val}\n")
-    logging.info(f"Saved summary file to: {summary_path}")
+    # Summary file creation removed as requested
 
     # Summary
     logging.info("")
@@ -185,7 +175,6 @@ def main():
     filestem = input_csv.stem
     xlsx_path = CLEANED_XLSX_TEMP / f"{filestem}.xlsx"
     csv_path = CLEANED_CSVS / f"{filestem}.csv"
-    summary_path = CLEANED_CSVS / f"summary_{filestem}.txt"
 
     # Load data
     df = pd.read_csv(input_csv)
@@ -202,8 +191,8 @@ def main():
     results, failures, failed_rows = process_llm(df, prompt_template)
     df["complete_patent"] = results
 
-    # Save xlsx and post-process for csv and summary
-    postprocess_and_save(df, xlsx_path, csv_path, summary_path, failed_rows)
+    # Save xlsx and post-process for csv
+    postprocess_and_save(df, xlsx_path, csv_path, failed_rows)
     elapsed = time.time() - start_time
     logging.info(f"Total script time: {elapsed:.1f} seconds")
 
