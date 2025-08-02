@@ -219,8 +219,13 @@ def load_gt_variables(gt_xlsx_path: Path) -> pd.DataFrame:
                 missing_variables.append(field)
                 df[field] = "NaN"
             else:
-                # Ensure all variable fields are strings and trim whitespace
-                df[field] = df[field].astype(str).str.strip()
+                # Special handling for patent_id to remove float residuals
+                if field == "patent_id":
+                    # Convert to string, remove .0 if present, then trim
+                    df[field] = df[field].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+                else:
+                    # Ensure all other variable fields are strings and trim whitespace
+                    df[field] = df[field].astype(str).str.strip()
         
         # Store missing variables info for summary
         df.attrs['missing_variables'] = missing_variables
@@ -243,8 +248,13 @@ def load_llm_variables(llm_csv_path: Path) -> pd.DataFrame:
             if field not in df.columns:
                 df[field] = "NaN"
             else:
-                # Ensure all variable fields are strings and trim whitespace
-                df[field] = df[field].astype(str).str.strip()
+                # Special handling for patent_id to remove float residuals
+                if field == "patent_id":
+                    # Convert to string, remove .0 if present, then trim
+                    df[field] = df[field].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+                else:
+                    # Ensure all other variable fields are strings and trim whitespace
+                    df[field] = df[field].astype(str).str.strip()
         return df
     except Exception as e:
         logging.error(f"Error loading LLM file {llm_csv_path}: {e}")
