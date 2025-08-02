@@ -28,7 +28,7 @@ API_KEY = os.getenv("GOOGLE_API_KEY")
 ###############################################################################
 # Model Configuration
 ###############################################################################
-FULL_MODEL_NAME = "gemini-2.0-flash"
+FULL_MODEL_NAME = "gemini-2.5-flash"
 MAX_OUTPUT_TOKENS = 8192
 MAX_RETRIES = 3
 
@@ -54,7 +54,7 @@ def parse_response(text: str) -> dict:
         return {
             "patent_id": "NaN",
             "name": "NaN",
-            "address": "NaN",
+            "location": "NaN",
             "description": "NaN",
             "date": "NaN"
         }
@@ -120,7 +120,7 @@ def classify_entry(entry: str, prompt_template: str, temperature: float) -> tupl
     default_result = {
         "patent_id": "NaN",
         "name": "NaN",
-        "address": "NaN",
+        "location": "NaN",
         "description": "NaN",
         "date": "NaN"
     }
@@ -169,7 +169,7 @@ def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(message)s", handlers=[logging.StreamHandler(sys.stdout)])
 
     # Define output columns based on expected JSON keys
-    output_cols = ["patent_id", "name", "address", "description", "date"]
+    output_cols = ["patent_id", "name", "location", "description", "date"]
     for col in output_cols:
         df[col] = ""
 
