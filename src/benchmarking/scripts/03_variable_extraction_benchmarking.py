@@ -324,7 +324,7 @@ def compare_variables(gt_value: str, llm_value: str, threshold: float = 0.85) ->
 def create_summary_file(gt_df: pd.DataFrame, llm_df: pd.DataFrame, failed_rows: list, 
                        filename_stem: str, llm_csv_dir: Path) -> None:
     """Create a summary file for variable extraction results in the LLM CSV directory."""
-    summary_path = llm_csv_dir / f"summary_{filename_stem}.txt"
+    summary_path = llm_csv_dir / f"{filename_stem}_cleaned_with_variables.txt"
     
     # Analyze LLM results for partial failures
     complete_failures = []
