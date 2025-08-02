@@ -7,4 +7,5 @@ archive/*
 # Ignore PDF files and sample selection data
 src/benchmarking/scripts/sample_selection/sampled_pdfs/
 src/benchmarking/scripts/sample_selection/sample_from_pdfs/
+src/05_dataset_validation/*.txt
 *.pdf
