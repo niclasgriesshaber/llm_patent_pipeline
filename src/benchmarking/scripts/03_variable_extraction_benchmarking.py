@@ -378,10 +378,81 @@ def create_summary_file(gt_df: pd.DataFrame, llm_df: pd.DataFrame, failed_rows: 
     
     logging.info(f"Saved summary file to: {summary_path}")
 
-def make_variable_table_html(gt_df: pd.DataFrame, llm_df: pd.DataFrame, gt_matches: list, 
-                           llm_matches: list, gt_match_ids: list, llm_match_ids: list, 
-                           filename_stem: str) -> tuple:
-    """Create HTML table for variable comparison with ground truth / LLM labels."""
+def calculate_global_threshold_sensitivity(all_gt_dfs: list, all_llm_dfs: list, all_matched_pairs: list) -> dict:
+    """Calculate match rates for different thresholds across all files combined."""
+    if not all_matched_pairs:
+        return {}
+    
+    # Calculate for each threshold
+    thresholds = [round(t * 0.1, 1) for t in range(11)]  # 0.0, 0.1, ..., 1.0
+    results = {}
+    
+    for threshold in thresholds:
+        total_cells = len(all_matched_pairs) * len(VARIABLE_FIELDS)
+        matched_cells = 0
+        variable_stats = {field: {'total': 0, 'matched': 0} for field in VARIABLE_FIELDS}
+        
+        for file_idx, gt_idx, llm_idx in all_matched_pairs:
+            gt_df = all_gt_dfs[file_idx]
+            llm_df = all_llm_dfs[file_idx]
+            
+            for field in VARIABLE_FIELDS:
+                gt_value = str(gt_df.iloc[gt_idx].get(field, "NaN"))
+                llm_value = str(llm_df.iloc[llm_idx].get(field, "NaN"))
+                
+                is_match = compare_variables(gt_value, llm_value, threshold)
+                variable_stats[field]['total'] += 1
+                if is_match:
+                    variable_stats[field]['matched'] += 1
+                    matched_cells += 1
+        
+        overall_rate = (matched_cells / total_cells * 100) if total_cells > 0 else 0
+        variable_rates = {}
+        for field in VARIABLE_FIELDS:
+            stats = variable_stats[field]
+            rate = (stats['matched'] / stats['total'] * 100) if stats['total'] > 0 else 0
+            variable_rates[field] = rate
+        
+        results[threshold] = {
+            'overall_rate': overall_rate,
+            'variable_rates': variable_rates
+        }
+    
+    return results
+
+def create_global_threshold_table(threshold_sensitivity: dict) -> str:
+    """Create HTML table for global threshold sensitivity analysis."""
+    if not threshold_sensitivity:
+        return ""
+    
+    # Create threshold sensitivity table
+    threshold_table_rows = []
+    for threshold in sorted(threshold_sensitivity.keys()):
+        data = threshold_sensitivity[threshold]
+        row_cells = [f'<td>{threshold}</td>']
+        row_cells.append(f'<td>{data["overall_rate"]:.2f}%</td>')
+        for field in VARIABLE_FIELDS:
+            row_cells.append(f'<td>{data["variable_rates"][field]:.2f}%</td>')
+        threshold_table_rows.append(f"<tr>{''.join(row_cells)}</tr>")
+    
+    threshold_header = ''.join([f'<th>{field}</th>' for field in VARIABLE_FIELDS])
+    threshold_table_html = f"""
+    <div class="global-threshold-analysis">
+        <h2>Global Threshold Sensitivity Analysis</h2>
+        <p>This table shows how match rates change across all files for different similarity thresholds.</p>
+        <table class="benchmark-table">
+            <tr><th>Threshold</th><th>Overall</th>{threshold_header}</tr>
+            {''.join(threshold_table_rows)}
+        </table>
+    </div>
+    """
+    
+    return threshold_table_html
+
+def make_variable_table_html_simple(gt_df: pd.DataFrame, llm_df: pd.DataFrame, gt_matches: list, 
+                                   llm_matches: list, gt_match_ids: list, llm_match_ids: list, 
+                                   filename_stem: str) -> tuple:
+    """Create HTML table for variable comparison (simplified version without individual threshold analysis)."""
     # Get matched pairs
     matched_pairs = []
     for i, gt_matched in enumerate(gt_matches):
@@ -393,7 +464,7 @@ def make_variable_table_html(gt_df: pd.DataFrame, llm_df: pd.DataFrame, gt_match
     if not matched_pairs:
         return f"<p>No matches found for {filename_stem}</p>", "", {}
     
-    # Calculate variable-level statistics
+    # Calculate variable-level statistics for current threshold (0.85)
     total_cells = len(matched_pairs) * len(VARIABLE_FIELDS)
     matched_cells = 0
     variable_stats = {field: {'total': 0, 'matched': 0} for field in VARIABLE_FIELDS}
@@ -415,10 +486,10 @@ def make_variable_table_html(gt_df: pd.DataFrame, llm_df: pd.DataFrame, gt_match
             else:
                 bg_color = "#f8d7da"  # Red
             
-            # Ensure safe HTML display
+            # Ensure safe HTML display - just show values separated by /
             safe_gt_value = str(gt_value).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
             safe_llm_value = str(llm_value).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
-            cell_content = f"[GT] {safe_gt_value} / [LLM] {safe_llm_value}"
+            cell_content = f"{safe_gt_value} / {safe_llm_value}"
             row_cells.append(f'<td style="background-color:{bg_color}">{cell_content}</td>')
         
         table_rows.append(f"<tr>{''.join(row_cells)}</tr>")
@@ -442,11 +513,11 @@ def make_variable_table_html(gt_df: pd.DataFrame, llm_df: pd.DataFrame, gt_match
     </div>
     """
     
-    # Create table HTML with legend
+    # Create table HTML with legend at the beginning
     header_cells = ''.join([f'<th>{field}</th>' for field in VARIABLE_FIELDS])
     table_html = f"""
     <div class="table-legend">
-        <p><strong>Legend:</strong> [GT] = Ground Truth, [LLM] = LLM Generated</p>
+        <p><strong>Legend:</strong> Values in each cell show "Ground Truth / LLM Generated"</p>
     </div>
     <table class="benchmark-table">
         <caption>Variable Comparison - {filename_stem}</caption>
@@ -489,12 +560,12 @@ def run_variable_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Pa
         logging.warning(f"No common files found for {comparison_type} comparison")
         return None
 
-    # Aggregate statistics
-    total_cells = 0
-    total_matched_cells = 0
-    total_variable_stats = {field: {'total': 0, 'matched': 0} for field in VARIABLE_FIELDS}
-    file_sections = []
+    # Collect all matched pairs across all files for threshold sensitivity analysis
+    all_matched_pairs = []
+    all_gt_dfs = []
+    all_llm_dfs = []
     
+    # First pass: collect all data and perform fuzzy matching
     for stem in common_stems:
         logging.info(f"Processing {comparison_type} variable pair: {stem}")
         
@@ -525,8 +596,42 @@ def run_variable_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Pa
             gt_df, llm_df, fuzzy_threshold
         )
         
-        # Create variable comparison table
-        metrics_html, table_html, stats = make_variable_table_html(
+        # Collect matched pairs for global threshold analysis
+        for i, gt_matched in enumerate(gt_matches):
+            if gt_matched:
+                llm_idx = int(gt_match_ids[i]) - 1  # Convert back to 0-based index
+                if llm_idx < len(llm_df):
+                    all_matched_pairs.append((len(all_gt_dfs), i, llm_idx))
+        
+        all_gt_dfs.append(gt_df)
+        all_llm_dfs.append(llm_df)
+    
+    # Calculate global threshold sensitivity across all files
+    global_threshold_sensitivity = calculate_global_threshold_sensitivity(
+        all_gt_dfs, all_llm_dfs, all_matched_pairs
+    )
+    
+    # Create global threshold sensitivity table
+    global_threshold_table_html = create_global_threshold_table(global_threshold_sensitivity)
+    
+    # Aggregate statistics
+    total_cells = 0
+    total_matched_cells = 0
+    total_variable_stats = {field: {'total': 0, 'matched': 0} for field in VARIABLE_FIELDS}
+    file_sections = []
+    
+    # Second pass: create individual file sections
+    for i, stem in enumerate(common_stems):
+        gt_df = all_gt_dfs[i]
+        llm_df = all_llm_dfs[i]
+        
+        # Perform fuzzy matching on entry field
+        gt_matches, llm_matches, gt_match_ids, llm_match_ids = match_entries_fuzzy(
+            gt_df, llm_df, fuzzy_threshold
+        )
+        
+        # Create variable comparison table (without individual threshold analysis)
+        metrics_html, table_html, stats = make_variable_table_html_simple(
             gt_df, llm_df, gt_matches, llm_matches, gt_match_ids, llm_match_ids, stem
         )
         
@@ -571,9 +676,10 @@ def run_variable_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Pa
     </div>
     """
     
-    # Generate HTML report
+    # Generate HTML report with global threshold table at the top
     html_content = make_full_html(
         f"Variable Extraction Report - {comparison_type.title()}",
+        global_threshold_table_html,
         "".join(file_sections),
         summary_html
     )
@@ -591,7 +697,7 @@ def run_variable_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Pa
         'files_processed': len(common_stems)
     }
 
-def make_full_html(title: str, sections_html: str, summary_html: str) -> str:
+def make_full_html(title: str, global_threshold_html: str, sections_html: str, summary_html: str) -> str:
     """Create full HTML report."""
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -600,16 +706,21 @@ def make_full_html(title: str, sections_html: str, summary_html: str) -> str:
     <title>{title}</title>
     <style>
         body {{ font-family: sans-serif; margin: 0; background-color: #f4f4f9; color: #333; }}
-        .container {{ max-width: 1200px; margin: auto; padding: 20px; }}
+        .container {{ max-width: 1400px; margin: auto; padding: 20px; }}
         h1, h2 {{ color: #444; }}
         h1 {{ text-align: center; }}
+        .global-threshold-analysis {{ background: #fff; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 30px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }}
+        .global-threshold-analysis h2 {{ margin-top: 0; color: #2c3e50; }}
+        .global-threshold-analysis p {{ color: #666; margin-bottom: 20px; }}
         .pair-section {{ background: #fff; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 20px; padding: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }}
         .metrics {{ margin-bottom: 15px; font-size: 1.1em; }}
-        .table-container {{ display: flex; flex-wrap: wrap; gap: 20px; }}
-        .benchmark-table {{ flex: 1; min-width: 400px; border-collapse: collapse; }}
+        .table-container {{ margin-top: 20px; }}
+        .table-legend {{ margin-bottom: 15px; padding: 10px; background: #f8f9fa; border-radius: 5px; border-left: 4px solid #007bff; }}
+        .table-legend p {{ margin: 0; font-weight: 500; color: #495057; }}
+        .benchmark-table {{ width: 100%; border-collapse: collapse; margin-top: 10px; }}
         .benchmark-table th, .benchmark-table td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
-        .benchmark-table th {{ background-color: #f2f2f2; }}
-        .benchmark-table caption {{ font-weight: bold; margin-bottom: 10px; font-size: 1.2em; }}
+        .benchmark-table th {{ background-color: #f2f2f2; font-weight: bold; }}
+        .benchmark-table caption {{ font-weight: bold; margin-bottom: 10px; font-size: 1.2em; color: #2c3e50; }}
         .filename {{ font-family: monospace; background: #eee; padding: 2px 5px; border-radius: 4px; }}
         .summary-section {{ margin-top: 30px; padding: 20px; background: #fff; border-radius: 8px; }}
     </style>
@@ -617,6 +728,7 @@ def make_full_html(title: str, sections_html: str, summary_html: str) -> str:
 <body>
     <div class="container">
         <h1>{title}</h1>
+        {global_threshold_html}
         {summary_html}
         {sections_html}
     </div>
