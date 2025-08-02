@@ -213,7 +213,12 @@ def process_single_csv(csv_path: Path, output_dir: Path, prompt_template: str, m
         # Output paths
         filestem = csv_path.stem
         csv_output_path = output_dir / f"{filestem}_cleaned.csv"
-        summary_path = output_dir / f"summary_{filestem}.txt"
+        
+        # Create logs directory if it doesn't exist
+        logs_dir = output_dir / "logs"
+        logs_dir.mkdir(exist_ok=True)
+        
+        summary_path = logs_dir / f"{filestem}.txt"
 
         # Post-process and save
         postprocess_and_save(df, csv_output_path, summary_path, failed_rows)
