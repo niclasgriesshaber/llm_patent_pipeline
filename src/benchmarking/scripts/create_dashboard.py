@@ -201,6 +201,118 @@ def create_variable_extraction_overview(extraction_results):
     
     return df
 
+def create_student_perspective_table(construction_results, cleaning_results):
+    """
+    Create table for Student GT perspective only.
+    """
+    overview_data = []
+    
+    # Process construction results
+    for result in construction_results:
+        model = result.get('model', 'Unknown')
+        prompt = result.get('prompt', 'Unknown')
+        
+        student_data = result.get('student', {})
+        
+        # Construction phase - Student perspective only
+        overview_data.append({
+            'Phase': '01_Construction',
+            'Model': model,
+            'Prompt': prompt,
+            'GT Match Rate (%)': round(student_data.get('overall_match_rate', 0), 2),
+            'Total Matches': student_data.get('total_gt_matched', 0),
+            'Total GT Fields': student_data.get('total_gt_entries', 0),
+            'Total LLM Fields': student_data.get('total_llm_entries', 0),
+            'LLM Match Rate (%)': round((student_data.get('total_llm_matched', 0) / student_data.get('total_llm_entries', 1)) * 100, 2) if student_data.get('total_llm_entries', 0) > 0 else 0,
+            'CER (%)': round(student_data.get('character_error_rate', 0), 2),
+            'Files': student_data.get('common_files_processed', 0)
+        })
+    
+    # Process cleaning results
+    for result in cleaning_results:
+        model = result.get('model', 'Unknown')
+        prompt = result.get('prompt', 'Unknown')
+        
+        student_data = result.get('student', {})
+        
+        # Cleaning phase - Student perspective only
+        overview_data.append({
+            'Phase': '02_Cleaning',
+            'Model': model,
+            'Prompt': prompt,
+            'GT Match Rate (%)': round(student_data.get('overall_match_rate', 0), 2),
+            'Total Matches': student_data.get('total_gt_matched', 0),
+            'Total GT Fields': student_data.get('total_gt_entries', 0),
+            'Total LLM Fields': student_data.get('total_llm_entries', 0),
+            'LLM Match Rate (%)': round((student_data.get('total_llm_matched', 0) / student_data.get('total_llm_entries', 1)) * 100, 2) if student_data.get('total_llm_entries', 0) > 0 else 0,
+            'CER (%)': round(student_data.get('character_error_rate', 0), 2),
+            'Files': student_data.get('common_files_processed', 0)
+        })
+    
+    if not overview_data:
+        return None
+    
+    df = pd.DataFrame(overview_data)
+    df = df.sort_values(by=['Phase', 'Model', 'Prompt'])
+    
+    return df
+
+def create_perfect_perspective_table(construction_results, cleaning_results):
+    """
+    Create table for Perfect GT perspective only.
+    """
+    overview_data = []
+    
+    # Process construction results
+    for result in construction_results:
+        model = result.get('model', 'Unknown')
+        prompt = result.get('prompt', 'Unknown')
+        
+        perfect_data = result.get('perfect', {})
+        
+        # Construction phase - Perfect perspective only
+        overview_data.append({
+            'Phase': '01_Construction',
+            'Model': model,
+            'Prompt': prompt,
+            'GT Match Rate (%)': round(perfect_data.get('overall_match_rate', 0), 2),
+            'Total Matches': perfect_data.get('total_gt_matched', 0),
+            'Total GT Fields': perfect_data.get('total_gt_entries', 0),
+            'Total LLM Fields': perfect_data.get('total_llm_entries', 0),
+            'LLM Match Rate (%)': round((perfect_data.get('total_llm_matched', 0) / perfect_data.get('total_llm_entries', 1)) * 100, 2) if perfect_data.get('total_llm_entries', 0) > 0 else 0,
+            'CER (%)': round(perfect_data.get('character_error_rate', 0), 2),
+            'Files': perfect_data.get('common_files_processed', 0)
+        })
+    
+    # Process cleaning results
+    for result in cleaning_results:
+        model = result.get('model', 'Unknown')
+        prompt = result.get('prompt', 'Unknown')
+        
+        perfect_data = result.get('perfect', {})
+        
+        # Cleaning phase - Perfect perspective only
+        overview_data.append({
+            'Phase': '02_Cleaning',
+            'Model': model,
+            'Prompt': prompt,
+            'GT Match Rate (%)': round(perfect_data.get('overall_match_rate', 0), 2),
+            'Total Matches': perfect_data.get('total_gt_matched', 0),
+            'Total GT Fields': perfect_data.get('total_gt_entries', 0),
+            'Total LLM Fields': perfect_data.get('total_llm_entries', 0),
+            'LLM Match Rate (%)': round((perfect_data.get('total_llm_matched', 0) / perfect_data.get('total_llm_entries', 1)) * 100, 2) if perfect_data.get('total_llm_entries', 0) > 0 else 0,
+            'CER (%)': round(perfect_data.get('character_error_rate', 0), 2),
+            'Files': perfect_data.get('common_files_processed', 0)
+        })
+    
+    if not overview_data:
+        return None
+    
+    df = pd.DataFrame(overview_data)
+    df = df.sort_values(by=['Phase', 'Model', 'Prompt'])
+    
+    return df
+
 def create_html_table(df, title, css_class='styled-table'):
     """Create HTML table with styling."""
     if df is None or df.empty:
@@ -250,17 +362,26 @@ def create_dashboard(benchmark_data_dir: Path):
         logging.error("No results data found. Cannot generate dashboard.")
         return
     
-    # Create the overviews (removed construction overview)
-    match_rate_df = create_match_rate_overview(
+    # Create the overviews (split into Student and Perfect perspectives)
+    student_df = create_student_perspective_table(
+        results_by_type['01_dataset_construction'], 
+        results_by_type['02_dataset_cleaning']
+    )
+    perfect_df = create_perfect_perspective_table(
         results_by_type['01_dataset_construction'], 
         results_by_type['02_dataset_cleaning']
     )
     extraction_df = create_variable_extraction_overview(results_by_type['03_variable_extraction'])
     
     # Generate HTML content
-    match_rate_html = create_html_table(
-        match_rate_df, 
-        "1. Character Error Rate (CER) and Match Rate Overview"
+    student_html = create_html_table(
+        student_df, 
+        "1a. Character Error Rate (CER) and Match Rate Overview - Student GT Perspective"
+    )
+    
+    perfect_html = create_html_table(
+        perfect_df, 
+        "1b. Character Error Rate (CER) and Match Rate Overview - Perfect GT Perspective"
     )
     
     extraction_html = create_html_table(
@@ -494,7 +615,9 @@ def create_dashboard(benchmark_data_dir: Path):
             
             {metrics_explanation}
             
-            {match_rate_html}
+            {student_html}
+            
+            {perfect_html}
             
             {extraction_html}
         </div>
@@ -507,7 +630,7 @@ def create_dashboard(benchmark_data_dir: Path):
     """
     
     dashboard_path.write_text(html_content, encoding='utf-8')
-    logging.info(f"🎉 Enhanced dashboard successfully generated at: {dashboard_path}")
+    logging.info(f"Dashboard successfully generated at: {dashboard_path}")
 
 def main():
     parser = argparse.ArgumentParser(description="Generate a comprehensive benchmarking dashboard from results.")
