@@ -47,7 +47,20 @@ def parse_response(text: str) -> dict:
 
     try:
         # Attempt to parse the cleaned text as JSON
-        return json.loads(candidate)
+        parsed_data = json.loads(candidate)
+        
+        # Clean up patent_id to remove float residuals
+        if "patent_id" in parsed_data:
+            patent_id = parsed_data["patent_id"]
+            if isinstance(patent_id, (int, float)):
+                # Convert to string and remove .0 if it's a float
+                patent_id_str = str(int(patent_id)) if patent_id == int(patent_id) else str(patent_id)
+                parsed_data["patent_id"] = patent_id_str
+            elif isinstance(patent_id, str):
+                # Remove .0 from string if present
+                parsed_data["patent_id"] = re.sub(r'\.0$', '', patent_id)
+        
+        return parsed_data
     except json.JSONDecodeError:
         logging.warning(f"Failed to parse JSON response: {candidate}...") # Log partial response on error
         # Return default structure with "NaN" values if parsing fails

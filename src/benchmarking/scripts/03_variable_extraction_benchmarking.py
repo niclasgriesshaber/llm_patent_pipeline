@@ -328,6 +328,10 @@ def compare_variables(gt_value: str, llm_value: str, threshold: float = 0.85) ->
     if gt_str == "" or llm_str == "":
         return False
     
+    # Special handling for patent_id: remove .0 from LLM value if present
+    if gt_str.isdigit() and llm_str.endswith('.0'):
+        llm_str = llm_str[:-2]  # Remove '.0' suffix
+    
     similarity = Levenshtein.normalized_similarity(gt_str, llm_str)
     return similarity >= threshold
 
