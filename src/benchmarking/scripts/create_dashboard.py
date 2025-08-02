@@ -341,12 +341,12 @@ def create_metrics_explanation():
         <div class="notes">
             <h3>📊 Understanding the Metrics</h3>
             <ul>
-                <li><span class="metric-highlight">Character Error Rate (CER):</span> Measures character-level accuracy between ground truth and LLM output. Lower values indicate better performance.</li>
-                <li><span class="metric-highlight">GT Match Rate:</span> Percentage of ground truth entries successfully matched with LLM output using fuzzy string matching algorithms.</li>
-                <li><span class="metric-highlight">LLM Match Rate:</span> Percentage of LLM-generated entries successfully matched with ground truth entries.</li>
-                <li><span class="metric-highlight">GT Perspective:</span> Evaluation from ground truth perspective - how many GT entries were successfully matched by the LLM output.</li>
-                <li><span class="metric-highlight">Perfect vs Student:</span> Comparison between perfect transcriptions (high quality) and student transcriptions (variable quality) to assess robustness.</li>
-                <li><span class="metric-highlight">Variable Extraction:</span> Field-specific accuracy for individual patent attributes (patent_id, name, address, description, date).</li>
+                <li><span class="metric-highlight">Character Error Rate (CER):</span>&nbsp;Measures character-level accuracy between ground truth and LLM output. Lower values indicate better performance.</li>
+                <li><span class="metric-highlight">GT Match Rate:</span>&nbsp;Percentage of ground truth entries successfully matched with LLM output using fuzzy string matching algorithms.</li>
+                <li><span class="metric-highlight">LLM Match Rate:</span>&nbsp;Percentage of LLM-generated entries successfully matched with ground truth entries.</li>
+                <li><span class="metric-highlight">GT Perspective:</span>&nbsp;Evaluation from ground truth perspective - how many GT entries were successfully matched by the LLM output.</li>
+                <li><span class="metric-highlight">Perfect vs Student:</span>&nbsp;Comparison between perfect transcriptions (high quality) and student transcriptions (variable quality) to assess robustness.</li>
+                <li><span class="metric-highlight">Variable Extraction:</span>&nbsp;Field-specific accuracy for individual patent attributes (patent_id, name, address, description, date).</li>
             </ul>
         </div>
     """
@@ -578,6 +578,7 @@ def create_dashboard(benchmark_data_dir: Path):
             .metric-highlight {{
                 font-weight: 600;
                 color: #667eea;
+                margin-right: 4px;
             }}
             
             .footer {{
