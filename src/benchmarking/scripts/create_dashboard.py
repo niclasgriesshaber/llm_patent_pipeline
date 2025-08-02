@@ -55,49 +55,6 @@ def load_results_data(benchmark_data_dir: Path):
     
     return results_by_type
 
-def create_dataset_construction_overview(construction_results):
-    """
-    Create overview for 01_dataset_construction with CER metrics.
-    """
-    if not construction_results:
-        return None
-    
-    overview_data = []
-    
-    for result in construction_results:
-        model = result.get('model', 'Unknown')
-        prompt = result.get('prompt', 'Unknown')
-        
-        # Extract CER data from perfect and student comparisons
-        perfect_data = result.get('perfect', {})
-        student_data = result.get('student', {})
-        
-        # Get additional metrics
-        total_gt_entries = perfect_data.get('total_gt_entries', 0) + student_data.get('total_gt_entries', 0)
-        total_llm_entries = perfect_data.get('total_llm_entries', 0) + student_data.get('total_llm_entries', 0)
-        total_matches = perfect_data.get('total_gt_matched', 0) + student_data.get('total_gt_matched', 0)
-        
-        overview_data.append({
-            'Model': model,
-            'Prompt': prompt,
-            'Perfect CER (%)': round(perfect_data.get('character_error_rate', 0), 2),
-            'Student CER (%)': round(student_data.get('character_error_rate', 0), 2),
-            'Perfect Match Rate (%)': round(perfect_data.get('overall_match_rate', 0), 2),
-            'Student Match Rate (%)': round(student_data.get('overall_match_rate', 0), 2),
-            'Total GT Entries': total_gt_entries,
-            'Total LLM Entries': total_llm_entries,
-            'Total Matches': total_matches,
-            'Files Processed': perfect_data.get('common_files_processed', 0) + student_data.get('common_files_processed', 0)
-        })
-    
-    if not overview_data:
-        return None
-    
-    df = pd.DataFrame(overview_data)
-    df = df.sort_values(by=['Perfect CER (%)'], ascending=[True])
-    
-    return df
-
 def create_match_rate_overview(construction_results, cleaning_results):
     """
     Create match rate overview for both construction and cleaning phases.
@@ -118,12 +75,13 @@ def create_match_rate_overview(construction_results, cleaning_results):
             'Model': model,
             'Prompt': prompt,
             'GT Perspective': 'Perfect',
-            'Match Rate (%)': round(perfect_data.get('overall_match_rate', 0), 2),
+            'GT Match Rate (%)': round(perfect_data.get('overall_match_rate', 0), 2),
             'Total Matches': perfect_data.get('total_gt_matched', 0),
             'Total GT Fields': perfect_data.get('total_gt_entries', 0),
             'Total LLM Fields': perfect_data.get('total_llm_entries', 0),
             'LLM Match Rate (%)': round((perfect_data.get('total_llm_matched', 0) / perfect_data.get('total_llm_entries', 1)) * 100, 2) if perfect_data.get('total_llm_entries', 0) > 0 else 0,
-            'CER (%)': round(perfect_data.get('character_error_rate', 0), 2)
+            'CER (%)': round(perfect_data.get('character_error_rate', 0), 2),
+            'Files': perfect_data.get('common_files_processed', 0) + student_data.get('common_files_processed', 0)
         })
         
         overview_data.append({
@@ -131,12 +89,13 @@ def create_match_rate_overview(construction_results, cleaning_results):
             'Model': model,
             'Prompt': prompt,
             'GT Perspective': 'Student',
-            'Match Rate (%)': round(student_data.get('overall_match_rate', 0), 2),
+            'GT Match Rate (%)': round(student_data.get('overall_match_rate', 0), 2),
             'Total Matches': student_data.get('total_gt_matched', 0),
             'Total GT Fields': student_data.get('total_gt_entries', 0),
             'Total LLM Fields': student_data.get('total_llm_entries', 0),
             'LLM Match Rate (%)': round((student_data.get('total_llm_matched', 0) / student_data.get('total_llm_entries', 1)) * 100, 2) if student_data.get('total_llm_entries', 0) > 0 else 0,
-            'CER (%)': round(student_data.get('character_error_rate', 0), 2)
+            'CER (%)': round(student_data.get('character_error_rate', 0), 2),
+            'Files': perfect_data.get('common_files_processed', 0) + student_data.get('common_files_processed', 0)
         })
     
     # Process cleaning results
@@ -153,12 +112,13 @@ def create_match_rate_overview(construction_results, cleaning_results):
             'Model': model,
             'Prompt': prompt,
             'GT Perspective': 'Perfect',
-            'Match Rate (%)': round(perfect_data.get('overall_match_rate', 0), 2),
+            'GT Match Rate (%)': round(perfect_data.get('overall_match_rate', 0), 2),
             'Total Matches': perfect_data.get('total_gt_matched', 0),
             'Total GT Fields': perfect_data.get('total_gt_entries', 0),
             'Total LLM Fields': perfect_data.get('total_llm_entries', 0),
             'LLM Match Rate (%)': round((perfect_data.get('total_llm_matched', 0) / perfect_data.get('total_llm_entries', 1)) * 100, 2) if perfect_data.get('total_llm_entries', 0) > 0 else 0,
-            'CER (%)': round(perfect_data.get('character_error_rate', 0), 2)
+            'CER (%)': round(perfect_data.get('character_error_rate', 0), 2),
+            'Files': perfect_data.get('common_files_processed', 0) + student_data.get('common_files_processed', 0)
         })
         
         overview_data.append({
@@ -166,12 +126,13 @@ def create_match_rate_overview(construction_results, cleaning_results):
             'Model': model,
             'Prompt': prompt,
             'GT Perspective': 'Student',
-            'Match Rate (%)': round(student_data.get('overall_match_rate', 0), 2),
+            'GT Match Rate (%)': round(student_data.get('overall_match_rate', 0), 2),
             'Total Matches': student_data.get('total_gt_matched', 0),
             'Total GT Fields': student_data.get('total_gt_entries', 0),
             'Total LLM Fields': student_data.get('total_llm_entries', 0),
             'LLM Match Rate (%)': round((student_data.get('total_llm_matched', 0) / student_data.get('total_llm_entries', 1)) * 100, 2) if student_data.get('total_llm_entries', 0) > 0 else 0,
-            'CER (%)': round(student_data.get('character_error_rate', 0), 2)
+            'CER (%)': round(student_data.get('character_error_rate', 0), 2),
+            'Files': perfect_data.get('common_files_processed', 0) + student_data.get('common_files_processed', 0)
         })
     
     if not overview_data:
@@ -262,57 +223,25 @@ def create_html_table(df, title, css_class='styled-table'):
         </div>
     """
 
-def create_summary_stats(results_by_type):
-    """Create summary statistics section."""
-    construction_count = len(results_by_type['01_dataset_construction'])
-    cleaning_count = len(results_by_type['02_dataset_cleaning'])
-    extraction_count = len(results_by_type['03_variable_extraction'])
-    
-    total_results = construction_count + cleaning_count + extraction_count
-    
-    # Get unique models and prompts
-    all_models = set()
-    all_prompts = set()
-    
-    for benchmark_type, results in results_by_type.items():
-        for result in results:
-            all_models.add(result.get('model', 'Unknown'))
-            all_prompts.add(result.get('prompt', 'Unknown'))
-    
+def create_metrics_explanation():
+    """Create improved metrics explanation section."""
     return f"""
-        <div class="summary-stats">
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <div class="stat-number">{total_results}</div>
-                    <div class="stat-label">Total Results</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-number">{len(all_models)}</div>
-                    <div class="stat-label">Models Tested</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-number">{len(all_prompts)}</div>
-                    <div class="stat-label">Prompts Evaluated</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-number">{construction_count}</div>
-                    <div class="stat-label">Construction Results</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-number">{cleaning_count}</div>
-                    <div class="stat-label">Cleaning Results</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-number">{extraction_count}</div>
-                    <div class="stat-label">Extraction Results</div>
-                </div>
-            </div>
+        <div class="notes">
+            <h3>📊 Understanding the Metrics</h3>
+            <ul>
+                <li><span class="metric-highlight">Character Error Rate (CER):</span> Measures character-level accuracy between ground truth and LLM output. Lower values indicate better performance.</li>
+                <li><span class="metric-highlight">GT Match Rate:</span> Percentage of ground truth entries successfully matched with LLM output using fuzzy string matching algorithms.</li>
+                <li><span class="metric-highlight">LLM Match Rate:</span> Percentage of LLM-generated entries successfully matched with ground truth entries.</li>
+                <li><span class="metric-highlight">GT Perspective:</span> Evaluation from ground truth perspective - how many GT entries were successfully matched by the LLM output.</li>
+                <li><span class="metric-highlight">Perfect vs Student:</span> Comparison between perfect transcriptions (high quality) and student transcriptions (variable quality) to assess robustness.</li>
+                <li><span class="metric-highlight">Variable Extraction:</span> Field-specific accuracy for individual patent attributes (patent_id, name, address, description, date).</li>
+            </ul>
         </div>
     """
 
 def create_dashboard(benchmark_data_dir: Path):
     """
-    Create a world-class comprehensive dashboard with three main overviews.
+    Create a comprehensive benchmarking dashboard with improved metrics overview.
     """
     # Load all results data
     results_by_type = load_results_data(benchmark_data_dir)
@@ -321,8 +250,7 @@ def create_dashboard(benchmark_data_dir: Path):
         logging.error("No results data found. Cannot generate dashboard.")
         return
     
-    # Create the three overviews
-    construction_df = create_dataset_construction_overview(results_by_type['01_dataset_construction'])
+    # Create the overviews (removed construction overview)
     match_rate_df = create_match_rate_overview(
         results_by_type['01_dataset_construction'], 
         results_by_type['02_dataset_cleaning']
@@ -330,24 +258,19 @@ def create_dashboard(benchmark_data_dir: Path):
     extraction_df = create_variable_extraction_overview(results_by_type['03_variable_extraction'])
     
     # Generate HTML content
-    construction_html = create_html_table(
-        construction_df, 
-        "1. Dataset Construction - Character Error Rate (CER) Overview"
-    )
-    
     match_rate_html = create_html_table(
         match_rate_df, 
-        "2. Match Rate Overview - Construction and Cleaning Phases"
+        "1. Character Error Rate (CER) and Match Rate Overview"
     )
     
     extraction_html = create_html_table(
         extraction_df, 
-        "3. Variable Extraction Overview"
+        "2. Variable Extraction Overview"
     )
     
-    summary_stats = create_summary_stats(results_by_type)
+    metrics_explanation = create_metrics_explanation()
     
-    # Create full HTML page with world-class styling
+    # Create full HTML page with improved styling
     dashboard_path = benchmark_data_dir / "dashboard.html"
     html_content = f"""
     <!DOCTYPE html>
@@ -355,7 +278,7 @@ def create_dashboard(benchmark_data_dir: Path):
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>World-Class Benchmarking Dashboard</title>
+        <title>Benchmarking Dashboard</title>
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
         <style>
             * {{
@@ -402,50 +325,6 @@ def create_dashboard(benchmark_data_dir: Path):
                 font-size: 1.2rem;
                 color: #718096;
                 font-weight: 400;
-            }}
-            
-            .summary-stats {{
-                margin-bottom: 40px;
-            }}
-            
-            .stats-grid {{
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-                gap: 20px;
-                margin-bottom: 30px;
-            }}
-            
-            .stat-card {{
-                background: rgba(255, 255, 255, 0.95);
-                backdrop-filter: blur(10px);
-                border-radius: 15px;
-                padding: 30px;
-                text-align: center;
-                box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-                transition: transform 0.3s ease, box-shadow 0.3s ease;
-            }}
-            
-            .stat-card:hover {{
-                transform: translateY(-5px);
-                box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
-            }}
-            
-            .stat-number {{
-                font-size: 2.5rem;
-                font-weight: 700;
-                background: linear-gradient(135deg, #667eea, #764ba2);
-                -webkit-background-clip: text;
-                -webkit-text-fill-color: transparent;
-                background-clip: text;
-                margin-bottom: 10px;
-            }}
-            
-            .stat-label {{
-                font-size: 1rem;
-                color: #718096;
-                font-weight: 500;
-                text-transform: uppercase;
-                letter-spacing: 0.5px;
             }}
             
             .section {{
@@ -540,7 +419,7 @@ def create_dashboard(benchmark_data_dir: Path):
                 backdrop-filter: blur(10px);
                 border-radius: 20px;
                 padding: 40px;
-                margin-top: 30px;
+                margin-bottom: 30px;
                 box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
             }}
             
@@ -600,51 +479,24 @@ def create_dashboard(benchmark_data_dir: Path):
                 .section {{
                     padding: 20px;
                 }}
-                
-                .stats-grid {{
-                    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-                    gap: 15px;
-                }}
-                
-                .stat-card {{
-                    padding: 20px;
-                }}
-                
-                .stat-number {{
-                    font-size: 2rem;
-                }}
             }}
         </style>
     </head>
     <body>
         <div class="container">
             <div class="header">
-                <h1>World-Class Benchmarking Dashboard</h1>
+                <h1>Benchmarking Dashboard</h1>
                 <p>Comprehensive Analysis of LLM Patent Processing Pipeline</p>
                 <p style="margin-top: 10px; font-size: 0.9rem; color: #a0aec0;">
                     Generated on {datetime.now().strftime('%B %d, %Y at %I:%M %p')}
                 </p>
             </div>
             
-            {summary_stats}
-            
-            {construction_html}
+            {metrics_explanation}
             
             {match_rate_html}
             
             {extraction_html}
-            
-            <div class="notes">
-                <h3>📊 Understanding the Metrics</h3>
-                <ul>
-                    <li><span class="metric-highlight">CER (Character Error Rate):</span> Lower values indicate better performance. Measures character-level accuracy between ground truth and LLM output.</li>
-                    <li><span class="metric-highlight">Match Rate:</span> Percentage of entries successfully matched between ground truth and LLM output using fuzzy matching.</li>
-                    <li><span class="metric-highlight">GT Perspective:</span> Match rate calculated from ground truth perspective (how many GT entries were matched).</li>
-                    <li><span class="metric-highlight">LLM Perspective:</span> Match rate calculated from LLM output perspective (how many LLM entries were matched).</li>
-                    <li><span class="metric-highlight">Perfect vs Student:</span> Comparison against perfect transcriptions vs. student transcriptions (different quality levels).</li>
-                    <li><span class="metric-highlight">Variable Extraction:</span> Cell-level accuracy for specific patent fields (patent_id, name, address, description, date).</li>
-                </ul>
-            </div>
         </div>
         
         <div class="footer">
@@ -655,10 +507,10 @@ def create_dashboard(benchmark_data_dir: Path):
     """
     
     dashboard_path.write_text(html_content, encoding='utf-8')
-    logging.info(f"🎉 World-class dashboard successfully generated at: {dashboard_path}")
+    logging.info(f"🎉 Enhanced dashboard successfully generated at: {dashboard_path}")
 
 def main():
-    parser = argparse.ArgumentParser(description="Generate a world-class comprehensive benchmarking dashboard from results.")
+    parser = argparse.ArgumentParser(description="Generate a comprehensive benchmarking dashboard from results.")
     # Assuming this script is in src/benchmarking/scripts, the project root is 3 levels up
     project_root = Path(__file__).resolve().parents[3]
     default_data_dir = project_root / 'data' / 'benchmarking'
