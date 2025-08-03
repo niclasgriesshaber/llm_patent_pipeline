@@ -163,9 +163,9 @@ def postprocess_and_save(df, xlsx_path, csv_path, failed_rows):
         f.write(f"Runs of >2 incomplete rows: {run_gt2_count}\n")
         f.write(f"LLM failures: {failed_count}\n")
         if failed_rows:
-            f.write("\nFailed rows (id):\n")
-            for _, id_val, _ in failed_rows:
-                f.write(f"{id_val}\n")
+            f.write("\nFailed rows (id, page):\n")
+            for _, id_val, page_val in failed_rows:
+                f.write(f"id: {id_val}, page: {page_val}\n")
     logging.info(f"Saved summary file to: {summary_path}")
 
     # Summary
