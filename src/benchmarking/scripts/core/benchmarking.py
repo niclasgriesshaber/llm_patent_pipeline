@@ -245,7 +245,7 @@ def make_pair_section_html(gt_df, llm_df, gt_matches, llm_matches, gt_match_ids,
         f'</section>'
     )
 
-def make_full_html(title: str, sections_html: str, summary_html: str) -> str:
+def make_full_html(title: str, sections_html: str, summary_html: str, top_notes: str = "") -> str:
     """Constructs the final HTML report."""
     css = """
     <style>
@@ -267,7 +267,7 @@ def make_full_html(title: str, sections_html: str, summary_html: str) -> str:
     return (
         f'<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">'
         f'<title>{title}</title>{css}</head><body><div class="container">'
-        f'<h1>{title}</h1>{summary_html}{sections_html}</div></body></html>'
+        f'{top_notes}<h1>{title}</h1>{summary_html}{sections_html}</div></body></html>'
     )
 
 def extract_year_from_filename(filename: str) -> str:
@@ -461,12 +461,26 @@ def run_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Path, fuzzy
         </div>
         """
     
+    # Create transcription notes for the top of the page
+    top_notes = ""
+    if comparison_type == "perfect":
+        top_notes = """
+        <div style="background-color: #d4edda; border: 1px solid #c3e6cb; border-radius: 5px; padding: 15px; margin-bottom: 30px;">
+            <p style="margin: 0; color: #155724;"><strong>Note:</strong> These perfect transcriptions should contain absolutely no errors and any differences to the LLM-generated transcriptions are due to errors made by the LLM.</p>
+        </div>
+        """
+    elif comparison_type == "student":
+        top_notes = """
+        <div style="background-color: #fff3cd; border: 1px solid #ffeaa7; border-radius: 5px; padding: 15px; margin-bottom: 30px;">
+            <p style="margin: 0; color: #856404;"><strong>Note:</strong> The ground truth data contains errors made by human student assistants during transcription. 
+            These errors may affect the accuracy of the comparison results.</p>
+        </div>
+        """
+    
     summary_html = (
         f'<div class="summary-section">'
         f'<h2>Overall Summary - {comparison_type.title()} Comparison</h2>'
         f'{threshold_note}'
-        f'{perfect_note}'
-        f'{student_note}'
         f'<p><b>Total GT Entries:</b> {total_gt_entries}</p>'
         f'<p><b>Total LLM Entries:</b> {total_llm_entries}</p>'
         f'<p><b>Total Matches:</b> {total_gt_matched}</p>'
@@ -475,7 +489,10 @@ def run_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Path, fuzzy
         f'</div>'
     )
     
-    fuzzy_html_content = make_full_html(f"Fuzzy Matching Report - {comparison_type.title()}", "".join(pair_sections_html), summary_html)
+    # Add spacing between summary and file pairs
+    sections_with_spacing = f'<div style="margin-top: 40px;">{"".join(pair_sections_html)}</div>'
+    
+    fuzzy_html_content = make_full_html(f"Fuzzy Matching Report - {comparison_type.title()}", sections_with_spacing, summary_html, top_notes)
     fuzzy_report_path = output_dir / "fuzzy_report.html"
     fuzzy_report_path.write_text(fuzzy_html_content, encoding='utf-8')
     logging.info(f"Fuzzy report saved to {fuzzy_report_path}")
