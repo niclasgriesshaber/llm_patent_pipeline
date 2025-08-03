@@ -334,14 +334,14 @@ def validate_csv_file(csv_path, output_base_dir, start_id=None, end_id=None):
 
 def main():
     parser = argparse.ArgumentParser(description="Validate patent_id uniqueness and sequence in CSV files.")
-    parser.add_argument('--input-dir', default='data/03_variable_extraction/cleaned_with_variables_csvs/', 
-                       help='Directory containing CSV files to validate')
-    parser.add_argument('--output-dir', default='data/04_dataset_validation',
-                       help='Base directory for output files')
+    parser.add_argument('--csv', help='Path to a specific CSV file')
     parser.add_argument('--start', type=int, default=None, help='Lower bound of patent_id range to check for gaps')
     parser.add_argument('--end', type=int, default=None, help='Upper bound of patent_id range to check for gaps')
-    parser.add_argument('--csv', help='Path to a specific CSV file (overrides input-dir)')
     args = parser.parse_args()
+
+    # Hardcode input directory
+    input_dir = 'data/03_variable_extraction/cleaned_with_variables_csvs/'
+    output_dir = 'data/04_dataset_validation'
 
     # Determine input files
     if args.csv:
@@ -349,14 +349,13 @@ def main():
         csv_files = [args.csv]
     else:
         # Directory mode - find all CSV files
-        input_dir = args.input_dir
         if not os.path.isdir(input_dir):
             # Try relative to project root
             script_dir = os.path.dirname(os.path.abspath(__file__))
             project_root = os.path.abspath(os.path.join(script_dir, '../../'))
             input_dir = os.path.join(project_root, input_dir)
             if not os.path.isdir(input_dir):
-                print(f"Error: Input directory '{args.input_dir}' does not exist.")
+                print(f"Error: Input directory '{input_dir}' does not exist.")
                 sys.exit(1)
         
         csv_files = glob.glob(os.path.join(input_dir, "*.csv"))
@@ -365,7 +364,7 @@ def main():
             sys.exit(1)
 
     # Create output directories
-    output_base_dir = args.output_dir
+    output_base_dir = output_dir
     if not os.path.isabs(output_base_dir):
         # Make relative to project root
         script_dir = os.path.dirname(os.path.abspath(__file__))
