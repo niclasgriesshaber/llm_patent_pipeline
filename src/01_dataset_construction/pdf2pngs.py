@@ -15,7 +15,7 @@ from PIL import Image
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = PROJECT_ROOT / "data"
 PDF_SRC_DIR = DATA_DIR / "pdfs" / "patent_pdfs"
-CSVS_DIR = DATA_DIR / "01_csvs_created_over_night"
+CSVS_DIR = DATA_DIR / "01_dataset_construction" / "csvs"
 # ------------------------------------------------------------------------
 
 def chunkify(total_pages: int, chunk_size: int) -> list:

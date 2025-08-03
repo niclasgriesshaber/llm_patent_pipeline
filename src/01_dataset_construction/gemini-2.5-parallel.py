@@ -27,7 +27,7 @@ from PIL import Image
 # Project configuration
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = PROJECT_ROOT / "data"
-CSVS_DIR = DATA_DIR / "01_csvs"
+CSVS_DIR = DATA_DIR / "01_dataset_construction" / "csvs"
 PDF_SRC_DIR = DATA_DIR / "pdfs" / "patent_pdfs"
 ENV_PATH = PROJECT_ROOT / "config" / ".env"
 
@@ -690,11 +690,11 @@ def main():
     logging.info(f"Global Tokens Running Total: prompt={global_tokens['prompt']:,}, candidate={global_tokens['candidate']:,}, thoughts={global_tokens['thoughts']:,}, total={global_tokens['total']:,}")
     logging.info("-" * 80)
 
-    # --- Copy CSV to data/02_complete_csvs if all pages succeeded, not in single-page mode, and file does not exist ---
+    # --- Copy CSV to data/01_dataset_construction/complete_csvs if all pages succeeded, not in single-page mode, and file does not exist ---
     if not args.page:
         failed_pages = error_tracker.get_failed_pages()
         if not failed_pages:
-            complete_csvs_dir = PROJECT_ROOT / "data" / "02_complete_csvs"
+            complete_csvs_dir = PROJECT_ROOT / "data" / "01_dataset_construction" / "complete_csvs"
             complete_csvs_dir.mkdir(parents=True, exist_ok=True)
             src_csv = pdf_base_out_dir / f"{pdf_stem}.csv"
             dst_csv = complete_csvs_dir / f"{pdf_stem}.csv"

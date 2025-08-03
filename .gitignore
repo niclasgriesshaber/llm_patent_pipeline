@@ -9,3 +9,15 @@ src/benchmarking/scripts/sample_selection/sampled_pdfs/
 src/benchmarking/scripts/sample_selection/sample_from_pdfs/
 src/05_dataset_validation/*.txt
 *.pdf
+
+# Explicitly ignore data files and images
+data/**/*.png
+data/**/*.jpg
+data/**/*.jpeg
+data/**/*.gif
+data/**/*.bmp
+data/**/*.tiff
+data/**/*.json
+data/**/*.csv
+data/**/*.xlsx
+data/**/*.xls
