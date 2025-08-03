@@ -625,9 +625,31 @@ def run_variable_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Pa
         overall_variable_rates[field] = rate
     
     # Create overall summary
+    threshold_note = f"<p><b>Fuzzy Matching Threshold:</b> {fuzzy_threshold}</p>"
+    
+    perfect_note = ""
+    student_note = ""
+    
+    if comparison_type == "perfect":
+        perfect_note = """
+        <div style="background-color: #d4edda; border: 1px solid #c3e6cb; border-radius: 5px; padding: 15px; margin: 15px 0;">
+            <p><strong>Note:</strong> These perfect transcriptions should contain absolutely no errors and any differences to the LLM-generated transcriptions are due to errors made by the LLM.</p>
+        </div>
+        """
+    elif comparison_type == "student":
+        student_note = """
+        <div style="background-color: #fff3cd; border: 1px solid #ffeaa7; border-radius: 5px; padding: 15px; margin: 15px 0;">
+            <p><strong>Note:</strong> The ground truth data contains errors made by human student assistants during transcription. 
+            These errors may affect the accuracy of the comparison results.</p>
+        </div>
+        """
+    
     summary_html = f"""
     <div class="summary-section">
         <h2>Overall Variable Extraction Summary - {comparison_type.title()}</h2>
+        {threshold_note}
+        {perfect_note}
+        {student_note}
         <p><b>Total Cells:</b> {total_cells}</p>
         <p><b>Total Matched Cells:</b> {total_matched_cells}</p>
         <p><b>Overall Match Rate:</b> {overall_match_rate:.2f}%</p>
