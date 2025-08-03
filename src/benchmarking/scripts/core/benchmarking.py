@@ -631,7 +631,7 @@ def run_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Path, fuzzy
         '''
         
         diff_legend_html = '''
-        <div class="diff-legend" style="margin: 36px 0 24px 0; padding: 18px 24px; background: #f8f8fc; border-radius: 8px; border: 1px solid #e0e0e0; max-width: 700px;">
+        <div class="diff-legend" style="margin: 36px 0 24px 0; padding: 18px 24px; background: #f8f8fc; border-radius: 8px; border: 1px solid #e0e0e0;">
           <strong>Text File Comparison:</strong>
           <p style="margin: 10px 0 0 0; font-size: 1em;">
             This comparison shows the complete text files created from Excel entries. Each entry is preserved as a block with its original formatting. 
