@@ -589,6 +589,30 @@ def run_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Path, fuzzy
         avg_cer_unnormalized = Levenshtein.normalized_distance(all_gt_text, all_llm_text)
         avg_cer_normalized = Levenshtein.normalized_distance(all_gt_text_normalized, all_llm_text_normalized)
         
+        # Create threshold and transcription notes for diff report
+        threshold_note = f'''
+        <div class="normalization-notice">
+            <strong>Fuzzy Matching Threshold:</strong> {fuzzy_threshold}
+        </div>
+        '''
+        
+        perfect_note = ""
+        student_note = ""
+        
+        if comparison_type == "perfect":
+            perfect_note = '''
+            <div style="background-color: #d4edda; border: 1px solid #c3e6cb; border-radius: 5px; padding: 15px; margin: 15px 0;">
+                <p><strong>Note:</strong> These perfect transcriptions should contain absolutely no errors and any differences to the LLM-generated transcriptions are due to errors made by the LLM.</p>
+            </div>
+            '''
+        elif comparison_type == "student":
+            student_note = '''
+            <div style="background-color: #fff3cd; border: 1px solid #ffeaa7; border-radius: 5px; padding: 15px; margin: 15px 0;">
+                <p><strong>Note:</strong> The ground truth data contains errors made by human student assistants during transcription. 
+                These errors may affect the accuracy of the comparison results.</p>
+            </div>
+            '''
+        
         normalization_notice = '''
         <div class="normalization-notice">
             <strong>Text Processing Notice:</strong> This report shows results with original text including all characters, case, linebreaks, and formatting preserved.
@@ -621,11 +645,14 @@ def run_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Path, fuzzy
             '{mathjax_script}'
             '{style}'
             '</head><body><div class="container">'
-            '{normalization_notice}{cer_definition}{summary_table_html}{avg_cer_html}{cer_graph_html}{diff_legend_html}{diff_sections}'
+            '{threshold_note}{perfect_note}{student_note}{normalization_notice}{cer_definition}{summary_table_html}{avg_cer_html}{cer_graph_html}{diff_legend_html}{diff_sections}'
             '</div></body></html>'
         ).format(
             mathjax_script=mathjax_script,
             style=style,
+            threshold_note=threshold_note,
+            perfect_note=perfect_note,
+            student_note=student_note,
             normalization_notice=normalization_notice,
             cer_definition=cer_definition,
             summary_table_html=summary_table_html,
