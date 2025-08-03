@@ -3,6 +3,7 @@ import os
 import sys
 import pandas as pd
 import glob
+import re
 from pathlib import Path
 
 
@@ -332,14 +333,58 @@ def validate_csv_file(csv_path, output_base_dir, start_id=None, end_id=None):
     return xlsx_path, log_path
 
 
+def load_patent_ranges(ranges_csv_path):
+    """
+    Load patent ranges from CSV file.
+    
+    Args:
+        ranges_csv_path: Path to the CSV file containing patent ranges
+    
+    Returns:
+        dict: Dictionary mapping file prefix to (start, end) tuple
+    """
+    try:
+        ranges_df = pd.read_csv(ranges_csv_path)
+        ranges_dict = {}
+        for _, row in ranges_df.iterrows():
+            ranges_dict[row['file']] = (int(row['start']), int(row['end']))
+        return ranges_dict
+    except Exception as e:
+        print(f"Error loading patent ranges from {ranges_csv_path}: {e}")
+        return {}
+
+
+def extract_year_from_filename(filename):
+    """
+    Extract year from filename like 'Patentamt_1886_cleaned_with_variables.csv'
+    
+    Args:
+        filename: The filename to extract year from
+    
+    Returns:
+        str: The year (e.g., '1886') or None if not found
+    """
+    match = re.search(r'Patentamt_(\d{4})_cleaned_with_variables\.csv', filename)
+    return match.group(1) if match else None
+
+
 def main():
     parser = argparse.ArgumentParser(description="Validate patent_id uniqueness and sequence in CSV files.")
     parser.add_argument('--csv', help='Path to a specific CSV file')
-    parser.add_argument('--start', type=int, default=None, help='Lower bound of patent_id range to check for gaps')
-    parser.add_argument('--end', type=int, default=None, help='Upper bound of patent_id range to check for gaps')
     args = parser.parse_args()
 
-    # Hardcode input directory
+    # Load patent ranges from CSV
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    ranges_csv_path = os.path.join(script_dir, 'patent_ranges.csv')
+    patent_ranges = load_patent_ranges(ranges_csv_path)
+    
+    if not patent_ranges:
+        print("Error: Could not load patent ranges. Exiting.")
+        sys.exit(1)
+    
+    print(f"Loaded patent ranges for {len(patent_ranges)} years: {list(patent_ranges.keys())}")
+
+    # Define input and output directories
     input_dir = 'data/03_variable_extraction/cleaned_with_variables_csvs/'
     output_dir = 'data/04_dataset_validation'
 
@@ -361,7 +406,6 @@ def main():
                 csv_files = [csv_file]
             else:
                 # Check if file exists in input directory
-                script_dir = os.path.dirname(os.path.abspath(__file__))
                 project_root = os.path.abspath(os.path.join(script_dir, '../../'))
                 full_input_dir = os.path.join(project_root, input_dir)
                 full_csv_path = os.path.join(full_input_dir, csv_file)
@@ -376,7 +420,6 @@ def main():
         # Directory mode - find all CSV files
         if not os.path.isdir(input_dir):
             # Try relative to project root
-            script_dir = os.path.dirname(os.path.abspath(__file__))
             project_root = os.path.abspath(os.path.join(script_dir, '../../'))
             input_dir = os.path.join(project_root, input_dir)
             if not os.path.isdir(input_dir):
@@ -392,7 +435,6 @@ def main():
     output_base_dir = output_dir
     if not os.path.isabs(output_base_dir):
         # Make relative to project root
-        script_dir = os.path.dirname(os.path.abspath(__file__))
         project_root = os.path.abspath(os.path.join(script_dir, '../../'))
         output_base_dir = os.path.join(project_root, output_base_dir)
     
@@ -404,7 +446,24 @@ def main():
     processed_count = 0
     for csv_file in csv_files:
         print(f"\nProcessing: {csv_file}")
-        xlsx_path, log_path = validate_csv_file(csv_file, output_base_dir, args.start, args.end)
+        
+        # Extract year from filename and get corresponding patent range
+        filename = os.path.basename(csv_file)
+        year = extract_year_from_filename(filename)
+        
+        if year is None:
+            print(f"Warning: Could not extract year from filename '{filename}'. Skipping.")
+            continue
+        
+        file_prefix = f"Patentamt_{year}"
+        if file_prefix not in patent_ranges:
+            print(f"Warning: No patent range found for year {year}. Skipping.")
+            continue
+        
+        start_id, end_id = patent_ranges[file_prefix]
+        print(f"Using patent range for {year}: {start_id} - {end_id}")
+        
+        xlsx_path, log_path = validate_csv_file(csv_file, output_base_dir, start_id, end_id)
         if xlsx_path and log_path:
             processed_count += 1
 
