@@ -441,9 +441,32 @@ def run_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Path, fuzzy
     overall_match_rate_gt = (total_gt_matched / total_gt_entries * 100) if total_gt_entries > 0 else 0
     overall_match_rate_llm = (total_llm_matched / total_llm_entries * 100) if total_llm_entries > 0 else 0
     
+    # Create threshold and transcription notes
+    threshold_note = f'<p><b>Fuzzy Matching Threshold:</b> {fuzzy_threshold}</p>'
+    
+    perfect_note = ""
+    student_note = ""
+    
+    if comparison_type == "perfect":
+        perfect_note = """
+        <div style="background-color: #d4edda; border: 1px solid #c3e6cb; border-radius: 5px; padding: 15px; margin: 15px 0;">
+            <p><strong>Note:</strong> These perfect transcriptions should contain absolutely no errors and any differences to the LLM-generated transcriptions are due to errors made by the LLM.</p>
+        </div>
+        """
+    elif comparison_type == "student":
+        student_note = """
+        <div style="background-color: #fff3cd; border: 1px solid #ffeaa7; border-radius: 5px; padding: 15px; margin: 15px 0;">
+            <p><strong>Note:</strong> The ground truth data contains errors made by human student assistants during transcription. 
+            These errors may affect the accuracy of the comparison results.</p>
+        </div>
+        """
+    
     summary_html = (
         f'<div class="summary-section">'
         f'<h2>Overall Summary - {comparison_type.title()} Comparison</h2>'
+        f'{threshold_note}'
+        f'{perfect_note}'
+        f'{student_note}'
         f'<p><b>Total GT Entries:</b> {total_gt_entries}</p>'
         f'<p><b>Total LLM Entries:</b> {total_llm_entries}</p>'
         f'<p><b>Total Matches:</b> {total_gt_matched}</p>'
