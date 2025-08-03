@@ -196,7 +196,10 @@ def main():
 
     # Create a thread-safe dictionary to store results (dictionaries now)
     results_dict = {}
-    failed_rows = []  # To store (id, page) for rows that fail
+    complete_failures = 0
+    partial_failures = 0
+    failed_rows = []  # Complete failures (exceptions)
+    partial_failure_rows = []  # Partial failures (some variables NaN)
 
     with ThreadPoolExecutor(max_workers=args.max_workers) as executor:
         futures = {executor.submit(classify_entry, row["entry"], prompt_template, args.temperature): idx
@@ -214,14 +217,24 @@ def main():
                 global_tokens['total'] += ttk
                 log_summary = result_dict.get("patent_id", result_dict.get("name", "N/A"))
                 logging.info(f"[{idx}] {progress} → Processed: {log_summary} (Tokens: input={ptk}, candidate={ctk}, total={ttk})")
+                
+                # Check if all variables are NaN (complete failure)
                 if all(result_dict.get(col, "NaN") == "NaN" for col in output_cols):
                     failed_id = df.at[idx, "id"]
                     failed_page = df.at[idx, "page"] if has_page else "N/A"
                     failed_rows.append((failed_id, failed_page))
                     logging.error(f"LLM failed for id: {failed_id}, page: {failed_page}")
+                # Check if some variables are NaN (partial failure)
+                elif any(result_dict.get(col, "NaN") == "NaN" for col in output_cols):
+                    partial_failures += 1
+                    failed_id = df.at[idx, "id"]
+                    failed_page = df.at[idx, "page"] if has_page else "N/A"
+                    partial_failure_rows.append((failed_id, failed_page))
+                    logging.warning(f"Partial LLM failure for id: {failed_id}, page: {failed_page} (some variables NaN)")
             except Exception as e:
                 logging.error(f"[Row {idx}] {progress} Exception during processing: {e}")
                 results_dict[idx] = {col: "NaN" for col in output_cols}
+                complete_failures += 1
                 failed_id = df.at[idx, "id"]
                 failed_page = df.at[idx, "page"] if has_page else "N/A"
                 failed_rows.append((failed_id, failed_page))
@@ -246,17 +259,32 @@ def main():
     df.to_csv(output_path, index=False)
     logging.info(f"Saved to: {output_path}")
 
-    # Write error file if there are failed ids
-    if failed_rows:
-        # Write summary file
-        with open(summary_path, "w", encoding="utf-8") as sf:
-            sf.write(f"Total LLM failures: {len(failed_rows)}\n")
-            sf.write("Failed rows (id, page):\n")
+    # Create logs directory if it doesn't exist
+    logs_dir = output_dir / "logs"
+    logs_dir.mkdir(exist_ok=True)
+    
+    # Save runtime summary to logs folder
+    summary_filename = f"{input_filename.replace('.csv', '')}_with_variables.txt"
+    summary_path = logs_dir / summary_filename
+    with open(summary_path, "w", encoding="utf-8") as f:
+        f.write(f"Total rows processed: {len(df)}\n")
+        f.write(f"Complete LLM failures (exceptions): {complete_failures}\n")
+        f.write(f"Partial LLM failures (some variables NaN): {partial_failures}\n")
+        f.write(f"Total failures: {complete_failures + partial_failures}\n\n")
+        
+        if failed_rows:
+            f.write("Complete failures - rows with exceptions (id, page):\n")
             for fid, fpage in failed_rows:
-                sf.write(f"id: {fid}, page: {fpage}\n")
-        logging.info(f"Summary file saved to: {summary_path}")
-    else:
-        logging.info("No failed rows. No error file or summary file created.")
+                f.write(f"id: {fid}, page: {fpage}\n")
+            f.write("\n")
+        
+        if partial_failure_rows:
+            f.write("Partial failures - rows with some variables NaN (id, page):\n")
+            for fid, fpage in partial_failure_rows:
+                f.write(f"id: {fid}, page: {fpage}\n")
+            f.write("\n")
+    
+    logging.info(f"Runtime summary saved to: {summary_path}")
 
     script_duration = time.time() - start_time
     logging.info(f"Finished in {format_duration(script_duration)}")
@@ -268,7 +296,9 @@ def main():
     logging.info(f"  Candidate Tokens:  {global_tokens['candidate']:,}")
     logging.info(f"  Total Tokens:      {global_tokens['total']:,}")
     logging.info(f"  Total Script Time: {format_duration(script_duration)}")
-    logging.info(f"  Total LLM Failures: {len(failed_rows)}")
+    logging.info(f"  Complete LLM Failures: {complete_failures}")
+    logging.info(f"  Partial LLM Failures: {partial_failures}")
+    logging.info(f"  Total Failures: {complete_failures + partial_failures}")
     logging.info("=" * 80)
 
 if __name__ == "__main__":
