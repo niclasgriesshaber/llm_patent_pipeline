@@ -6,6 +6,136 @@ import glob
 from pathlib import Path
 
 
+def validate_required_columns(df, csv_path):
+    """
+    Validate that the CSV has exactly the required columns in the correct order.
+    
+    Args:
+        df: DataFrame to validate
+        csv_path: Path to CSV file for error reporting
+    
+    Returns:
+        bool: True if validation passes, False otherwise
+    """
+    required_columns = ["id", "page", "entry", "category", "complete_patent", "patent_id", 
+                       "name", "location", "description", "date", "successful_variable_extraction"]
+    
+    actual_columns = list(df.columns)
+    
+    if actual_columns != required_columns:
+        print(f"Error in {csv_path}: Column validation failed.")
+        print(f"Expected: {required_columns}")
+        print(f"Found: {actual_columns}")
+        return False
+    
+    return True
+
+
+def reorder_columns(df):
+    """
+    Reorder columns to the specified order.
+    
+    Args:
+        df: DataFrame to reorder
+    
+    Returns:
+        DataFrame: Reordered DataFrame
+    """
+    new_order = ["id", "page", "entry", "category", "patent_id", "name", "location", 
+                 "description", "date", "complete_patent", "successful_variable_extraction"]
+    
+    return df[new_order]
+
+
+def clean_patent_id_column(df):
+    """
+    Clean patent_id column by removing .0 suffix while preserving NaN values.
+    
+    Args:
+        df: DataFrame with patent_id column
+    
+    Returns:
+        DataFrame: DataFrame with cleaned patent_id column
+    """
+    def clean_patent_id(val):
+        if pd.isna(val):
+            return val  # Keep NaN as NaN
+        val_str = str(val).strip()
+        if val_str.endswith('.0'):
+            return val_str[:-2]  # Remove .0 suffix
+        return val_str
+    
+    df['patent_id'] = df['patent_id'].apply(clean_patent_id)
+    return df
+
+
+def validate_category_sequence(df, csv_path):
+    """
+    Validate that categories follow ascending order and report violations.
+    
+    Args:
+        df: DataFrame to validate
+        csv_path: Path to CSV file for error reporting
+    
+    Returns:
+        dict: Dictionary with validation results and violations
+    """
+    # Define valid category sequence
+    valid_categories = []
+    for i in range(1, 90):  # 1 to 89
+        valid_categories.append(str(i))
+        if i <= 89:  # Add subclasses for categories that can have them
+            for letter in 'abcdefghijklmnopqrstuvwxyz':
+                valid_categories.append(f"{i}{letter}")
+    
+    # Track violations
+    violations = []
+    current_category = None
+    first_violation_id = None
+    
+    for idx, row in df.iterrows():
+        category = str(row['category']).strip()
+        entry_id = row['id']
+        
+        # Check if category is valid
+        if category not in valid_categories:
+            if first_violation_id is None or category != current_category:
+                violations.append({
+                    'id': entry_id,
+                    'category': category,
+                    'type': 'invalid_category',
+                    'message': f"Invalid category '{category}' at id {entry_id}"
+                })
+                first_violation_id = entry_id
+                current_category = category
+            continue
+        
+        # Check ascending order
+        if current_category is not None:
+            current_idx = valid_categories.index(current_category)
+            new_idx = valid_categories.index(category)
+            
+            if new_idx < current_idx:
+                if first_violation_id is None or category != current_category:
+                    violations.append({
+                        'id': entry_id,
+                        'category': category,
+                        'type': 'sequence_violation',
+                        'message': f"Category '{category}' appears before '{current_category}' at id {entry_id}"
+                    })
+                    first_violation_id = entry_id
+                    current_category = category
+                continue
+        
+        current_category = category
+    
+    return {
+        'valid': len(violations) == 0,
+        'violations': violations,
+        'first_violation_ids': [v['id'] for v in violations]
+    }
+
+
 def validate_csv_file(csv_path, output_base_dir, start_id=None, end_id=None):
     """
     Validate a single CSV file and create both XLSX and log files.
@@ -25,25 +155,33 @@ def validate_csv_file(csv_path, output_base_dir, start_id=None, end_id=None):
         print(f"Error reading CSV {csv_path}: {e}")
         return None, None
 
-    # Check required columns
-    for col in ['patent_id', 'id', 'page']:
-        if col not in df.columns:
-            print(f"Error: Required column '{col}' not found in CSV {csv_path}.")
-            return None, None
+    # Step 1: Validate required columns
+    if not validate_required_columns(df, csv_path):
+        return None, None
 
+    # Step 2: Reorder columns
+    df = reorder_columns(df)
+
+    # Step 3: Clean patent_id column
+    df = clean_patent_id_column(df)
+
+    # Step 4: Validate category sequence
+    category_validation = validate_category_sequence(df, csv_path)
+
+    # Step 5: Original patent_id validation logic
     nan_patent_id_count = df['patent_id'].isna().sum()
     
-    # Clean and convert patent_id
-    def clean_patent_id(val):
+    # Clean and convert patent_id for validation (keep original for display)
+    def clean_patent_id_for_validation(val):
         if pd.isna(val):
-            return None  # Allow NaN to pass through for counting, but exclude from further checks
+            return None
         val = str(val).strip()
         if not val.isdigit():
             raise ValueError(f"patent_id '{val}' is not convertible to integer.")
         return int(val)
 
     try:
-        df['patent_id_clean'] = df['patent_id'].apply(clean_patent_id)
+        df['patent_id_clean'] = df['patent_id'].apply(clean_patent_id_for_validation)
     except Exception as e:
         print(f"Error in {csv_path}: {e}")
         return None, None
@@ -102,11 +240,19 @@ def validate_csv_file(csv_path, output_base_dir, start_id=None, end_id=None):
     # Add validation notes
     for idx, row in xlsx_df.iterrows():
         notes = []
+        
+        # Category validation notes
+        category = str(row['category']).strip()
+        for violation in category_validation['violations']:
+            if violation['category'] == category and violation['id'] == row['id']:
+                notes.append(violation['message'])
+        
+        # Patent ID validation notes
         if pd.isna(row['patent_id']):
             notes.append("NaN patent_id")
         else:
             try:
-                pid_clean = clean_patent_id(row['patent_id'])
+                pid_clean = clean_patent_id_for_validation(row['patent_id'])
                 if pid_clean is not None:
                     if check_start_id is not None and pid_clean < check_start_id:
                         notes.append(f"patent_id {pid_clean} < start ({check_start_id})")
@@ -132,6 +278,17 @@ def validate_csv_file(csv_path, output_base_dir, start_id=None, end_id=None):
     
     with open(log_path, 'w', encoding='utf-8') as f:
         f.write(f"=== Validation Report for {os.path.basename(csv_path)} ===\n\n")
+        
+        # Category validation section
+        f.write("=== Category Sequence Validation ===\n")
+        if category_validation['valid']:
+            f.write("Category sequence is valid.\n")
+        else:
+            f.write("Category sequence violations found:\n")
+            for violation in category_validation['violations']:
+                f.write(f"  {violation['message']}\n")
+        f.write("\n")
+        
         f.write("=== NaN patent_id values ===\n")
         if nan_patent_id_count == 0:
             f.write("No NaN patent_id values found.\n")
@@ -177,7 +334,7 @@ def validate_csv_file(csv_path, output_base_dir, start_id=None, end_id=None):
 
 def main():
     parser = argparse.ArgumentParser(description="Validate patent_id uniqueness and sequence in CSV files.")
-    parser.add_argument('--input-dir', default='data/03_variable_extraction/cleaned_with_variables_csvs', 
+    parser.add_argument('--input-dir', default='data/03_variable_extraction/cleaned_with_variables_csvs/', 
                        help='Directory containing CSV files to validate')
     parser.add_argument('--output-dir', default='data/04_dataset_validation',
                        help='Base directory for output files')
