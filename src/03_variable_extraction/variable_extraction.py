@@ -162,8 +162,8 @@ def main():
     args = parser.parse_args()
 
     input_filename = args.csv
-    input_path = PROJECT_ROOT / "data" / "04_cleaned_csvs" / input_filename
-    output_dir = PROJECT_ROOT / "data" / "05_csvs_with_variables"
+    input_path = PROJECT_ROOT / "data" / "02_dataset_cleaning" / "cleaned_csvs" / input_filename
+    output_dir = PROJECT_ROOT / "data" / "03_variable_extraction" / "csvs_with_variables"
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / input_filename
     error_path = output_dir / f"error_{input_filename.replace('.csv', '')}.txt"
@@ -233,6 +233,14 @@ def main():
         for col in output_cols:
             # Ensure the key exists in the result dictionary, otherwise use NaN
             df.at[idx, col] = result_data.get(col, "NaN")
+
+    # Add successful_variable_extraction column
+    # 1 if all new variables are non-NaN, 0 if any are NaN
+    df['successful_variable_extraction'] = 0  # Default to 0
+    for idx in df.index:
+        # Check if all the newly created variables are non-NaN
+        all_successful = all(df.at[idx, col] != "NaN" for col in output_cols)
+        df.at[idx, 'successful_variable_extraction'] = 1 if all_successful else 0
 
     # Save to the output file in csvs_with_variables
     df.to_csv(output_path, index=False)
