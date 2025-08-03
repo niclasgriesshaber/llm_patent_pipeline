@@ -163,7 +163,7 @@ def main():
 
     input_filename = args.csv
     input_path = PROJECT_ROOT / "data" / "02_dataset_cleaning" / "cleaned_csvs" / input_filename
-    output_dir = PROJECT_ROOT / "data" / "03_variable_extraction" / "csvs_with_variables"
+    output_dir = PROJECT_ROOT / "data" / "03_variable_extraction" / "cleaned_with_variables_csvs"
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / input_filename
     error_path = output_dir / f"error_{input_filename.replace('.csv', '')}.txt"
@@ -255,9 +255,16 @@ def main():
         all_successful = all(df.at[idx, col] != "NaN" for col in output_cols)
         df.at[idx, 'successful_variable_extraction'] = 1 if all_successful else 0
 
-    # Save to the output file in csvs_with_variables
+    # Save to the output file in cleaned_with_variables_csvs
     df.to_csv(output_path, index=False)
-    logging.info(f"Saved to: {output_path}")
+    logging.info(f"Saved CSV to: {output_path}")
+    
+    # Save to XLSX format in cleaned_with_variables_xlsx
+    xlsx_output_dir = PROJECT_ROOT / "data" / "03_variable_extraction" / "cleaned_with_variables_xlsx"
+    xlsx_output_dir.mkdir(parents=True, exist_ok=True)
+    xlsx_output_path = xlsx_output_dir / f"{input_filename.replace('.csv', '.xlsx')}"
+    df.to_excel(xlsx_output_path, index=False)
+    logging.info(f"Saved XLSX to: {xlsx_output_path}")
 
     # Create logs directory if it doesn't exist
     logs_dir = output_dir / "logs"
