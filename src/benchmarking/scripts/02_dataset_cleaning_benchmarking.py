@@ -143,6 +143,8 @@ def postprocess_and_save(df, csv_path, summary_path, failed_rows):
             if end + 1 < len(df_clean):
                 # Merge entries
                 df_clean.at[start, "entry"] = df_clean.at[start, "entry"] + " " + df_clean.at[end+1, "entry"]
+                # For merged rows, set complete_patent to 1 (complete) since we're creating a complete entry
+                df_clean.at[start, "complete_patent"] = "1"
                 # Remove the row below
                 to_remove.add(end+1)
                 merged_isolated += 1
@@ -162,10 +164,7 @@ def postprocess_and_save(df, csv_path, summary_path, failed_rows):
     # Reassign ids sequentially starting from 1
     df_clean["id"] = range(1, len(df_clean)+1)
 
-    # Remove complete_patent column before saving final CSV
-    if "complete_patent" in df_clean.columns:
-        df_clean = df_clean.drop(columns=["complete_patent"])
-
+    # Keep complete_patent column in the CSV for transparency
     df_clean.to_csv(csv_path, index=False)
     logging.info(f"Saved cleaned csv to: {csv_path}")
 

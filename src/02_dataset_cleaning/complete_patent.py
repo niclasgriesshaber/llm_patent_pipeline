@@ -95,6 +95,14 @@ def postprocess_and_save(df, xlsx_path, csv_path, failed_rows):
     df.to_excel(xlsx_path, index=False)
     logging.info(f"Saved intermediate xlsx to: {xlsx_path}")
 
+    # Create logs directory if it doesn't exist
+    logs_dir = CLEANED_XLSX_TEMP / "logs"
+    logs_dir.mkdir(exist_ok=True)
+    
+    # Create summary file path
+    filestem = xlsx_path.stem
+    summary_path = logs_dir / f"{filestem}.txt"
+
     df_clean = df.copy().reset_index(drop=True)
     merged_isolated = 0
     pair_count = 0
@@ -123,6 +131,8 @@ def postprocess_and_save(df, xlsx_path, csv_path, failed_rows):
             if end + 1 < len(df_clean):
                 # Merge entries
                 df_clean.at[start, "entry"] = df_clean.at[start, "entry"] + " " + df_clean.at[end+1, "entry"]
+                # For merged rows, set complete_patent to 1 (complete) since we're creating a complete entry
+                df_clean.at[start, "complete_patent"] = "1"
                 # Remove the row below
                 to_remove.add(end+1)
                 merged_isolated += 1
@@ -142,14 +152,21 @@ def postprocess_and_save(df, xlsx_path, csv_path, failed_rows):
     # Reassign ids sequentially starting from 1
     df_clean["id"] = range(1, len(df_clean)+1)
 
-    # Remove complete_patent column before saving final CSV
-    if "complete_patent" in df_clean.columns:
-        df_clean = df_clean.drop(columns=["complete_patent"])
-
+    # Keep complete_patent column in the CSV for transparency
     df_clean.to_csv(csv_path, index=False)
     logging.info(f"Saved cleaned csv to: {csv_path}")
 
-    # Summary file creation removed as requested
+    # Write summary file
+    with open(summary_path, "w", encoding="utf-8") as f:
+        f.write(f"Isolated incomplete rows merged with below: {merged_isolated}\n")
+        f.write(f"Pairs of incomplete rows: {pair_count}\n")
+        f.write(f"Runs of >2 incomplete rows: {run_gt2_count}\n")
+        f.write(f"LLM failures: {failed_count}\n")
+        if failed_rows:
+            f.write("\nFailed rows (id):\n")
+            for _, id_val, _ in failed_rows:
+                f.write(f"{id_val}\n")
+    logging.info(f"Saved summary file to: {summary_path}")
 
     # Summary
     logging.info("")
