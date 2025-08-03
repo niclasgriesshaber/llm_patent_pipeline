@@ -589,13 +589,9 @@ def run_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Path, fuzzy
         avg_cer_unnormalized = Levenshtein.normalized_distance(all_gt_text, all_llm_text)
         avg_cer_normalized = Levenshtein.normalized_distance(all_gt_text_normalized, all_llm_text_normalized)
         
-        # Create combined header section with threshold and transcription notes
-        header_section = f'''
+        # Create combined header section with transcription notes (no fuzzy threshold for text comparison)
+        header_section = '''
         <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; padding: 20px; margin-bottom: 25px;">
-            <div style="display: flex; align-items: center; margin-bottom: 15px;">
-                <strong style="color: #495057; font-size: 1.1em;">Fuzzy Matching Threshold:</strong>
-                <span style="background: #e9ecef; padding: 4px 8px; border-radius: 4px; margin-left: 10px; font-family: monospace; font-weight: bold;">{fuzzy_threshold}</span>
-            </div>
         '''
         
         if comparison_type == "perfect":
