@@ -181,15 +181,15 @@ def validate_csv_file(csv_path, output_base_dir, start_id=None, end_id=None):
         return int(val)
 
     try:
-        df['patent_id_clean'] = df['patent_id'].apply(clean_patent_id_for_validation)
+        df['patent_id_cleaned'] = df['patent_id'].apply(clean_patent_id_for_validation)
     except Exception as e:
         print(f"Error in {csv_path}: {e}")
         return None, None
 
     # Only use valid integer patent_ids for further checks
-    valid_patent_ids_df = df[df['patent_id_clean'].notna()].copy()
-    valid_patent_ids_df['patent_id_clean'] = valid_patent_ids_df['patent_id_clean'].astype(int)
-    all_patent_ids = valid_patent_ids_df['patent_id_clean'].tolist()
+    valid_patent_ids_df = df[df['patent_id_cleaned'].notna()].copy()
+    valid_patent_ids_df['patent_id_cleaned'] = valid_patent_ids_df['patent_id_cleaned'].astype(int)
+    all_patent_ids = valid_patent_ids_df['patent_id_cleaned'].tolist()
 
     # Determine start and end for gap checking
     if start_id is not None:
@@ -205,13 +205,13 @@ def validate_csv_file(csv_path, output_base_dir, start_id=None, end_id=None):
     smaller_than_start = []
     greater_than_end = []
     if check_start_id is not None:
-        smaller_df = valid_patent_ids_df[valid_patent_ids_df['patent_id_clean'] < check_start_id]
-        for pid, group in smaller_df.groupby('patent_id_clean'):
+        smaller_df = valid_patent_ids_df[valid_patent_ids_df['patent_id_cleaned'] < check_start_id]
+        for pid, group in smaller_df.groupby('patent_id_cleaned'):
             entries = [(row['id'], row['page']) for _, row in group.iterrows()]
             smaller_than_start.append((pid, entries))
     if check_end_id is not None:
-        greater_df = valid_patent_ids_df[valid_patent_ids_df['patent_id_clean'] > check_end_id]
-        for pid, group in greater_df.groupby('patent_id_clean'):
+        greater_df = valid_patent_ids_df[valid_patent_ids_df['patent_id_cleaned'] > check_end_id]
+        for pid, group in greater_df.groupby('patent_id_cleaned'):
             entries = [(row['id'], row['page']) for _, row in group.iterrows()]
             greater_than_end.append((pid, entries))
 
@@ -224,8 +224,8 @@ def validate_csv_file(csv_path, output_base_dir, start_id=None, end_id=None):
         missing_ids = []
 
     # Find duplicates
-    duplicates = valid_patent_ids_df[valid_patent_ids_df.duplicated('patent_id_clean', keep=False)]
-    duplicate_groups = duplicates.groupby('patent_id_clean')
+    duplicates = valid_patent_ids_df[valid_patent_ids_df.duplicated('patent_id_cleaned', keep=False)]
+    duplicate_groups = duplicates.groupby('patent_id_cleaned')
 
     # Prepare output file paths
     filestem = os.path.splitext(os.path.basename(csv_path))[0]
@@ -345,8 +345,33 @@ def main():
 
     # Determine input files
     if args.csv:
-        # Single file mode
-        csv_files = [args.csv]
+        # Single file mode - try to find the file
+        csv_file = args.csv
+        
+        # Check if it's an absolute path
+        if os.path.isabs(csv_file):
+            if os.path.exists(csv_file):
+                csv_files = [csv_file]
+            else:
+                print(f"Error: File not found: {csv_file}")
+                sys.exit(1)
+        else:
+            # Check if file exists in current directory
+            if os.path.exists(csv_file):
+                csv_files = [csv_file]
+            else:
+                # Check if file exists in input directory
+                script_dir = os.path.dirname(os.path.abspath(__file__))
+                project_root = os.path.abspath(os.path.join(script_dir, '../../'))
+                full_input_dir = os.path.join(project_root, input_dir)
+                full_csv_path = os.path.join(full_input_dir, csv_file)
+                
+                if os.path.exists(full_csv_path):
+                    csv_files = [full_csv_path]
+                else:
+                    print(f"Error: File not found: {csv_file}")
+                    print(f"Checked in current directory and: {full_input_dir}")
+                    sys.exit(1)
     else:
         # Directory mode - find all CSV files
         if not os.path.isdir(input_dir):
