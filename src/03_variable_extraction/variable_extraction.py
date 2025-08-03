@@ -28,7 +28,7 @@ API_KEY = os.getenv("GOOGLE_API_KEY")
 ###############################################################################
 # Model Configuration
 ###############################################################################
-FULL_MODEL_NAME = "gemini-2.5-flash"
+FULL_MODEL_NAME = "gemini-2.0-flash"
 MAX_OUTPUT_TOKENS = 8192
 MAX_RETRIES = 3
 
@@ -127,7 +127,7 @@ def gemini_api_call(prompt: str, temperature: float) -> Optional[dict]:
     return None
 
 ###############################################################################
-# Classify Single Entry with Retry Logic
+# Classify Single Entry with Improved Retry Logic
 ###############################################################################
 def classify_entry(entry: str, prompt_template: str, temperature: float) -> tuple:
     default_result = {
@@ -137,9 +137,14 @@ def classify_entry(entry: str, prompt_template: str, temperature: float) -> tupl
         "description": "NaN",
         "date": "NaN"
     }
+    
+    prompt = build_prompt(prompt_template, entry)
+    
+    # Only retry if the LLM API call itself fails (returns None)
     for attempt in range(MAX_RETRIES):
-        prompt = build_prompt(prompt_template, entry)
         result = gemini_api_call(prompt, temperature)
+        
+        # If API call succeeded (result is not None), process the response
         if result and result["text"]:
             parsed_data = parse_response(result["text"])
             usage = result["usage"]
@@ -147,8 +152,12 @@ def classify_entry(entry: str, prompt_template: str, temperature: float) -> tupl
             ctk = getattr(usage, 'candidates_token_count', 0) or 0
             ttk = getattr(usage, 'total_token_count', 0) or 0
             return parsed_data, ptk, ctk, ttk
-        time.sleep(1)
-    # Return default dictionary and zero tokens if all retries fail
+        
+        # If we get here, the API call failed (result is None)
+        if attempt < MAX_RETRIES - 1:  # Don't sleep on the last attempt
+            time.sleep(1)
+    
+    # Return default dictionary and zero tokens if all API call retries fail
     return default_result, 0, 0, 0
 
 ###############################################################################
@@ -196,10 +205,10 @@ def main():
 
     # Create a thread-safe dictionary to store results (dictionaries now)
     results_dict = {}
-    complete_failures = 0
-    partial_failures = 0
-    failed_rows = []  # Complete failures (exceptions)
-    partial_failure_rows = []  # Partial failures (some variables NaN)
+    llm_api_failures = 0  # When the LLM API call itself fails
+    successful_calls_with_missing_data = 0  # When API succeeds but some fields are NaN
+    api_failure_rows = []  # Rows where LLM API call failed
+    missing_data_rows = []  # Rows where API succeeded but some variables are NaN
 
     with ThreadPoolExecutor(max_workers=args.max_workers) as executor:
         futures = {executor.submit(classify_entry, row["entry"], prompt_template, args.temperature): idx
@@ -218,27 +227,28 @@ def main():
                 log_summary = result_dict.get("patent_id", result_dict.get("name", "N/A"))
                 logging.info(f"[{idx}] {progress} → Processed: {log_summary} (Tokens: input={ptk}, candidate={ctk}, total={ttk})")
                 
-                # Check if all variables are NaN (complete failure)
+                # Check if all variables are NaN (LLM API call failed)
                 if all(result_dict.get(col, "NaN") == "NaN" for col in output_cols):
                     failed_id = df.at[idx, "id"]
                     failed_page = df.at[idx, "page"] if has_page else "N/A"
-                    failed_rows.append((failed_id, failed_page))
-                    logging.error(f"LLM failed for id: {failed_id}, page: {failed_page}")
-                # Check if some variables are NaN (partial failure)
+                    api_failure_rows.append((failed_id, failed_page))
+                    llm_api_failures += 1
+                    logging.error(f"LLM API call failed for id: {failed_id}, page: {failed_page}")
+                # Check if some variables are NaN (API succeeded but missing data)
                 elif any(result_dict.get(col, "NaN") == "NaN" for col in output_cols):
-                    partial_failures += 1
+                    successful_calls_with_missing_data += 1
                     failed_id = df.at[idx, "id"]
                     failed_page = df.at[idx, "page"] if has_page else "N/A"
-                    partial_failure_rows.append((failed_id, failed_page))
-                    logging.warning(f"Partial LLM failure for id: {failed_id}, page: {failed_page} (some variables NaN)")
+                    missing_data_rows.append((failed_id, failed_page))
+                    logging.warning(f"Successful LLM call with missing data for id: {failed_id}, page: {failed_page} (some variables NaN)")
             except Exception as e:
                 logging.error(f"[Row {idx}] {progress} Exception during processing: {e}")
                 results_dict[idx] = {col: "NaN" for col in output_cols}
-                complete_failures += 1
+                llm_api_failures += 1
                 failed_id = df.at[idx, "id"]
                 failed_page = df.at[idx, "page"] if has_page else "N/A"
-                failed_rows.append((failed_id, failed_page))
-                logging.error(f"LLM failed for id: {failed_id}, page: {failed_page}")
+                api_failure_rows.append((failed_id, failed_page))
+                logging.error(f"LLM API call failed for id: {failed_id}, page: {failed_page}")
             time.sleep(0.1)
 
     # Update DataFrame after all processing is complete
@@ -270,24 +280,24 @@ def main():
     logs_dir = output_dir / "logs"
     logs_dir.mkdir(exist_ok=True)
     
-    # Save runtime summary to logs folder
+    # Save runtime summary to logs folder with improved terminology
     summary_filename = f"{input_filename.replace('.csv', '')}_with_variables.txt"
     summary_path = logs_dir / summary_filename
     with open(summary_path, "w", encoding="utf-8") as f:
         f.write(f"Total rows processed: {len(df)}\n")
-        f.write(f"Complete LLM failures (exceptions): {complete_failures}\n")
-        f.write(f"Partial LLM failures (some variables NaN): {partial_failures}\n")
-        f.write(f"Total failures: {complete_failures + partial_failures}\n\n")
+        f.write(f"LLM API call failures: {llm_api_failures}\n")
+        f.write(f"Successful LLM calls with missing data: {successful_calls_with_missing_data}\n")
+        f.write(f"Total entries with incomplete data: {llm_api_failures + successful_calls_with_missing_data}\n\n")
         
-        if failed_rows:
-            f.write("Complete failures - rows with exceptions (id, page):\n")
-            for fid, fpage in failed_rows:
+        if api_failure_rows:
+            f.write("LLM API call failures - rows where API call failed (id, page):\n")
+            for fid, fpage in api_failure_rows:
                 f.write(f"id: {fid}, page: {fpage}\n")
             f.write("\n")
         
-        if partial_failure_rows:
-            f.write("Partial failures - rows with some variables NaN (id, page):\n")
-            for fid, fpage in partial_failure_rows:
+        if missing_data_rows:
+            f.write("Successful LLM calls with missing data - rows where API succeeded but some variables are NaN (id, page):\n")
+            for fid, fpage in missing_data_rows:
                 f.write(f"id: {fid}, page: {fpage}\n")
             f.write("\n")
     
@@ -296,16 +306,16 @@ def main():
     script_duration = time.time() - start_time
     logging.info(f"Finished in {format_duration(script_duration)}")
 
-    # Log global token usage summary
+    # Log global token usage summary with improved terminology
     logging.info("")
     logging.info(" Global Usage Summary ".center(80, "="))
     logging.info(f"  Prompt Tokens:     {global_tokens['prompt']:,}")
     logging.info(f"  Candidate Tokens:  {global_tokens['candidate']:,}")
     logging.info(f"  Total Tokens:      {global_tokens['total']:,}")
     logging.info(f"  Total Script Time: {format_duration(script_duration)}")
-    logging.info(f"  Complete LLM Failures: {complete_failures}")
-    logging.info(f"  Partial LLM Failures: {partial_failures}")
-    logging.info(f"  Total Failures: {complete_failures + partial_failures}")
+    logging.info(f"  LLM API Call Failures: {llm_api_failures}")
+    logging.info(f"  Successful Calls with Missing Data: {successful_calls_with_missing_data}")
+    logging.info(f"  Total Entries with Incomplete Data: {llm_api_failures + successful_calls_with_missing_data}")
     logging.info("=" * 80)
 
 if __name__ == "__main__":
