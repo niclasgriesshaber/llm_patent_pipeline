@@ -644,12 +644,26 @@ def run_variable_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Pa
         </div>
         """
     
+    # Create transcription notes for the top of the page
+    top_notes = ""
+    if comparison_type == "perfect":
+        top_notes = """
+        <div style="background-color: #d4edda; border: 1px solid #c3e6cb; border-radius: 5px; padding: 15px; margin-bottom: 30px;">
+            <p style="margin: 0; color: #155724;"><strong>Note:</strong> These perfect transcriptions should contain absolutely no errors and any differences to the LLM-generated transcriptions are due to errors made by the LLM.</p>
+        </div>
+        """
+    elif comparison_type == "student":
+        top_notes = """
+        <div style="background-color: #fff3cd; border: 1px solid #ffeaa7; border-radius: 5px; padding: 15px; margin-bottom: 30px;">
+            <p style="margin: 0; color: #856404;"><strong>Note:</strong> The ground truth data contains errors made by human student assistants during transcription. 
+            These errors may affect the accuracy of the comparison results.</p>
+        </div>
+        """
+    
     summary_html = f"""
     <div class="summary-section">
         <h2>Overall Variable Extraction Summary - {comparison_type.title()}</h2>
         {threshold_note}
-        {perfect_note}
-        {student_note}
         <p><b>Total Cells:</b> {total_cells}</p>
         <p><b>Total Matched Cells:</b> {total_matched_cells}</p>
         <p><b>Overall Match Rate:</b> {overall_match_rate:.2f}%</p>
@@ -660,12 +674,16 @@ def run_variable_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Pa
     </div>
     """
     
+    # Add spacing between summary and file sections
+    sections_with_spacing = f'<div style="margin-top: 40px;">{"".join(file_sections)}</div>'
+    
     # Generate HTML report with global threshold table at the top
     html_content = make_full_html(
         f"Variable Extraction Report - {comparison_type.title()}",
         global_threshold_table_html,
-        "".join(file_sections),
-        summary_html
+        sections_with_spacing,
+        summary_html,
+        top_notes
     )
     
     report_path = output_dir / "variable_fuzzy_report.html"
@@ -681,7 +699,7 @@ def run_variable_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Pa
         'files_processed': len(common_stems)
     }
 
-def make_full_html(title: str, global_threshold_html: str, sections_html: str, summary_html: str) -> str:
+def make_full_html(title: str, global_threshold_html: str, sections_html: str, summary_html: str, top_notes: str = "") -> str:
     """Create full HTML report."""
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -712,6 +730,7 @@ def make_full_html(title: str, global_threshold_html: str, sections_html: str, s
 <body>
     <div class="container">
         <h1>{title}</h1>
+        {top_notes}
         {global_threshold_html}
         {summary_html}
         {sections_html}
