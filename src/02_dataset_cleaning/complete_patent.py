@@ -12,9 +12,9 @@ from google.genai import types
 
 # Setup paths
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-COMPLETE_CSVS = PROJECT_ROOT / "data" / "02_complete_csvs"
-CLEANED_XLSX_TEMP = PROJECT_ROOT / "data" / "03_cleaned_xlsx_temp"
-CLEANED_CSVS = PROJECT_ROOT / "data" / "04_cleaned_csvs"
+COMPLETE_CSVS = PROJECT_ROOT / "data" / "01_dataset_construction" / "complete_csvs"
+CLEANED_XLSX_TEMP = PROJECT_ROOT / "data" / "02_dataset_cleaning" / "cleaned_xlsx"
+CLEANED_CSVS = PROJECT_ROOT / "data" / "02_dataset_cleaning" / "cleaned_csvs"
 PROMPT_PATH = PROJECT_ROOT / "src" / "02_dataset_cleaning" / "prompt.txt"
 ENV_PATH = PROJECT_ROOT / "config" / ".env"
 

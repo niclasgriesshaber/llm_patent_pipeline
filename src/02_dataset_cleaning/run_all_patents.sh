@@ -3,7 +3,7 @@
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Set the input folder as defined in complete_patent.py
-INPUT_DIR="$SCRIPT_DIR/../../data/02_complete_csvs"
+INPUT_DIR="$SCRIPT_DIR/../../data/01_dataset_construction/complete_csvs"
 
 usage() {
     echo "Usage: $0 --csvs all | --csvs <csv1> <csv2> ..."
