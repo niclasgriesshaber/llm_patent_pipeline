@@ -172,9 +172,13 @@ def process_single_csv(csv_path: Path, output_dir: Path, prompt_template: str, m
         output_path = output_dir / output_filename
         df.to_csv(output_path, index=False)
         
-        # Save summary
-        summary_filename = f"summary_{csv_path.stem}.txt"
-        summary_path = output_dir / summary_filename
+        # Create logs directory if it doesn't exist
+        logs_dir = output_dir / "logs"
+        logs_dir.mkdir(exist_ok=True)
+        
+        # Save runtime summary to logs folder
+        summary_filename = f"{csv_path.stem}_cleaned_with_variables.txt"
+        summary_path = logs_dir / summary_filename
         with open(summary_path, "w", encoding="utf-8") as f:
             f.write(f"Total rows processed: {len(df)}\n")
             f.write(f"Complete LLM failures (exceptions): {complete_failures}\n")
@@ -194,7 +198,7 @@ def process_single_csv(csv_path: Path, output_dir: Path, prompt_template: str, m
                 f.write("\n")
         
         logging.info(f"Saved processed CSV to: {output_path}")
-        logging.info(f"Saved summary to: {summary_path}")
+        logging.info(f"Saved runtime summary to: {summary_path}")
         
         return True
         
@@ -335,62 +339,7 @@ def compare_variables(gt_value: str, llm_value: str, threshold: float = 0.85) ->
     similarity = Levenshtein.normalized_similarity(gt_str, llm_str)
     return similarity >= threshold
 
-def create_summary_file(gt_df: pd.DataFrame, llm_df: pd.DataFrame, failed_rows: list, 
-                       filename_stem: str, llm_csv_dir: Path) -> None:
-    """Create a summary file for variable extraction results in the LLM CSV logs directory."""
-    # Create logs directory if it doesn't exist
-    logs_dir = llm_csv_dir / "logs"
-    logs_dir.mkdir(exist_ok=True)
-    
-    summary_path = logs_dir / f"{filename_stem}_cleaned_with_variables.txt"
-    
-    # Analyze LLM results for partial failures
-    complete_failures = []
-    partial_failures = []
-    
-    for idx, row in llm_df.iterrows():
-        row_id = row.get('id', idx + 1)
-        nan_count = sum(1 for field in VARIABLE_FIELDS if str(row.get(field, "NaN")).strip() == "NaN")
-        
-        if nan_count == len(VARIABLE_FIELDS):
-            # All variables are NaN - complete failure
-            complete_failures.append(row_id)
-        elif nan_count > 0:
-            # Some variables are NaN - partial failure
-            partial_failures.append(row_id)
-    
-    with open(summary_path, "w", encoding="utf-8") as f:
-        # Check for missing variables in ground truth
-        missing_variables = gt_df.attrs.get('missing_variables', [])
-        if missing_variables:
-            f.write(f"WARNING: Missing required variables in ground truth: {', '.join(missing_variables)}\n")
-            f.write("Required variables: patent_id, name, location, description, date\n\n")
-        else:
-            f.write("All required variables present in ground truth.\n\n")
-        
-        # Summary statistics
-        f.write(f"Ground truth rows: {len(gt_df)}\n")
-        f.write(f"LLM processed rows: {len(llm_df)}\n")
-        f.write(f"Complete LLM failures (all variables NaN): {len(complete_failures)}\n")
-        f.write(f"Partial LLM failures (some variables NaN): {len(partial_failures)}\n")
-        f.write(f"Total LLM failures: {len(complete_failures) + len(partial_failures)}\n\n")
-        
-        if complete_failures:
-            f.write("Complete failures - rows with all variables NaN (id):\n")
-            for row_id in complete_failures:
-                f.write(f"{row_id}\n")
-            f.write("\n")
-        
-        if partial_failures:
-            f.write("Partial failures - rows with some variables NaN (id):\n")
-            for row_id in partial_failures:
-                f.write(f"{row_id}\n")
-            f.write("\n")
-        
-        if not complete_failures and not partial_failures:
-            f.write("No failed LLM extractions.\n")
-    
-    logging.info(f"Saved summary file to: {summary_path}")
+
 
 def calculate_global_threshold_sensitivity(all_gt_dfs: list, all_llm_dfs: list, all_matched_pairs: list) -> dict:
     """Calculate match rates for different thresholds across all files combined."""
@@ -602,8 +551,7 @@ def run_variable_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Pa
             if all_nan:
                 failed_rows.append(row.get('id', idx + 1))
         
-        # Create summary file for this file pair (save in LLM CSV directory)
-        create_summary_file(gt_df, llm_df, failed_rows, stem, llm_files[0].parent)
+
         
         # Perform fuzzy matching on entry field
         gt_matches, llm_matches, gt_match_ids, llm_match_ids = match_entries_fuzzy(
