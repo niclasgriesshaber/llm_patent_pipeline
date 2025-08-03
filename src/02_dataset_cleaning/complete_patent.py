@@ -194,6 +194,10 @@ def main():
     year = filestem.split('_')[-1] if '_' in filestem else filestem
     xlsx_path = CLEANED_XLSX_TEMP / f"Patentamt_{year}_cleaned.xlsx"
     csv_path = CLEANED_CSVS / f"Patentamt_{year}_cleaned.csv"
+    
+    # Create output directories if they don't exist
+    CLEANED_XLSX_TEMP.mkdir(parents=True, exist_ok=True)
+    CLEANED_CSVS.mkdir(parents=True, exist_ok=True)
 
     # Load data
     df = pd.read_csv(input_csv)
