@@ -267,7 +267,7 @@ def make_full_html(title: str, sections_html: str, summary_html: str, top_notes:
     return (
         f'<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">'
         f'<title>{title}</title>{css}</head><body><div class="container">'
-        f'{top_notes}<h1>{title}</h1>{summary_html}{sections_html}</div></body></html>'
+        f'<h1>{title}</h1>{top_notes}{summary_html}{sections_html}</div></body></html>'
     )
 
 def extract_year_from_filename(filename: str) -> str:
@@ -481,10 +481,10 @@ def run_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Path, fuzzy
         f'<div class="summary-section">'
         f'<h2>Overall Summary - {comparison_type.title()} Comparison</h2>'
         f'{threshold_note}'
-        f'<p><b>Total GT Entries:</b> {total_gt_entries}</p>'
+        f'<p><b>Total Ground Truth Entries:</b> {total_gt_entries}</p>'
         f'<p><b>Total LLM Entries:</b> {total_llm_entries}</p>'
         f'<p><b>Total Matches:</b> {total_gt_matched}</p>'
-        f'<p><b>Overall Match Rate (GT perspective):</b> {overall_match_rate_gt:.2f}%</p>'
+        f'<p><b>Overall Match Rate (Ground Truth perspective):</b> {overall_match_rate_gt:.2f}%</p>'
         f'<p><b>Overall Match Rate (LLM perspective):</b> {overall_match_rate_llm:.2f}%</p>'
         f'</div>'
     )
@@ -657,17 +657,21 @@ def run_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Path, fuzzy
         </div>
         '''
 
+        # Create title for diff report
+        diff_title = f"<h1 style='text-align: center; color: #444; margin-bottom: 30px;'>Text Comparison Report - {comparison_type.title()} Transcriptions</h1>"
+        
         full_html = (
             '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">'
-            '<title>Diff Report</title>'
+            f'<title>Text Comparison Report - {comparison_type.title()} Transcriptions</title>'
             '{mathjax_script}'
             '{style}'
             '</head><body><div class="container">'
-            '{header_section}{cer_definition}{summary_table_html}{avg_cer_html}{cer_graph_html}{diff_legend_html}{diff_sections}'
+            '{diff_title}{header_section}{cer_definition}{summary_table_html}{avg_cer_html}{cer_graph_html}{diff_legend_html}{diff_sections}'
             '</div></body></html>'
         ).format(
             mathjax_script=mathjax_script,
             style=style,
+            diff_title=diff_title,
             header_section=header_section,
             cer_definition=cer_definition,
             summary_table_html=summary_table_html,
