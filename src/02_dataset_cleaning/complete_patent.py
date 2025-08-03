@@ -190,8 +190,10 @@ def main():
 
     # Output paths
     filestem = input_csv.stem
-    xlsx_path = CLEANED_XLSX_TEMP / f"{filestem}.xlsx"
-    csv_path = CLEANED_CSVS / f"{filestem}.csv"
+    # Extract year from filename (e.g., "Patentamt_1889" -> "1889")
+    year = filestem.split('_')[-1] if '_' in filestem else filestem
+    xlsx_path = CLEANED_XLSX_TEMP / f"Patentamt_{year}_cleaned.xlsx"
+    csv_path = CLEANED_CSVS / f"Patentamt_{year}_cleaned.csv"
 
     # Load data
     df = pd.read_csv(input_csv)

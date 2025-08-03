@@ -274,7 +274,7 @@ def validate_csv_file(csv_path, output_base_dir, start_id=None, end_id=None):
         xlsx_path = None
 
     # Create log file
-    log_path = os.path.join(output_base_dir, 'logs', f"{filestem}_validation_log.txt")
+    log_path = os.path.join(output_base_dir, 'logs', f"{filestem}_validation.txt")
     
     with open(log_path, 'w', encoding='utf-8') as f:
         f.write(f"=== Validation Report for {os.path.basename(csv_path)} ===\n\n")

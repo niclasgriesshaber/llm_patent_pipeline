@@ -174,7 +174,18 @@ def main():
     input_path = PROJECT_ROOT / "data" / "02_dataset_cleaning" / "cleaned_csvs" / input_filename
     output_dir = PROJECT_ROOT / "data" / "03_variable_extraction" / "cleaned_with_variables_csvs"
     output_dir.mkdir(parents=True, exist_ok=True)
-    output_path = output_dir / input_filename
+    
+    # Handle both old and new naming conventions
+    # If input is "Patentamt_XXXX_cleaned.csv", output should be "Patentamt_XXXX_cleaned_with_variables.csv"
+    # If input is "Patentamt_XXXX.csv", output should be "Patentamt_XXXX_with_variables.csv"
+    if input_filename.endswith("_cleaned.csv"):
+        # New naming convention: Patentamt_XXXX_cleaned.csv -> Patentamt_XXXX_cleaned_with_variables.csv
+        output_filename = input_filename.replace("_cleaned.csv", "_cleaned_with_variables.csv")
+    else:
+        # Old naming convention: Patentamt_XXXX.csv -> Patentamt_XXXX_with_variables.csv
+        output_filename = input_filename.replace(".csv", "_with_variables.csv")
+    
+    output_path = output_dir / output_filename
     error_path = output_dir / f"error_{input_filename.replace('.csv', '')}.txt"
     summary_stem = os.path.splitext(input_filename)[0]
     summary_path = output_dir / f"summary_{summary_stem}.txt"
@@ -272,7 +283,7 @@ def main():
     # Save to XLSX format in cleaned_with_variables_xlsx
     xlsx_output_dir = PROJECT_ROOT / "data" / "03_variable_extraction" / "cleaned_with_variables_xlsx"
     xlsx_output_dir.mkdir(parents=True, exist_ok=True)
-    xlsx_output_path = xlsx_output_dir / f"{input_filename.replace('.csv', '.xlsx')}"
+    xlsx_output_path = xlsx_output_dir / f"{output_filename.replace('.csv', '.xlsx')}"
     df.to_excel(xlsx_output_path, index=False)
     logging.info(f"Saved XLSX to: {xlsx_output_path}")
 
@@ -281,7 +292,7 @@ def main():
     logs_dir.mkdir(exist_ok=True)
     
     # Save runtime summary to logs folder with improved terminology
-    summary_filename = f"{input_filename.replace('.csv', '')}_with_variables.txt"
+    summary_filename = f"{output_filename.replace('.csv', '')}.txt"
     summary_path = logs_dir / summary_filename
     with open(summary_path, "w", encoding="utf-8") as f:
         f.write(f"Total rows processed: {len(df)}\n")
