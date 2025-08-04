@@ -109,6 +109,12 @@ def postprocess_and_save(df, xlsx_path, csv_path, failed_rows):
     run_gt2_count = 0
     failed_count = (df_clean["complete_patent"] == "LLM failed").sum()
 
+    # Track detailed information for logging
+    merged_details = []  # (original_id, original_page, merged_with_id, merged_with_page, new_id)
+    pair_details = []    # [(id, page), (id, page)]
+    run_gt2_details = [] # [(id, page), (id, page), ...]
+    failed_details = []  # (id, page)
+
     mask = (df_clean["complete_patent"] == "0")
     runs = []
     run_start = None
@@ -129,6 +135,12 @@ def postprocess_and_save(df, xlsx_path, csv_path, failed_rows):
         if length == 1:
             # Isolated incomplete row: merge with row below if possible
             if end + 1 < len(df_clean):
+                # Track details before merging
+                original_id = df_clean.at[start, "id"]
+                original_page = df_clean.at[start, "page"]
+                merged_with_id = df_clean.at[end+1, "id"]
+                merged_with_page = df_clean.at[end+1, "page"]
+                
                 # Merge entries
                 df_clean.at[start, "entry"] = df_clean.at[start, "entry"] + " " + df_clean.at[end+1, "entry"]
                 # For merged rows, set complete_patent to 1 (complete) since we're creating a complete entry
@@ -136,11 +148,22 @@ def postprocess_and_save(df, xlsx_path, csv_path, failed_rows):
                 # Remove the row below
                 to_remove.add(end+1)
                 merged_isolated += 1
+                
+                # Store details for logging (new_id will be calculated after reassignment)
+                merged_details.append((original_id, original_page, merged_with_id, merged_with_page))
         elif length == 2:
             # Pair: leave as is, count
+            pair_details.append([
+                (df_clean.at[start, "id"], df_clean.at[start, "page"]),
+                (df_clean.at[end, "id"], df_clean.at[end, "page"])
+            ])
             pair_count += 1
         elif length > 2:
             # Run >2: leave as is, count
+            run_entries = []
+            for i in range(start, end + 1):
+                run_entries.append((df_clean.at[i, "id"], df_clean.at[i, "page"]))
+            run_gt2_details.append(run_entries)
             run_gt2_count += 1
 
     # Remove rows (sort descending so index stays valid)
@@ -156,17 +179,62 @@ def postprocess_and_save(df, xlsx_path, csv_path, failed_rows):
     df_clean.to_csv(csv_path, index=False)
     logging.info(f"Saved cleaned csv to: {csv_path}")
 
-    # Write summary file
+    # Write detailed summary file
     with open(summary_path, "w", encoding="utf-8") as f:
+        # Summary statistics
+        f.write("SUMMARY STATISTICS\n")
+        f.write("=" * 50 + "\n")
         f.write(f"Isolated incomplete rows merged with below: {merged_isolated}\n")
         f.write(f"Pairs of incomplete rows: {pair_count}\n")
         f.write(f"Runs of >2 incomplete rows: {run_gt2_count}\n")
         f.write(f"LLM failures: {failed_count}\n")
+        f.write(f"Final row count: {len(df_clean)}\n\n")
+        
+        # Isolated incomplete rows merged with below
+        if merged_details:
+            f.write("ISOLATED INCOMPLETE ROWS MERGED WITH BELOW\n")
+            f.write("-" * 50 + "\n")
+            for i, (orig_id, orig_page, merged_id, merged_page) in enumerate(merged_details):
+                # Find the new ID in the cleaned dataframe
+                # Look for the row that contains the merged entry
+                new_id = None
+                for idx, row in df_clean.iterrows():
+                    if orig_page in str(row["entry"]) and merged_page in str(row["entry"]):
+                        new_id = row["id"]
+                        break
+                
+                f.write(f"Merge {i+1}: Original (id: {orig_id}, page: {orig_page}) + (id: {merged_id}, page: {merged_page}) -> New (id: {new_id})\n")
+            f.write("\n")
+        
+        # Pairs of incomplete rows
+        if pair_details:
+            f.write("PAIRS OF INCOMPLETE ROWS\n")
+            f.write("-" * 50 + "\n")
+            for i, pair in enumerate(pair_details):
+                f.write(f"Pair {i+1}: (id: {pair[0][0]}, page: {pair[0][1]}) and (id: {pair[1][0]}, page: {pair[1][1]})\n")
+            f.write("\n")
+        
+        # Runs of >2 incomplete rows
+        if run_gt2_details:
+            f.write("RUNS OF >2 INCOMPLETE ROWS\n")
+            f.write("-" * 50 + "\n")
+            for i, run in enumerate(run_gt2_details):
+                f.write(f"Run {i+1}: ")
+                for j, (id_val, page_val) in enumerate(run):
+                    if j > 0:
+                        f.write(", ")
+                    f.write(f"(id: {id_val}, page: {page_val})")
+                f.write("\n")
+            f.write("\n")
+        
+        # LLM failures
         if failed_rows:
-            f.write("\nFailed rows (id, page):\n")
+            f.write("LLM FAILURES\n")
+            f.write("-" * 50 + "\n")
             for _, id_val, page_val in failed_rows:
-                f.write(f"id: {id_val}, page: {page_val}\n")
-    logging.info(f"Saved summary file to: {summary_path}")
+                f.write(f"(id: {id_val}, page: {page_val})\n")
+    
+    logging.info(f"Saved detailed summary file to: {summary_path}")
 
     # Summary
     logging.info("")
