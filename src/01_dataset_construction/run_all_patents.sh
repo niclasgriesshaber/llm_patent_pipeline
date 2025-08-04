@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INPUT_DIR="$SCRIPT_DIR/../../data/pdfs/patent_pdfs"
 
 usage() {
-    echo "Usage: $0 --pdfs all | --pdfs <pdf1> <pdf2> ..."
+    echo "Usage: $0 --pdfs all | --pdfs <pdf1> <pdf2> ... [--max_workers <number>]"
     exit 1
 }
 
@@ -17,6 +17,7 @@ fi
 shift
 
 PDF_LIST=()
+MAX_WORKERS=""
 
 if [ "$1" == "all" ]; then
     # Find all PDFs in the input directory (POSIX compatible)
@@ -27,7 +28,7 @@ if [ "$1" == "all" ]; then
     shift
 else
     # Use provided filenames, check if they exist in the input directory
-    while [ "$1" != "" ]; do
+    while [ "$1" != "" ] && [ "$1" != "--max_workers" ]; do
         PDF_PATH="$INPUT_DIR/$1"
         if [ -f "$PDF_PATH" ]; then
             PDF_LIST+=("$PDF_PATH")
@@ -36,6 +37,17 @@ else
         fi
         shift
     done
+fi
+
+# Check for --max_workers parameter
+if [ "$1" == "--max_workers" ]; then
+    shift
+    if [ "$1" != "" ] && [ "$1" -gt 0 ] 2>/dev/null; then
+        MAX_WORKERS="--max_workers $1"
+    else
+        echo "[ERROR] --max_workers requires a positive number"
+        exit 1
+    fi
 fi
 
 if [ ${#PDF_LIST[@]} -eq 0 ]; then
@@ -49,7 +61,7 @@ FAIL=0
 for PDF in "${PDF_LIST[@]}"; do
     PDF_BASENAME=$(basename "$PDF")
     echo "\n[INFO] Processing $PDF_BASENAME ..."
-    python "$SCRIPT_DIR/gemini-2.5-parallel.py" --pdf "$PDF_BASENAME"
+    python "$SCRIPT_DIR/gemini-2.5-parallel.py" --pdf "$PDF_BASENAME" $MAX_WORKERS
     if [ $? -eq 0 ]; then
         echo "[INFO] Successfully processed $PDF_BASENAME"
         SUCCESS=$((SUCCESS+1))
