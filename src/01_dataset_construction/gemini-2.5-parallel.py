@@ -552,21 +552,46 @@ def update_processing_log(pdf_base_out_dir: Path, pdf_stem: str, pdf_name: str,
     """Create or update a JSON log file with minimal processing information."""
     log_file = pdf_base_out_dir / f"{pdf_stem}_log.json"
     
+    # Load existing log data if it exists
+    existing_data = {}
+    if log_file.exists():
+        try:
+            with log_file.open("r", encoding="utf-8") as f:
+                existing_data = json.load(f)
+            logging.info(f"Loaded existing log data from: {get_relative_path(log_file)}")
+        except Exception as e:
+            logging.warning(f"Failed to load existing log data: {e}")
+    
+    # Accumulate tokens with existing data
+    total_input_tokens = existing_data.get('total_input_tokens', 0) + pdf_tokens.get('prompt', 0)
+    total_thought_tokens = existing_data.get('total_thought_tokens', 0) + pdf_tokens.get('thoughts', 0)
+    total_candidate_tokens = existing_data.get('total_candidate_tokens', 0) + pdf_tokens.get('candidate', 0)
+    
+    # For page count, use the maximum of existing and current (in case of single page processing)
+    total_pages = max(existing_data.get('number_of_pages', 0), page_count)
+    
+    # For processing time, accumulate (add new time to existing)
+    total_processing_time = existing_data.get('processing_time_seconds', 0) + round(processing_time, 2)
+    
+    # Use the most recent max_workers setting
+    current_max_workers = max_workers
+    
     log_data = {
         "file_name": pdf_name,
         "model": MODEL_NAME,
-        "number_of_pages": page_count,
-        "total_input_tokens": pdf_tokens.get('prompt', 0),
-        "total_thought_tokens": pdf_tokens.get('thoughts', 0),
-        "total_candidate_tokens": pdf_tokens.get('candidate', 0),
-        "processing_time_seconds": round(processing_time, 2),
-        "max_workers": max_workers
+        "number_of_pages": total_pages,
+        "total_input_tokens": total_input_tokens,
+        "total_thought_tokens": total_thought_tokens,
+        "total_candidate_tokens": total_candidate_tokens,
+        "processing_time_seconds": total_processing_time,
+        "max_workers": current_max_workers
     }
     
     try:
         with log_file.open("w", encoding="utf-8") as f:
             json.dump(log_data, f, indent=2, ensure_ascii=False)
-        logging.info(f"Processing log saved to: {get_relative_path(log_file)}")
+        logging.info(f"Processing log updated to: {get_relative_path(log_file)}")
+        logging.info(f"Accumulated tokens: input={total_input_tokens:,}, thoughts={total_thought_tokens:,}, candidate={total_candidate_tokens:,}")
     except Exception as e:
         logging.error(f"Failed to write processing log {get_relative_path(log_file)}: {e}")
 
