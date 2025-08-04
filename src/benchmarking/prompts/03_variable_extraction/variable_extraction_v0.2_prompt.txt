@@ -1,0 +1,61 @@
+You will be provided with a single text entry from Germany's Imperial Patent Office. Your task is to function as a highly precise information extraction engine. You must carefully analyze the entry and extract specific fields, formatting the output as a single, valid JSON object.
+
+**Core Principles:**
+*   **Exactness:** All extracted text must be an *exact, character-for-character copy* from the source text. Do not add, remove, or alter any characters, including historical German characters (e.g., ſ).
+*   **Structure:** The patent entries almost always follow a specific order: `patent_id` -> `name(s)` -> `location(es)` -> (optional `Vertreter` info) -> `description` -> (optional addendum note) -> `date` -> (optional addendum note). Use this predictable structure to guide your extraction.
+*   **Output Format:** The output MUST be a single JSON object with the keys: `patent_id`, `name`, `location`, `description`, and `date`. If a value cannot be reliably found for a field, use the string "NaN".
+
+---
+
+**Detailed Extraction Rules:**
+
+**1. `patent_id` (String)**
+*   **Location:** The patent ID is the numerical identifier at the beginning of the entry.
+*   **Format:** It is a one- to six-digit number.
+*   **Rule:** You MUST ignore any non-digit prefixes. This includes list enumerations (e.g., `1.`, `17.`), symbols (e.g., `(†)`), dashes, or spaces. Extract ONLY the numeric digits.
+*   **Example:** For `(†) 2. 35321. — ...`, you must extract `"35321"`.
+
+**2. `name` (String)**
+*   **Location:** This is the name of the patent holder(s), which immediately follows the `patent_id`.
+*   **Rule:** Extract the full name(s) exactly as written.
+    *   Include corporate forms (e.g., `AKTIEN-GESELLSCHAFT FÜR BERGBAU- UND ZINKHÜTTENBETRIEB`).
+    *   Include academic or professional titles (e.g., `Dr.-Ing.`, `Prof.`, `Dr.`).
+    *   Include all parts of compound names (e.g., `SCHIFFER & KIRCHER`).
+    *   **CRITICAL:** Do NOT extract occupations or job descriptions that may appear with names. Extract only the actual names and titles.
+*   **CRITICAL DISTINCTION:** 
+    *   **INCLUDE:** Academic titles (e.g., `Dr.`, `Prof.`, `Dr.-Ing.`, `Ing.`) are part of the person's formal name and should be extracted.
+    *   **EXCLUDE:** Occupational descriptions (e.g., `Ingenieur`, `Kaufmann`, `Fabrikant`, `Mechaniker`) are job titles and should NOT be extracted, even if they appear immediately before or after the name.
+*   **CRITICAL:** This field is for the patent holder ONLY. Do NOT extract the name of the representative (`Vertreter`). The representative's name, if present, appears later in the text and must be ignored for this field.
+
+**3. `location` (String)**
+*   **Location:** This is the location of the patent holder, and it almost always follows the holder's `name` directly. It is often introduced by a preposition like `in` or `auf`.
+*   **Rule:** Extract the entire location phrase associated with the patent holder(s).
+    *   Include all details: city, state, country (e.g., `Kladno, Böhmen`, `Chicago, V. St. A.`).
+*   **CRITICAL:** Do NOT extract the location of the representative (`Vertreter`). The correct location is the one directly linked to the `name` you extracted in the previous step.
+
+**4. `description` (String)**
+*   **Location:** This is the patent's subject matter. It is the text located *after* the holder's name/location and *before* the final date.
+*   **Rule:** Extract the core descriptive text. This can be as short as a single word. You must apply the following two exclusion rules:
+    *   **Exclusion 1: Representative Information:** You MUST completely exclude any block of text detailing a representative. This block often starts with `Vertreter:` and includes their name, title, and location.
+    *   **Exclusion 2: Addendum Notes:** You MUST completely exclude any parenthetical notes about patent addendums. These notes look like `(Zusatz zum Patent 12345.)` or `(II. Zusatz zum Patent 17502.)` and are usually found at the end of the description, just before the date.
+*   After applying these exclusions, extract the remaining text for the description.
+
+**5. `date` (String)**
+*   **Location:** The date is located at the very end of the entry.
+*   **Rule:** Extract the date string *exactly* as it appears. If multiple dates are present in the entry, the correct one is always the date referring to the German registration.
+
+---
+
+**Example Input Entry:**
+35 321. — KARLIK, JOH., in Kladno, Böhmen; Vertreter: C. FEHLERT & G. LOUBIER, Firma: C. KESSELER in Berlin SW., Anhaltstrafse 6. Wipper mit verschiedenen, sich während einer Umdrehung ändernden Umfangsgeschwindigkeiten. 5. November 1885.
+
+**Correct JSON Output:**
+{
+  "patent_id": "35321",
+  "name": "KARLIK, JOH.",
+  "location": "Kladno, Böhmen",
+  "description": "Wipper mit verschiedenen, sich während einer Umdrehung ändernden Umfangsgeschwindigkeiten.",
+  "date": "5. November 1885."
+}
+
+**The entry from which you should extract information:**
