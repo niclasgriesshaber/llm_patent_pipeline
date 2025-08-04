@@ -550,10 +550,11 @@ def overwrite_error_file(pdf_base_out_dir: Path, pdf_stem: str, pdf_name: str,
 def update_processing_log(pdf_base_out_dir: Path, pdf_stem: str, pdf_name: str, 
                          page_count: int, pdf_tokens: dict, processing_time: float, max_workers: int) -> None:
     """Create or update a JSON log file with minimal processing information."""
-    log_file = pdf_base_out_dir / f"Patentamt_{pdf_stem}_log.json"
+    log_file = pdf_base_out_dir / f"{pdf_stem}_log.json"
     
     log_data = {
         "file_name": pdf_name,
+        "model": MODEL_NAME,
         "number_of_pages": page_count,
         "total_input_tokens": pdf_tokens.get('prompt', 0),
         "total_thought_tokens": pdf_tokens.get('thoughts', 0),

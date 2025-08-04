@@ -89,6 +89,7 @@ def create_processing_log(logs_dir: Path, filestem: str, csv_name: str, row_coun
     
     log_data = {
         "file_name": csv_name,
+        "model": FULL_MODEL_NAME,
         "number_of_rows": row_count,
         "total_input_tokens": total_input_tokens,
         "total_thought_tokens": total_thought_tokens,
