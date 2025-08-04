@@ -19,12 +19,9 @@ You will be provided with a single text entry from Germany's Imperial Patent Off
 *   **Location:** This is the name of the patent holder(s), which immediately follows the `patent_id`.
 *   **Rule:** Extract the full name(s) exactly as written.
     *   Include corporate forms (e.g., `AKTIEN-GESELLSCHAFT FÜR BERGBAU- UND ZINKHÜTTENBETRIEB`).
-    *   Include academic or professional titles (e.g., `Dr.-Ing.`, `Prof.`, `Dr.`).
+    *   Include academic or professional titles (e.g., `Dr.-Ing.`).
     *   Include all parts of compound names (e.g., `SCHIFFER & KIRCHER`).
     *   **CRITICAL:** Do NOT extract occupations or job descriptions that may appear with names. Extract only the actual names and titles.
-*   **CRITICAL DISTINCTION:** 
-    *   **INCLUDE:** Academic titles (e.g., `Dr.`, `Prof.`, `Dr.-Ing.`, `Ing.`) are part of the person's formal name and should be extracted.
-    *   **EXCLUDE:** Occupational descriptions (e.g., `Ingenieur`, `Kaufmann`, `Fabrikant`, `Mechaniker`) are job titles and should NOT be extracted, even if they appear immediately before or after the name.
 *   **CRITICAL:** This field is for the patent holder ONLY. Do NOT extract the name of the representative (`Vertreter`). The representative's name, if present, appears later in the text and must be ignored for this field.
 
 **3. `location` (String)**
