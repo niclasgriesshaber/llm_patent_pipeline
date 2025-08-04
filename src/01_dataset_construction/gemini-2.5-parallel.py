@@ -392,6 +392,22 @@ def process_specific_pages(pages: List[int], png_dir: Path, json_dir: Path, task
             if check_json_exists(json_dir, page_num):
                 logging.info(f"Page {page_num:04d} skipped: JSON already exists.")
                 successful_pages.add(page_num)
+                # Add a dummy result for skipped pages to maintain consistency
+                results.append({
+                    "page_idx": page_num,
+                    "prompt_tokens": 0,
+                    "candidate_tokens": 0,
+                    "thoughts_tokens": 0,
+                    "total_tokens": 0,
+                    "success": True,
+                    "error_msg": "",
+                    "error_type": None,
+                    "api_failures": 0,
+                    "rate_limit_failures": 0,
+                    "parse_failures": 0,
+                    "last_parse_error": "",
+                    "extra_info": {}
+                })
                 continue
             png_file = png_dir / f"page_{page_num:04d}.png"
             future = executor.submit(process_page, page_num, png_file, task_prompt, temperature, thinking_budget, json_dir, error_tracker)
@@ -683,7 +699,7 @@ def main():
             create_consolidated_csv(json_dir, pdf_base_out_dir, pdf_stem)
         else:
             logging.error(f"Failed to process page {args.page}")
-        return
+            return  # Only return if processing failed
     else:
         # Parallel processing for full PDF
         logging.info(f"Launching {len(png_files)} page tasks (max_workers={args.max_workers})...")
