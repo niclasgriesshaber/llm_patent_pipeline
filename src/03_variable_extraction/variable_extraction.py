@@ -32,6 +32,11 @@ FULL_MODEL_NAME = "gemini-2.0-flash"
 MAX_OUTPUT_TOKENS = 8192
 MAX_RETRIES = 3
 
+# Global token tracking
+total_input_tokens = 0
+total_thought_tokens = 0
+total_candidate_tokens = 0
+
 ###############################################################################
 # Utilities
 ###############################################################################
@@ -40,6 +45,28 @@ def format_duration(seconds: float) -> str:
     mins = int((seconds % 3600) // 60)
     secs = int(seconds % 60)
     return f"{hrs:02d}:{mins:02d}:{secs:02d}"
+
+def create_processing_log(logs_dir: Path, filestem: str, csv_name: str, row_count: int, 
+                         processing_time: float, max_workers: int) -> None:
+    """Create a JSON log file with processing information."""
+    log_file = logs_dir / f"{filestem}_variable_extraction_logs.json"
+    
+    log_data = {
+        "file_name": csv_name,
+        "number_of_rows": row_count,
+        "total_input_tokens": total_input_tokens,
+        "total_thought_tokens": total_thought_tokens,
+        "total_candidate_tokens": total_candidate_tokens,
+        "processing_time_seconds": round(processing_time, 2),
+        "max_workers": max_workers
+    }
+    
+    try:
+        with log_file.open("w", encoding="utf-8") as f:
+            json.dump(log_data, f, indent=2, ensure_ascii=False)
+        logging.info(f"Processing log saved to: {log_file}")
+    except Exception as e:
+        logging.error(f"Failed to write processing log {log_file}: {e}")
 
 def parse_response(text: str) -> dict:
     # Strip away any backticks that might wrap the text
@@ -130,6 +157,8 @@ def gemini_api_call(prompt: str, temperature: float) -> Optional[dict]:
 # Classify Single Entry with Improved Retry Logic
 ###############################################################################
 def classify_entry(entry: str, prompt_template: str, temperature: float) -> tuple:
+    global total_input_tokens, total_thought_tokens, total_candidate_tokens
+    
     default_result = {
         "patent_id": "NaN",
         "name": "NaN",
@@ -150,8 +179,12 @@ def classify_entry(entry: str, prompt_template: str, temperature: float) -> tupl
             usage = result["usage"]
             ptk = getattr(usage, 'prompt_token_count', 0) or 0
             ctk = getattr(usage, 'candidates_token_count', 0) or 0
-            ttk = getattr(usage, 'total_token_count', 0) or 0
-            return parsed_data, ptk, ctk, ttk
+            
+            # Update global token counts (thought tokens are always 0 for Gemini 2.0 Flash)
+            total_input_tokens += ptk
+            total_candidate_tokens += ctk
+            
+            return parsed_data, ptk, ctk, 0  # Return 0 for thought tokens since Gemini 2.0 Flash doesn't support them
         
         # If we get here, the API call failed (result is None)
         if attempt < MAX_RETRIES - 1:  # Don't sleep on the last attempt
@@ -209,8 +242,6 @@ def main():
     logging.info(f"Classifying {len(df)} entries using Gemini.")
     start_time = time.time()
 
-    # Initialize global token counters
-    global_tokens = defaultdict(int)
     processed_count = 0
     total_tasks = len(df)
 
@@ -232,9 +263,6 @@ def main():
             try:
                 result_dict, ptk, ctk, ttk = future.result()
                 results_dict[idx] = result_dict
-                global_tokens['prompt'] += ptk
-                global_tokens['candidate'] += ctk
-                global_tokens['total'] += ttk
                 log_summary = result_dict.get("patent_id", result_dict.get("name", "N/A"))
                 logging.info(f"[{idx}] {progress} → Processed: {log_summary} (Tokens: input={ptk}, candidate={ctk}, total={ttk})")
                 
@@ -320,14 +348,17 @@ def main():
     # Log global token usage summary with improved terminology
     logging.info("")
     logging.info(" Global Usage Summary ".center(80, "="))
-    logging.info(f"  Prompt Tokens:     {global_tokens['prompt']:,}")
-    logging.info(f"  Candidate Tokens:  {global_tokens['candidate']:,}")
-    logging.info(f"  Total Tokens:      {global_tokens['total']:,}")
+    logging.info(f"  Prompt Tokens:     {total_input_tokens:,}")
+    logging.info(f"  Candidate Tokens:  {total_candidate_tokens:,}")
+    logging.info(f"  Total Tokens:      {total_input_tokens + total_candidate_tokens:,}")
     logging.info(f"  Total Script Time: {format_duration(script_duration)}")
     logging.info(f"  LLM API Call Failures: {llm_api_failures}")
     logging.info(f"  Successful Calls with Missing Data: {successful_calls_with_missing_data}")
     logging.info(f"  Total Entries with Incomplete Data: {llm_api_failures + successful_calls_with_missing_data}")
     logging.info("=" * 80)
+
+    # Create and save processing log
+    create_processing_log(logs_dir, summary_stem, input_filename, len(df), script_duration, args.max_workers)
 
 if __name__ == "__main__":
     main()

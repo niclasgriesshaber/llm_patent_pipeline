@@ -4,6 +4,7 @@ import argparse
 import logging
 import pandas as pd
 import time
+import json
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dotenv import load_dotenv
@@ -30,10 +31,17 @@ MAX_WORKERS = 8
 # Logging config
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(message)s", handlers=[logging.StreamHandler(sys.stdout)])
 
+# Global token tracking
+total_input_tokens = 0
+total_thought_tokens = 0
+total_candidate_tokens = 0
+
 def load_prompt() -> str:
     return PROMPT_PATH.read_text(encoding="utf-8")
 
-def call_llm(entry: str, prompt_template: str) -> str:
+def call_llm(entry: str, prompt_template: str) -> tuple[str, dict]:
+    global total_input_tokens, total_thought_tokens, total_candidate_tokens
+    
     client = genai.Client(api_key=API_KEY)
     prompt = f"{prompt_template}\n{entry.strip()}"
     try:
@@ -46,14 +54,55 @@ def call_llm(entry: str, prompt_template: str) -> str:
             ),
         )
         if not response or not response.text:
-            return "LLM failed"
+            return "LLM failed", {}
+        
+        # Extract token usage (Gemini 2.0 Flash doesn't support thought tokens)
+        usage = getattr(response, 'usage_metadata', None)
+        if usage:
+            ptk = getattr(usage, 'prompt_token_count', 0) or 0
+            ctk = getattr(usage, 'candidates_token_count', 0) or 0
+            
+            # Update global token counts (thought tokens are always 0 for Gemini 2.0 Flash)
+            total_input_tokens += ptk
+            total_candidate_tokens += ctk
+            
+            token_info = {
+                'prompt_tokens': ptk,
+                'thoughts_tokens': 0,  # Gemini 2.0 Flash doesn't support thought tokens
+                'candidate_tokens': ctk
+            }
+        else:
+            token_info = {}
+        
         text = response.text.strip()
         if text == "1" or text == "0":
-            return text
-        return "LLM failed"
+            return text, token_info
+        return "LLM failed", token_info
     except Exception as e:
         logging.error(f"LLM call failed: {e}")
-        return "LLM failed"
+        return "LLM failed", {}
+
+def create_processing_log(logs_dir: Path, filestem: str, csv_name: str, row_count: int, 
+                         processing_time: float, max_workers: int) -> None:
+    """Create a JSON log file with processing information."""
+    log_file = logs_dir / f"{filestem}_cleaned_logs.json"
+    
+    log_data = {
+        "file_name": csv_name,
+        "number_of_rows": row_count,
+        "total_input_tokens": total_input_tokens,
+        "total_thought_tokens": total_thought_tokens,
+        "total_candidate_tokens": total_candidate_tokens,
+        "processing_time_seconds": round(processing_time, 2),
+        "max_workers": max_workers
+    }
+    
+    try:
+        with log_file.open("w", encoding="utf-8") as f:
+            json.dump(log_data, f, indent=2, ensure_ascii=False)
+        logging.info(f"Processing log saved to: {log_file}")
+    except Exception as e:
+        logging.error(f"Failed to write processing log {log_file}: {e}")
 
 def process_llm(df, prompt_template):
     results = [None] * len(df)
@@ -67,11 +116,11 @@ def process_llm(df, prompt_template):
         for future in as_completed(future_to_idx):
             idx = future_to_idx[future]
             try:
-                result = future.result()
+                result, token_info = future.result()
                 if result == "LLM failed":
                     # Retry once
                     logging.info(f"Row {idx+1}: LLM failed, retrying...")
-                    result_retry = call_llm(df.iloc[idx]["entry"], prompt_template)
+                    result_retry, token_info_retry = call_llm(df.iloc[idx]["entry"], prompt_template)
                     if result_retry == "LLM failed":
                         failures += 1
                         failed_rows.append((idx, df.iloc[idx]["id"], df.iloc[idx]["page"]))
@@ -286,6 +335,10 @@ def main():
     postprocess_and_save(df, xlsx_path, csv_path, failed_rows)
     elapsed = time.time() - start_time
     logging.info(f"Total script time: {elapsed:.1f} seconds")
+
+    # Create processing log
+    create_processing_log(logs_dir=CLEANED_XLSX_TEMP / "logs", filestem=filestem, csv_name=args.csv, 
+                          row_count=len(df), processing_time=elapsed, max_workers=MAX_WORKERS)
 
 if __name__ == "__main__":
     main() 

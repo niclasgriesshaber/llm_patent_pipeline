@@ -545,6 +545,30 @@ def overwrite_error_file(pdf_base_out_dir: Path, pdf_stem: str, pdf_name: str,
     except Exception as e:
         logging.error(f"Failed to write error file {get_relative_path(err_file)}: {e}", exc_info=True)
 
+# After the overwrite_error_file function, before main()
+
+def update_processing_log(pdf_base_out_dir: Path, pdf_stem: str, pdf_name: str, 
+                         page_count: int, pdf_tokens: dict, processing_time: float, max_workers: int) -> None:
+    """Create or update a JSON log file with minimal processing information."""
+    log_file = pdf_base_out_dir / f"Patentamt_{pdf_stem}_log.json"
+    
+    log_data = {
+        "file_name": pdf_name,
+        "number_of_pages": page_count,
+        "total_input_tokens": pdf_tokens.get('prompt', 0),
+        "total_thought_tokens": pdf_tokens.get('thoughts', 0),
+        "total_candidate_tokens": pdf_tokens.get('candidate', 0),
+        "processing_time_seconds": round(processing_time, 2),
+        "max_workers": max_workers
+    }
+    
+    try:
+        with log_file.open("w", encoding="utf-8") as f:
+            json.dump(log_data, f, indent=2, ensure_ascii=False)
+        logging.info(f"Processing log saved to: {get_relative_path(log_file)}")
+    except Exception as e:
+        logging.error(f"Failed to write processing log {get_relative_path(log_file)}: {e}")
+
 # Main execution
 def main():
     parser = argparse.ArgumentParser(description="Gemini PDF->PNG->JSON->CSV Pipeline")
@@ -683,6 +707,9 @@ def main():
     global_tokens['candidate'] += pdf_tokens['candidate']
     global_tokens['thoughts'] += pdf_tokens['thoughts']
     global_tokens['total'] += pdf_tokens['total']
+
+    # Create processing log
+    update_processing_log(pdf_base_out_dir, pdf_stem, pdf_name, len(png_files), pdf_tokens, pdf_duration, args.max_workers)
 
     logging.info(f"Tokens (PDF: {pdf_name}): prompt={pdf_tokens['prompt']:,}, candidate={pdf_tokens['candidate']:,}, thoughts={pdf_tokens['thoughts']:,}, total={pdf_tokens['total']:,}")
     logging.info("")
