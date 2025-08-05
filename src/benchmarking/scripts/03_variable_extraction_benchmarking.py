@@ -78,7 +78,8 @@ def call_llm(entry: str, prompt_template: str, model_name: str) -> dict:
     # For gemini-2.5 models, set thinking_config
     if "2.5" in model_name:
         if "lite" in model_name:
-            # For lite model: no thinking, keep original max_output_tokens
+            # For lite model: no thinking, set max_output_tokens to 1024
+            config_args["max_output_tokens"] = 1024
             config_args["thinking_config"] = types.ThinkingConfig(
                 thinking_budget=0,
                 include_thoughts=False
