@@ -38,7 +38,7 @@ MAX_OUTPUT_TOKENS = 8192
 MAX_WORKERS = 20
 MAX_RETRIES = 3
 
-MODELS = ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-2.5-pro']
+MODELS = ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite']
 
 # Variable fields to extract and compare
 VARIABLE_FIELDS = ['patent_id', 'name', 'location', 'description', 'date']
@@ -77,7 +77,12 @@ def call_llm(entry: str, prompt_template: str, model_name: str) -> dict:
     
     # For gemini-2.5 models, set thinking_config
     if "2.5" in model_name:
-        thinking_budget = 32768 if "pro" in model_name else 24576
+        if "lite" in model_name:
+            thinking_budget = 512  # Minimum required for gemini-2.5-flash-lite
+        elif "pro" in model_name:
+            thinking_budget = 32768
+        else:
+            thinking_budget = 24576
         config_args["thinking_config"] = types.ThinkingConfig(
             thinking_budget=thinking_budget,
             include_thoughts=True

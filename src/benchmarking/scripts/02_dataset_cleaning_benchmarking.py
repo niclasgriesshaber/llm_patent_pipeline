@@ -32,7 +32,7 @@ API_KEY = os.getenv("GOOGLE_API_KEY")
 MAX_OUTPUT_TOKENS = 128
 MAX_WORKERS = 8
 
-MODELS = ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-2.5-pro']
+MODELS = ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite']
 
 # --- LLM Processing Functions (adapted from complete_patent.py) ---
 
@@ -54,8 +54,12 @@ def call_llm(entry: str, prompt_template: str, model_name: str) -> str:
     
     # For gemini-2.5 models, set thinking_config with minimum thinking_budget
     if "2.5" in model_name:
+        if "lite" in model_name:
+            thinking_budget = 512  # Minimum required for gemini-2.5-flash-lite
+        else:
+            thinking_budget = 128  # Minimum required for other 2.5 models
         config_args["thinking_config"] = types.ThinkingConfig(
-            thinking_budget=128,  # Minimum required for 2.5 models
+            thinking_budget=thinking_budget,
             include_thoughts=True
         )
     
