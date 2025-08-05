@@ -4,7 +4,7 @@
 # This script activates the conda environment and runs the parallel Python script
 
 echo "Starting PARALLEL automatic rerun of failed pages for all PDFs with error files..."
-echo "This will process 28 PDFs that have error files using 4 parallel workers."
+echo "This will process 28 PDFs that have error files using 12 parallel workers."
 echo ""
 
 # Activate conda environment

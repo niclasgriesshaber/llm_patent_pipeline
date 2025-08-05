@@ -138,8 +138,8 @@ def main():
     
     logging.info(f"Found {len(pdfs_with_errors)} PDFs with error files to process")
     
-    # Determine number of workers (use fewer workers to avoid overwhelming the API)
-    max_workers = min(4, len(pdfs_with_errors), cpu_count())
+    # Determine number of workers (can handle up to 12 workers)
+    max_workers = min(12, len(pdfs_with_errors), cpu_count())
     logging.info(f"Using {max_workers} parallel workers")
     logging.info("")
     
