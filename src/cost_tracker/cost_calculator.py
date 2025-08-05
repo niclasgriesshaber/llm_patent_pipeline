@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Dict, List, Any
 from datetime import datetime
 
-# Pricing configuration
+# Pricing configuration (in USD)
 PRICING = {
     "gemini-2.5-pro": {
         "input_tokens": 1.25,  # USD per 1M tokens
@@ -18,9 +18,27 @@ PRICING = {
     }
 }
 
+# Currency conversion rate (USD to EUR)
+USD_TO_EUR_RATE = 0.92  # Approximate current rate
+
 def find_all_log_files() -> Dict[str, List[str]]:
     """Find all log files across the three pipeline stages."""
-    base_path = Path("../../data")
+    # Try different possible base paths
+    possible_paths = [
+        Path("../../data"),  # From cost_tracker directory
+        Path("data"),        # From main project directory
+        Path("../data")      # Alternative relative path
+    ]
+    
+    base_path = None
+    for path in possible_paths:
+        if path.exists():
+            base_path = path
+            break
+    
+    if not base_path:
+        print("Warning: Could not find data directory. Using relative path.")
+        base_path = Path("../../data")
     
     log_files = {
         "dataset_construction": [],
@@ -67,15 +85,23 @@ def calculate_file_cost(log_data: Dict[str, Any]) -> Dict[str, Any]:
     # Combine thought and candidate tokens into output tokens
     output_tokens = thought_tokens + candidate_tokens
     
-    # Calculate costs (convert to millions)
-    input_cost = (input_tokens / 1_000_000) * pricing["input_tokens"]
-    output_cost = (output_tokens / 1_000_000) * pricing["output_tokens"]
-    total_cost = input_cost + output_cost
+    # Calculate costs in USD (convert to millions)
+    input_cost_usd = (input_tokens / 1_000_000) * pricing["input_tokens"]
+    output_cost_usd = (output_tokens / 1_000_000) * pricing["output_tokens"]
+    total_cost_usd = input_cost_usd + output_cost_usd
+    
+    # Convert to EUR
+    input_cost_eur = input_cost_usd * USD_TO_EUR_RATE
+    output_cost_eur = output_cost_usd * USD_TO_EUR_RATE
+    total_cost_eur = total_cost_usd * USD_TO_EUR_RATE
     
     return {
-        "cost": total_cost,
-        "input_cost": input_cost,
-        "output_cost": output_cost,
+        "cost": total_cost_eur,
+        "input_cost": input_cost_eur,
+        "output_cost": output_cost_eur,
+        "cost_usd": total_cost_usd,
+        "input_cost_usd": input_cost_usd,
+        "output_cost_usd": output_cost_usd,
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
         "model": model
@@ -160,7 +186,7 @@ def print_dashboard(summary: Dict[str, Any]):
     # Overall summary
     print("💰 OVERALL SUMMARY")
     print("-" * 40)
-    print(f"Total Cost:          ${summary['total_cost']:>8.2f}")
+    print(f"Total Cost:          €{summary['total_cost']:>8.2f}")
     print(f"Total Files:         {summary['total_files']:>8d}")
     print(f"Total Pages:         {summary['total_pages']:>8d}")
     print(f"Total Rows:          {summary['total_rows']:>8d}")
@@ -177,19 +203,19 @@ def print_dashboard(summary: Dict[str, Any]):
     # Dataset Construction
     const = stages["dataset_construction"]
     print(f"🔧 Dataset Construction:")
-    print(f"   Files: {const['files']:>3d} | Cost: ${const['cost']:>8.2f} | Pages: {const['pages']:>5d} | "
+    print(f"   Files: {const['files']:>3d} | Cost: €{const['cost']:>8.2f} | Pages: {const['pages']:>5d} | "
           f"Input: {const['input_tokens']:>8,d} | Output: {const['output_tokens']:>8,d}")
     
     # Dataset Cleaning
     clean = stages["dataset_cleaning"]
     print(f"🧹 Dataset Cleaning:")
-    print(f"   Files: {clean['files']:>3d} | Cost: ${clean['cost']:>8.2f} | Rows: {clean['rows']:>5d} | "
+    print(f"   Files: {clean['files']:>3d} | Cost: €{clean['cost']:>8.2f} | Rows: {clean['rows']:>5d} | "
           f"Input: {clean['input_tokens']:>8,d} | Output: {clean['output_tokens']:>8,d}")
     
     # Variable Extraction
     extract = stages["variable_extraction"]
     print(f"📊 Variable Extraction:")
-    print(f"   Files: {extract['files']:>3d} | Cost: ${extract['cost']:>8.2f} | Rows: {extract['rows']:>5d} | "
+    print(f"   Files: {extract['files']:>3d} | Cost: €{extract['cost']:>8.2f} | Rows: {extract['rows']:>5d} | "
           f"Input: {extract['input_tokens']:>8,d} | Output: {extract['output_tokens']:>8,d}")
     print()
     
@@ -204,10 +230,10 @@ def print_dashboard(summary: Dict[str, Any]):
             
             for i, file_info in enumerate(sorted_files, 1):
                 if stage_name == "dataset_construction":
-                    print(f"{i:2d}. {file_info['file_name']:<25} ${file_info['cost']:>8.2f} "
+                    print(f"{i:2d}. {file_info['file_name']:<25} €{file_info['cost']:>8.2f} "
                           f"({file_info['pages']:>3d} pages)")
                 else:
-                    print(f"{i:2d}. {file_info['file_name']:<25} ${file_info['cost']:>8.2f} "
+                    print(f"{i:2d}. {file_info['file_name']:<25} €{file_info['cost']:>8.2f} "
                           f"({file_info['rows']:>3d} rows)")
             print()
 
