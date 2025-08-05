@@ -37,9 +37,9 @@ API_KEY = os.getenv("GOOGLE_API_KEY")
 
 # Model configuration
 MODEL_NAME = "gemini-2.5-pro" #flash
-MAX_OUTPUT_TOKENS = 65536 # max output window is 65536
-DEFAULT_THINKING_BUDGET = 32768 #24576 #-1  # Default thinking budget, -1 for dynamic
-MAX_THINKING_BUDGET = 32768 #24576 # Maximum thinking budget
+MAX_OUTPUT_TOKENS = 20000 #65536 # max output window is 65536
+DEFAULT_THINKING_BUDGET = 15000 #32768 #24576 #-1  # Default thinking budget, -1 for dynamic
+MAX_THINKING_BUDGET = 15000 #32768 #24576 # Maximum thinking budget
 MAX_FILE_DESCRIPTORS = 10000
 
 # Error type enumeration
@@ -350,10 +350,21 @@ def process_page(page_idx: int,
                 # Log token usage summary for failed page
                 logging.warning(f"[Worker p.{page_idx:04d}] Token usage (failed): prompt={extra_info.get('prompt_tokens','N/A')}, candidate={extra_info.get('candidate_tokens','N/A')}, thoughts={extra_info.get('thoughts_tokens','N/A')}, total={extra_info.get('total_tokens','N/A')}")
                 # Extract token usage from extra_info and add to result_info for global tracking
-                result_info["prompt_tokens"] = extra_info.get('prompt_tokens', 0) or 0
-                result_info["candidate_tokens"] = extra_info.get('candidate_tokens', 0) or 0
-                result_info["thoughts_tokens"] = extra_info.get('thoughts_tokens', 0) or 0
-                result_info["total_tokens"] = extra_info.get('total_tokens', 0) or 0
+                # Handle "N/A" strings by converting to 0
+                result_info["prompt_tokens"] = extra_info.get('prompt_tokens', 0)
+                result_info["candidate_tokens"] = extra_info.get('candidate_tokens', 0)
+                result_info["thoughts_tokens"] = extra_info.get('thoughts_tokens', 0)
+                result_info["total_tokens"] = extra_info.get('total_tokens', 0)
+                
+                # Convert "N/A" strings to 0
+                if result_info["prompt_tokens"] == "N/A":
+                    result_info["prompt_tokens"] = 0
+                if result_info["candidate_tokens"] == "N/A":
+                    result_info["candidate_tokens"] = 0
+                if result_info["thoughts_tokens"] == "N/A":
+                    result_info["thoughts_tokens"] = 0
+                if result_info["total_tokens"] == "N/A":
+                    result_info["total_tokens"] = 0
             if is_rate_limit: 
                 result_info["rate_limit_failures"] = 1
                 error_tracker.add_error(page_idx, ErrorType.RATE_LIMIT, error, True)
@@ -626,9 +637,14 @@ def update_processing_log(pdf_base_out_dir: Path, pdf_stem: str, pdf_name: str,
             logging.warning(f"Failed to load existing log data: {e}")
     
     # Accumulate tokens with existing data
-    total_input_tokens = existing_data.get('total_input_tokens', 0) + pdf_tokens.get('prompt', 0)
-    total_thought_tokens = existing_data.get('total_thought_tokens', 0) + pdf_tokens.get('thoughts', 0)
-    total_candidate_tokens = existing_data.get('total_candidate_tokens', 0) + pdf_tokens.get('candidate', 0)
+    # Ensure all token values are integers, handle "N/A" strings
+    prompt_tokens = pdf_tokens.get('prompt', 0)
+    thoughts_tokens = pdf_tokens.get('thoughts', 0)
+    candidate_tokens = pdf_tokens.get('candidate', 0)
+    
+    total_input_tokens = existing_data.get('total_input_tokens', 0) + (int(prompt_tokens) if prompt_tokens != "N/A" else 0)
+    total_thought_tokens = existing_data.get('total_thought_tokens', 0) + (int(thoughts_tokens) if thoughts_tokens != "N/A" else 0)
+    total_candidate_tokens = existing_data.get('total_candidate_tokens', 0) + (int(candidate_tokens) if candidate_tokens != "N/A" else 0)
     
     # For page count, use the maximum of existing and current (in case of single page processing)
     total_pages = max(existing_data.get('number_of_pages', 0), page_count)
@@ -836,10 +852,17 @@ def main():
     # After all processing (single-page or multi-page), accumulate tokens
     pdf_tokens = defaultdict(int)
     for r in page_results_list:
-        pdf_tokens['prompt'] += r.get("prompt_tokens", 0)
-        pdf_tokens['candidate'] += r.get("candidate_tokens", 0)
-        pdf_tokens['thoughts'] += r.get("thoughts_tokens", 0)
-        pdf_tokens['total'] += r.get("total_tokens", 0)
+        # Ensure all token values are integers, handle "N/A" strings
+        prompt_tokens = r.get("prompt_tokens", 0)
+        candidate_tokens = r.get("candidate_tokens", 0)
+        thoughts_tokens = r.get("thoughts_tokens", 0)
+        total_tokens = r.get("total_tokens", 0)
+        
+        # Convert to int, treating "N/A" as 0
+        pdf_tokens['prompt'] += int(prompt_tokens) if prompt_tokens != "N/A" else 0
+        pdf_tokens['candidate'] += int(candidate_tokens) if candidate_tokens != "N/A" else 0
+        pdf_tokens['thoughts'] += int(thoughts_tokens) if thoughts_tokens != "N/A" else 0
+        pdf_tokens['total'] += int(total_tokens) if total_tokens != "N/A" else 0
 
     global_tokens['prompt'] += pdf_tokens['prompt']
     global_tokens['candidate'] += pdf_tokens['candidate']
