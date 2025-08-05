@@ -96,7 +96,9 @@ def call_llm(entry: str, prompt_template: str, model_name: str) -> dict:
     
     config = types.GenerateContentConfig(**config_args)
     
-    for attempt in range(MAX_RETRIES):
+    # Retry logic for API failures only
+    max_retries = 3
+    for attempt in range(max_retries):
         try:
             response = client.models.generate_content(
                 model=model_name,
@@ -104,32 +106,40 @@ def call_llm(entry: str, prompt_template: str, model_name: str) -> dict:
                 config=config,
             )
             if not response or not response.text:
-                logging.warning(f"Empty response from {model_name} on attempt {attempt+1}")
-                continue
+                logging.warning(f"Empty response from {model_name}")
+                return {field: "NaN" for field in VARIABLE_FIELDS}
             return parse_response(response.text)
+            
         except Exception as e:
-            msg = str(e)
-            if "429" in msg or "RESOURCE_EXHAUSTED" in msg:
-                retry_after = 10
-                if "retry-after" in msg.lower():
-                    try:
-                        retry_after = int(re.search(r'retry-after: (\d+)', msg.lower()).group(1))
-                    except:
-                        pass
-                logging.warning(f"Rate limit hit for {model_name}. Waiting {retry_after} seconds before retry {attempt+1}/{MAX_RETRIES}")
+            error_msg = str(e)
+            
+            # Check if this is an API failure that should be retried
+            is_api_failure = (
+                "429" in error_msg or 
+                "rate limit" in error_msg.lower() or 
+                "resource exhausted" in error_msg.lower() or
+                "timeout" in error_msg.lower() or
+                "connection" in error_msg.lower() or
+                "network" in error_msg.lower()
+            )
+            
+            if is_api_failure and attempt < max_retries - 1:
+                retry_after = 2 ** attempt  # Exponential backoff: 1s, 2s, 4s
+                logging.warning(f"API failure for {model_name} (attempt {attempt + 1}/{max_retries}): {error_msg}. Waiting {retry_after}s...")
                 time.sleep(retry_after)
+                continue
             else:
-                logging.warning(f"Error in attempt {attempt+1}/{MAX_RETRIES} for {model_name}: {msg}")
+                # Either not an API failure or max retries reached
+                logging.error(f"LLM call failed for {model_name} (attempt {attempt + 1}/{max_retries}): {error_msg}")
                 
                 # Check for specific error types
-                if "thinking" in msg.lower():
+                if "thinking" in error_msg.lower():
                     logging.error(f"Thinking budget configuration issue for {model_name}")
-                elif "not found" in msg.lower() or "does not exist" in msg.lower():
+                elif "not found" in error_msg.lower() or "does not exist" in error_msg.lower():
                     logging.error(f"Model {model_name} not found or not available")
                 
-                time.sleep(2)
+                return {field: "NaN" for field in VARIABLE_FIELDS}
     
-    logging.error(f"Failed to get response after {MAX_RETRIES} attempts")
     return {field: "NaN" for field in VARIABLE_FIELDS}
 
 def process_llm(df, prompt_template, model_name):

@@ -71,55 +71,78 @@ def call_llm(entry: str, prompt_template: str, model_name: str) -> str:
     
     config = types.GenerateContentConfig(**config_args)
     
-    try:
-        response = client.models.generate_content(
-            model=model_name,
-            contents=[prompt],
-            config=config,
-        )
-        if not response or not response.text:
-            logging.warning(f"Empty response from {model_name}")
-            return "LLM failed"
-        text = response.text.strip()
-        
-        # Debug: Log the actual response for troubleshooting
-        logging.info(f"Raw response from {model_name}: '{text}'")
-        
-        # Check for exact matches first
-        if text == "1" or text == "0":
-            return text
-        
-        # Check for responses that contain the expected values
-        if "1" in text and "0" not in text:
-            logging.info(f"Extracted '1' from response: '{text}'")
-            return "1"
-        elif "0" in text and "1" not in text:
-            logging.info(f"Extracted '0' from response: '{text}'")
-            return "0"
-        elif "1" in text and "0" in text:
-            # If both are present, check which comes first or is more prominent
-            if text.find("1") < text.find("0"):
-                logging.info(f"Extracted '1' (appears first) from response: '{text}'")
+    # Retry logic for API failures only
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            response = client.models.generate_content(
+                model=model_name,
+                contents=[prompt],
+                config=config,
+            )
+            if not response or not response.text:
+                logging.warning(f"Empty response from {model_name}")
+                return "LLM failed"
+            text = response.text.strip()
+            
+            # Debug: Log the actual response for troubleshooting
+            logging.info(f"Raw response from {model_name}: '{text}'")
+            
+            # Check for exact matches first
+            if text == "1" or text == "0":
+                return text
+            
+            # Check for responses that contain the expected values
+            if "1" in text and "0" not in text:
+                logging.info(f"Extracted '1' from response: '{text}'")
                 return "1"
-            else:
-                logging.info(f"Extracted '0' (appears first) from response: '{text}'")
+            elif "0" in text and "1" not in text:
+                logging.info(f"Extracted '0' from response: '{text}'")
                 return "0"
-        
-        logging.warning(f"Unexpected response from {model_name}: '{text}'")
-        return "LLM failed"
-    except Exception as e:
-        error_msg = str(e)
-        logging.error(f"LLM call failed for {model_name}: {error_msg}")
-        
-        # Check for specific error types
-        if "429" in error_msg or "rate limit" in error_msg.lower() or "resource exhausted" in error_msg.lower():
-            logging.warning(f"Rate limit detected for {model_name}, consider reducing MAX_WORKERS")
-        elif "thinking" in error_msg.lower():
-            logging.error(f"Thinking budget configuration issue for {model_name}")
-        elif "not found" in error_msg.lower() or "does not exist" in error_msg.lower():
-            logging.error(f"Model {model_name} not found or not available")
-        
-        return "LLM failed"
+            elif "1" in text and "0" in text:
+                # If both are present, check which comes first or is more prominent
+                if text.find("1") < text.find("0"):
+                    logging.info(f"Extracted '1' (appears first) from response: '{text}'")
+                    return "1"
+                else:
+                    logging.info(f"Extracted '0' (appears first) from response: '{text}'")
+                    return "0"
+            
+            logging.warning(f"Unexpected response from {model_name}: '{text}'")
+            return "LLM failed"
+            
+        except Exception as e:
+            error_msg = str(e)
+            
+            # Check if this is an API failure that should be retried
+            is_api_failure = (
+                "429" in error_msg or 
+                "rate limit" in error_msg.lower() or 
+                "resource exhausted" in error_msg.lower() or
+                "timeout" in error_msg.lower() or
+                "connection" in error_msg.lower() or
+                "network" in error_msg.lower()
+            )
+            
+            if is_api_failure and attempt < max_retries - 1:
+                logging.warning(f"API failure for {model_name} (attempt {attempt + 1}/{max_retries}): {error_msg}")
+                time.sleep(2 ** attempt)  # Exponential backoff: 1s, 2s, 4s
+                continue
+            else:
+                # Either not an API failure or max retries reached
+                logging.error(f"LLM call failed for {model_name} (attempt {attempt + 1}/{max_retries}): {error_msg}")
+                
+                # Check for specific error types
+                if "429" in error_msg or "rate limit" in error_msg.lower() or "resource exhausted" in error_msg.lower():
+                    logging.warning(f"Rate limit detected for {model_name}, consider reducing MAX_WORKERS")
+                elif "thinking" in error_msg.lower():
+                    logging.error(f"Thinking budget configuration issue for {model_name}")
+                elif "not found" in error_msg.lower() or "does not exist" in error_msg.lower():
+                    logging.error(f"Model {model_name} not found or not available")
+                
+                return "LLM failed"
+    
+    return "LLM failed"
 
 def process_llm(df, prompt_template, model_name):
     """Process all entries in a dataframe using LLM."""
@@ -136,20 +159,12 @@ def process_llm(df, prompt_template, model_name):
             idx = future_to_idx[future]
             try:
                 result = future.result()
+                results[idx] = result
                 if result == "LLM failed":
-                    # Retry once
-                    logging.info(f"Row {idx+1}: LLM failed, retrying...")
-                    result_retry = call_llm(df.iloc[idx]["entry"], prompt_template, model_name)
-                    if result_retry == "LLM failed":
-                        failures += 1
-                        failed_rows.append((idx, df.iloc[idx]["id"]))
-                        results[idx] = "LLM failed"
-                        logging.error(f"Row {idx+1}: LLM failed after retry.")
-                    else:
-                        results[idx] = result_retry
-                        logging.info(f"Row {idx+1}: LLM retry result = {result_retry}")
+                    failures += 1
+                    failed_rows.append((idx, df.iloc[idx]["id"]))
+                    logging.error(f"Row {idx+1}: LLM failed after all retries.")
                 else:
-                    results[idx] = result
                     logging.info(f"Row {idx+1}: LLM result = {result}")
             except Exception as e:
                 results[idx] = "LLM failed"
