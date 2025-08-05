@@ -70,7 +70,7 @@ def process_single_pdf(args_tuple: Tuple[str, str, int, int]) -> Tuple[str, bool
         worker_logger = logging.getLogger(f"Worker-{worker_id}")
         worker_logger.info(f"[Worker-{worker_id}] Processing: {pdf_filename}")
         
-        # Build the command
+        # Build the command with worker prefix for log identification
         cmd = [
             sys.executable,
             str(SCRIPT_PATH),
@@ -78,19 +78,30 @@ def process_single_pdf(args_tuple: Tuple[str, str, int, int]) -> Tuple[str, bool
             "--from_error_file", "yes"
         ]
         
+        # Print worker start message
+        print(f"\n{'='*60}")
+        print(f"WORKER-{worker_id} STARTING: {pdf_filename}")
+        print(f"{'='*60}")
+        
         # Run the command
         result = subprocess.run(
             cmd,
-            capture_output=True,  # Capture output to avoid mixing logs
+            capture_output=False,  # Show all output from the core script
             text=True,
             cwd=PROJECT_ROOT,
             timeout=3600  # 1 hour timeout per PDF
         )
         
         if result.returncode == 0:
+            print(f"\n{'='*60}")
+            print(f"WORKER-{worker_id} COMPLETED SUCCESSFULLY: {pdf_filename}")
+            print(f"{'='*60}")
             worker_logger.info(f"[Worker-{worker_id}] Successfully processed: {pdf_filename}")
             return (pdf_filename, True, "")
         else:
+            print(f"\n{'='*60}")
+            print(f"WORKER-{worker_id} FAILED: {pdf_filename}")
+            print(f"{'='*60}")
             error_msg = f"Failed with return code {result.returncode}"
             if result.stderr:
                 error_msg += f" - {result.stderr.strip()}"
