@@ -308,6 +308,11 @@ def process_page(page_idx: int,
                     logging.warning(f"[Worker p.{page_idx:04d}] Extra error info: {k}: {v}")
                 # Log token usage summary for failed page
                 logging.warning(f"[Worker p.{page_idx:04d}] Token usage (failed): prompt={extra_info.get('prompt_tokens','N/A')}, candidate={extra_info.get('candidate_tokens','N/A')}, thoughts={extra_info.get('thoughts_tokens','N/A')}, total={extra_info.get('total_tokens','N/A')}")
+                # Extract token usage from extra_info and add to result_info for global tracking
+                result_info["prompt_tokens"] = extra_info.get('prompt_tokens', 0) or 0
+                result_info["candidate_tokens"] = extra_info.get('candidate_tokens', 0) or 0
+                result_info["thoughts_tokens"] = extra_info.get('thoughts_tokens', 0) or 0
+                result_info["total_tokens"] = extra_info.get('total_tokens', 0) or 0
             if is_rate_limit: 
                 result_info["rate_limit_failures"] = 1
                 error_tracker.add_error(page_idx, ErrorType.RATE_LIMIT, error, True)
