@@ -55,13 +55,19 @@ def call_llm(entry: str, prompt_template: str, model_name: str) -> str:
     # For gemini-2.5 models, set thinking_config with minimum thinking_budget
     if "2.5" in model_name:
         if "lite" in model_name:
-            thinking_budget = 512  # Minimum required for gemini-2.5-flash-lite
+            # For lite model: no thinking, minimal output tokens
+            config_args["max_output_tokens"] = 1
+            config_args["thinking_config"] = types.ThinkingConfig(
+                thinking_budget=0,
+                include_thoughts=False
+            )
         else:
+            # For other 2.5 models: use thinking config
             thinking_budget = 128  # Minimum required for other 2.5 models
-        config_args["thinking_config"] = types.ThinkingConfig(
-            thinking_budget=thinking_budget,
-            include_thoughts=True
-        )
+            config_args["thinking_config"] = types.ThinkingConfig(
+                thinking_budget=thinking_budget,
+                include_thoughts=True
+            )
     
     config = types.GenerateContentConfig(**config_args)
     
@@ -72,13 +78,47 @@ def call_llm(entry: str, prompt_template: str, model_name: str) -> str:
             config=config,
         )
         if not response or not response.text:
+            logging.warning(f"Empty response from {model_name}")
             return "LLM failed"
         text = response.text.strip()
+        
+        # Debug: Log the actual response for troubleshooting
+        logging.info(f"Raw response from {model_name}: '{text}'")
+        
+        # Check for exact matches first
         if text == "1" or text == "0":
             return text
+        
+        # Check for responses that contain the expected values
+        if "1" in text and "0" not in text:
+            logging.info(f"Extracted '1' from response: '{text}'")
+            return "1"
+        elif "0" in text and "1" not in text:
+            logging.info(f"Extracted '0' from response: '{text}'")
+            return "0"
+        elif "1" in text and "0" in text:
+            # If both are present, check which comes first or is more prominent
+            if text.find("1") < text.find("0"):
+                logging.info(f"Extracted '1' (appears first) from response: '{text}'")
+                return "1"
+            else:
+                logging.info(f"Extracted '0' (appears first) from response: '{text}'")
+                return "0"
+        
+        logging.warning(f"Unexpected response from {model_name}: '{text}'")
         return "LLM failed"
     except Exception as e:
-        logging.error(f"LLM call failed: {e}")
+        error_msg = str(e)
+        logging.error(f"LLM call failed for {model_name}: {error_msg}")
+        
+        # Check for specific error types
+        if "429" in error_msg or "rate limit" in error_msg.lower() or "resource exhausted" in error_msg.lower():
+            logging.warning(f"Rate limit detected for {model_name}, consider reducing MAX_WORKERS")
+        elif "thinking" in error_msg.lower():
+            logging.error(f"Thinking budget configuration issue for {model_name}")
+        elif "not found" in error_msg.lower() or "does not exist" in error_msg.lower():
+            logging.error(f"Model {model_name} not found or not available")
+        
         return "LLM failed"
 
 def process_llm(df, prompt_template, model_name):
@@ -86,6 +126,7 @@ def process_llm(df, prompt_template, model_name):
     results = [None] * len(df)
     failures = 0
     failed_rows = []  # To store (idx, id) for rows that fail twice
+    
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         future_to_idx = {
             executor.submit(call_llm, row["entry"], prompt_template, model_name): idx

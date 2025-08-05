@@ -78,15 +78,21 @@ def call_llm(entry: str, prompt_template: str, model_name: str) -> dict:
     # For gemini-2.5 models, set thinking_config
     if "2.5" in model_name:
         if "lite" in model_name:
-            thinking_budget = 512  # Minimum required for gemini-2.5-flash-lite
-        elif "pro" in model_name:
-            thinking_budget = 32768
+            # For lite model: no thinking, keep original max_output_tokens
+            config_args["thinking_config"] = types.ThinkingConfig(
+                thinking_budget=0,
+                include_thoughts=False
+            )
         else:
-            thinking_budget = 24576
-        config_args["thinking_config"] = types.ThinkingConfig(
-            thinking_budget=thinking_budget,
-            include_thoughts=True
-        )
+            # For other 2.5 models: use thinking config
+            if "pro" in model_name:
+                thinking_budget = 32768
+            else:
+                thinking_budget = 24576
+            config_args["thinking_config"] = types.ThinkingConfig(
+                thinking_budget=thinking_budget,
+                include_thoughts=True
+            )
     
     config = types.GenerateContentConfig(**config_args)
     
@@ -98,6 +104,7 @@ def call_llm(entry: str, prompt_template: str, model_name: str) -> dict:
                 config=config,
             )
             if not response or not response.text:
+                logging.warning(f"Empty response from {model_name} on attempt {attempt+1}")
                 continue
             return parse_response(response.text)
         except Exception as e:
@@ -109,10 +116,17 @@ def call_llm(entry: str, prompt_template: str, model_name: str) -> dict:
                         retry_after = int(re.search(r'retry-after: (\d+)', msg.lower()).group(1))
                     except:
                         pass
-                logging.warning(f"Rate limit hit. Waiting {retry_after} seconds before retry {attempt+1}/{MAX_RETRIES}")
+                logging.warning(f"Rate limit hit for {model_name}. Waiting {retry_after} seconds before retry {attempt+1}/{MAX_RETRIES}")
                 time.sleep(retry_after)
             else:
-                logging.warning(f"Error in attempt {attempt+1}/{MAX_RETRIES}: {msg}")
+                logging.warning(f"Error in attempt {attempt+1}/{MAX_RETRIES} for {model_name}: {msg}")
+                
+                # Check for specific error types
+                if "thinking" in msg.lower():
+                    logging.error(f"Thinking budget configuration issue for {model_name}")
+                elif "not found" in msg.lower() or "does not exist" in msg.lower():
+                    logging.error(f"Model {model_name} not found or not available")
+                
                 time.sleep(2)
     
     logging.error(f"Failed to get response after {MAX_RETRIES} attempts")
