@@ -144,6 +144,47 @@ def get_relative_path(path: Path) -> Path:
         # Only catch ValueError, which occurs when paths are not relative
         return path
 
+# After the get_relative_path function, before the gemini_api_call function
+
+def parse_error_file(pdf_base_out_dir: Path, pdf_stem: str) -> Optional[List[int]]:
+    """Parse error file to extract failed page numbers. Returns None if no error file exists."""
+    error_file = pdf_base_out_dir / f"errors_{pdf_stem}.txt"
+    
+    if not error_file.exists():
+        return None
+    
+    try:
+        with error_file.open("r", encoding="utf-8") as f:
+            first_line = f.readline().strip()
+        
+        # Extract failed pages from format: "Failed Pages: [51, 124, ...]"
+        match = re.search(r'Failed Pages:\s*\[(.*?)\]', first_line)
+        if not match:
+            logging.warning(f"Could not parse failed pages from error file: {get_relative_path(error_file)}")
+            return None
+        
+        failed_pages_str = match.group(1)
+        if not failed_pages_str.strip():
+            # Empty list means no failed pages
+            return []
+        
+        # Parse comma-separated page numbers
+        failed_pages = []
+        for page_str in failed_pages_str.split(','):
+            try:
+                page_num = int(page_str.strip())
+                failed_pages.append(page_num)
+            except ValueError:
+                logging.warning(f"Invalid page number in error file: {page_str}")
+                continue
+        
+        logging.info(f"Parsed {len(failed_pages)} failed pages from error file: {failed_pages}")
+        return failed_pages
+        
+    except Exception as e:
+        logging.error(f"Error parsing error file {get_relative_path(error_file)}: {e}")
+        return None
+
 # API call
 def gemini_api_call(prompt: str, pil_image: Image.Image, temperature: float, thinking_budget: int) -> Tuple[Optional[dict], str, bool, dict]:
     """Execute a Gemini API call with no retry logic and direct error handling. Returns extra_info dict for error context."""
@@ -569,7 +610,8 @@ def overwrite_error_file(pdf_base_out_dir: Path, pdf_stem: str, pdf_name: str,
 # After the overwrite_error_file function, before main()
 
 def update_processing_log(pdf_base_out_dir: Path, pdf_stem: str, pdf_name: str, 
-                         page_count: int, pdf_tokens: dict, processing_time: float, max_workers: int) -> None:
+                         page_count: int, pdf_tokens: dict, processing_time: float, max_workers: int,
+                         is_partial_processing: bool = False) -> None:
     """Create or update a JSON log file with minimal processing information."""
     log_file = pdf_base_out_dir / f"{pdf_stem}_log.json"
     
@@ -591,11 +633,15 @@ def update_processing_log(pdf_base_out_dir: Path, pdf_stem: str, pdf_name: str,
     # For page count, use the maximum of existing and current (in case of single page processing)
     total_pages = max(existing_data.get('number_of_pages', 0), page_count)
     
-    # For processing time, accumulate (add new time to existing)
-    total_processing_time = existing_data.get('processing_time_seconds', 0) + round(processing_time, 2)
-    
-    # Use the most recent max_workers setting
-    current_max_workers = max_workers
+    # For processing time and max_workers, only update for full processing
+    if is_partial_processing:
+        # For partial processing (--page or --from_error_file), keep existing values
+        total_processing_time = existing_data.get('processing_time_seconds', 0)
+        current_max_workers = existing_data.get('max_workers', max_workers)
+    else:
+        # For full processing, accumulate time and update max_workers
+        total_processing_time = existing_data.get('processing_time_seconds', 0) + round(processing_time, 2)
+        current_max_workers = max_workers
     
     log_data = {
         "file_name": pdf_name,
@@ -624,6 +670,7 @@ def main():
     parser.add_argument("--thinking_budget", type=int, default=DEFAULT_THINKING_BUDGET, help=f"Thinking budget for the model (default={DEFAULT_THINKING_BUDGET}, max={MAX_THINKING_BUDGET})")
     parser.add_argument("--max_workers", type=int, default=20, help="Max concurrent workers for page processing (default=20)")
     parser.add_argument("--page", type=int, help="Process a single specific page number")
+    parser.add_argument("--from_error_file", choices=["yes", "no"], default="no", help="Process only failed pages from error file (default=no)")
     args = parser.parse_args()
     PROMPT_FILE_PATH = Path(__file__).parent / "prompt.txt"
     logging.basicConfig(level=logging.INFO,
@@ -648,6 +695,12 @@ def main():
         logging.critical(f"FATAL: Failed to read prompt file {get_relative_path(PROMPT_FILE_PATH)}: {e}", exc_info=True)
         sys.exit(1)
     logging.info(f"Processing PDF: {args.pdf} | Temperature={args.temperature}")
+    if args.from_error_file == "yes":
+        logging.info("Mode: Processing failed pages from error file")
+    elif args.page:
+        logging.info(f"Mode: Processing single page {args.page}")
+    else:
+        logging.info("Mode: Processing full PDF")
     logging.info("")
     global_tokens = defaultdict(int)
     script_start_time = time.time()
@@ -692,7 +745,44 @@ def main():
     prompt_start_time = time.time()
     page_results_list = []
     error_tracker = ErrorTracker()
-    if args.page:
+    
+    if args.from_error_file == "yes":
+        # Process only failed pages from error file
+        logging.info(f"Processing failed pages mode from error file")
+        failed_pages = parse_error_file(pdf_base_out_dir, pdf_stem)
+        
+        if failed_pages is None:
+            logging.info(f"No error file found for {pdf_name}. Nothing to retry.")
+            return
+        elif not failed_pages:
+            logging.info(f"Error file exists but no failed pages to retry for {pdf_name}.")
+            # Delete error file since all pages succeeded
+            error_file = pdf_base_out_dir / f"errors_{pdf_stem}.txt"
+            if error_file.exists():
+                error_file.unlink()
+                logging.info(f"Deleted error file: {get_relative_path(error_file)}")
+            return
+        
+        logging.info(f"Retrying {len(failed_pages)} failed pages: {failed_pages}")
+        results, successful_pages = process_specific_pages(failed_pages, png_dir, json_dir, 
+                                                        task_prompt, args.temperature, args.thinking_budget, error_tracker, args.max_workers)
+        page_results_list.extend(results)
+        
+        # Always recreate CSV after processing failed pages
+        create_consolidated_csv(json_dir, pdf_base_out_dir, pdf_stem)
+        
+        # Update error file with any new failures
+        new_failed_pages = error_tracker.get_failed_pages()
+        if new_failed_pages:
+            overwrite_error_file(pdf_base_out_dir, pdf_stem, pdf_name, new_failed_pages, error_tracker, PROMPT_FILE_PATH)
+        else:
+            # All previously failed pages succeeded, delete error file
+            error_file = pdf_base_out_dir / f"errors_{pdf_stem}.txt"
+            if error_file.exists():
+                error_file.unlink()
+                logging.info(f"All failed pages succeeded. Deleted error file: {get_relative_path(error_file)}")
+    
+    elif args.page:
         logging.info(f"Processing single page mode: page {args.page}")
         pages_to_process = [args.page]
         results, successful_pages = process_specific_pages(pages_to_process, png_dir, json_dir, 
@@ -707,6 +797,7 @@ def main():
             return  # Only return if processing failed
     else:
         # Parallel processing for full PDF
+        logging.info(f"Processing full PDF mode: {len(png_files)} pages")
         logging.info(f"Launching {len(png_files)} page tasks (max_workers={args.max_workers})...")
         with ThreadPoolExecutor(max_workers=args.max_workers) as executor:
             valid_png_files = [png for png in png_files if png.is_file()]
@@ -756,7 +847,8 @@ def main():
     global_tokens['total'] += pdf_tokens['total']
 
     # Create processing log
-    update_processing_log(pdf_base_out_dir, pdf_stem, pdf_name, len(png_files), pdf_tokens, pdf_duration, args.max_workers)
+    is_partial_processing = args.page is not None or args.from_error_file == "yes"
+    update_processing_log(pdf_base_out_dir, pdf_stem, pdf_name, len(png_files), pdf_tokens, pdf_duration, args.max_workers, is_partial_processing)
 
     logging.info(f"Tokens (PDF: {pdf_name}): prompt={pdf_tokens['prompt']:,}, candidate={pdf_tokens['candidate']:,}, thoughts={pdf_tokens['thoughts']:,}, total={pdf_tokens['total']:,}")
     logging.info("")
@@ -764,8 +856,8 @@ def main():
     logging.info(f"Global Tokens Running Total: prompt={global_tokens['prompt']:,}, candidate={global_tokens['candidate']:,}, thoughts={global_tokens['thoughts']:,}, total={global_tokens['total']:,}")
     logging.info("-" * 80)
 
-    # --- Copy CSV to data/01_dataset_construction/complete_csvs if all pages succeeded, not in single-page mode, and file does not exist ---
-    if not args.page:
+    # --- Copy CSV to data/01_dataset_construction/complete_csvs if all pages succeeded, not in partial processing mode, and file does not exist ---
+    if not args.page and args.from_error_file != "yes":
         failed_pages = error_tracker.get_failed_pages()
         if not failed_pages:
             complete_csvs_dir = PROJECT_ROOT / "data" / "01_dataset_construction" / "complete_csvs"
