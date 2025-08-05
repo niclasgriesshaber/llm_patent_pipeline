@@ -19,7 +19,7 @@ PRICING = {
 }
 
 # Currency conversion rate (USD to EUR)
-USD_TO_EUR_RATE = 0.92  # Approximate current rate
+USD_TO_EUR_RATE = 0.87  # 1 EUR = 1.15 USD, so USD to EUR = 1/1.15 = 0.87
 
 def find_all_log_files() -> Dict[str, List[str]]:
     """Find all log files across the three pipeline stages."""
