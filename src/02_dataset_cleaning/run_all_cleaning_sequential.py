@@ -25,7 +25,7 @@ COMPLETE_PATENT_SCRIPT = SCRIPT_DIR / "complete_patent.py"
 
 # CLI arguments for complete_patent.py
 MODEL = "gemini-2.5-flash-lite"
-MAX_WORKERS = 80  # Start with 80 workers for testing
+MAX_WORKERS = 50  # Start with 80 workers for testing
 
 def get_input_files() -> List[Path]:
     """Get all CSV files from the input directory."""

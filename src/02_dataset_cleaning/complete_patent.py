@@ -34,11 +34,17 @@ MAX_REQUESTS_PER_MINUTE = 4000
 MAX_TOKENS_PER_MINUTE = 4000000
 REQUEST_WINDOW = 60  # seconds
 
+# Conservative rate limiting (use 80% of limits to be safe)
+SAFE_REQUESTS_PER_MINUTE = int(MAX_REQUESTS_PER_MINUTE * 0.8)  # 3200 requests/min
+SAFE_TOKENS_PER_MINUTE = int(MAX_TOKENS_PER_MINUTE * 0.8)      # 3,200,000 tokens/min
+
 # Enhanced retry configuration
 MAX_RETRIES = 5
+MAX_RATE_LIMIT_RETRIES = 10  # Separate retry limit for rate limit errors
 BASE_DELAY = 5  # Increased from 1 to 5 seconds
 MAX_DELAY = 300  # Maximum delay of 5 minutes
-RATE_LIMIT_DELAY_MULTIPLIER = 3  # Multiply delay for rate limit errors
+RATE_LIMIT_DELAY_MULTIPLIER = 5  # More aggressive multiplier for rate limit errors
+RATE_LIMIT_BASE_DELAY = 30  # Start with 30 seconds for rate limit errors
 
 # Logging config
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(message)s", handlers=[logging.StreamHandler(sys.stdout)])
@@ -53,51 +59,71 @@ processing_completed = False  # Track if processing completed successfully
 # Rate limiting tracking
 request_times = []
 token_usage_times = []
+token_usage_amounts = []  # Track actual token amounts used
 rate_limit_hits = 0  # Track rate limit hits for dynamic worker adjustment
+consecutive_rate_limit_hits = 0  # Track consecutive rate limit hits
+
+# Rate limit event tracking for better logging
+rate_limit_events = []  # Store (timestamp, error_msg, tokens_used) for analysis
 
 def load_prompt() -> str:
     return PROMPT_PATH.read_text(encoding="utf-8")
 
 def adjust_workers_if_needed():
     """Dynamically adjust MAX_WORKERS based on rate limit hits"""
-    global MAX_WORKERS, rate_limit_hits
+    global MAX_WORKERS, rate_limit_hits, consecutive_rate_limit_hits
     
     # If we've hit rate limits multiple times, reduce workers more aggressively
-    if rate_limit_hits >= 2 and MAX_WORKERS > 10:
-        # More aggressive reduction: reduce by 50% or at least 10 workers
-        reduction = max(10, MAX_WORKERS // 2)
-        new_workers = max(10, MAX_WORKERS - reduction)
+    if rate_limit_hits >= 1 and MAX_WORKERS > 5:
+        # More aggressive reduction: reduce by 50% or at least 5 workers
+        reduction = max(5, MAX_WORKERS // 2)
+        new_workers = max(5, MAX_WORKERS - reduction)
         if new_workers != MAX_WORKERS:
             logging.warning(f"Rate limits detected {rate_limit_hits} times. Reducing workers from {MAX_WORKERS} to {new_workers}")
             MAX_WORKERS = new_workers
             rate_limit_hits = 0  # Reset counter after adjustment
+    
+    # If we have consecutive rate limit hits, be even more aggressive
+    if consecutive_rate_limit_hits >= 2 and MAX_WORKERS > 3:
+        # Very aggressive reduction for consecutive hits
+        new_workers = max(3, MAX_WORKERS // 3)
+        if new_workers != MAX_WORKERS:
+            logging.error(f"Consecutive rate limits detected {consecutive_rate_limit_hits} times. Aggressively reducing workers from {MAX_WORKERS} to {new_workers}")
+            MAX_WORKERS = new_workers
+            consecutive_rate_limit_hits = 0  # Reset counter after adjustment
 
 def wait_for_rate_limit():
     """Wait if we're approaching rate limits"""
     current_time = time.time()
     
     # Clean old requests (older than 1 minute)
-    global request_times, token_usage_times
+    global request_times, token_usage_times, token_usage_amounts
     request_times = [t for t in request_times if current_time - t < REQUEST_WINDOW]
     token_usage_times = [t for t in token_usage_times if current_time - t < REQUEST_WINDOW]
+    token_usage_amounts = token_usage_amounts[-len(token_usage_times):]  # Keep only recent amounts
     
-    # Check request rate limit
-    if len(request_times) >= MAX_REQUESTS_PER_MINUTE:
+    # Check request rate limit (use conservative limit)
+    if len(request_times) >= SAFE_REQUESTS_PER_MINUTE:
         sleep_time = REQUEST_WINDOW - (current_time - request_times[0])
         if sleep_time > 0:
-            logging.warning(f"Rate limit approaching. Waiting {sleep_time:.1f} seconds...")
+            logging.warning(f"Request rate limit approaching ({len(request_times)}/{SAFE_REQUESTS_PER_MINUTE}). Waiting {sleep_time:.1f} seconds...")
             time.sleep(sleep_time)
     
-    # Check token rate limit (estimate based on average tokens per request)
-    if len(token_usage_times) > 0:
-        avg_tokens_per_request = (total_input_tokens + total_thought_tokens + total_candidate_tokens) / max(len(token_usage_times), 1)
-        estimated_tokens_in_window = len(token_usage_times) * avg_tokens_per_request
+    # Check token rate limit (use actual token amounts)
+    if len(token_usage_amounts) > 0:
+        total_tokens_in_window = sum(token_usage_amounts)
         
-        if estimated_tokens_in_window >= MAX_TOKENS_PER_MINUTE:
+        if total_tokens_in_window >= SAFE_TOKENS_PER_MINUTE:
             sleep_time = REQUEST_WINDOW - (current_time - token_usage_times[0])
             if sleep_time > 0:
-                logging.warning(f"Token rate limit approaching. Waiting {sleep_time:.1f} seconds...")
+                logging.warning(f"Token rate limit approaching ({total_tokens_in_window:,}/{SAFE_TOKENS_PER_MINUTE:,} tokens). Waiting {sleep_time:.1f} seconds...")
                 time.sleep(sleep_time)
+    
+    # Log current usage for monitoring
+    if len(request_times) > 0 or len(token_usage_amounts) > 0:
+        requests_in_window = len(request_times)
+        tokens_in_window = sum(token_usage_amounts) if token_usage_amounts else 0
+        logging.debug(f"Current usage: {requests_in_window}/{SAFE_REQUESTS_PER_MINUTE} requests, {tokens_in_window:,}/{SAFE_TOKENS_PER_MINUTE:,} tokens")
 
 def calculate_backoff_delay(attempt: int, is_rate_limit: bool = False) -> float:
     """
@@ -114,8 +140,8 @@ def calculate_backoff_delay(attempt: int, is_rate_limit: bool = False) -> float:
     
     # Base exponential backoff
     if is_rate_limit:
-        # For rate limit errors, use longer delays
-        delay = BASE_DELAY * (RATE_LIMIT_DELAY_MULTIPLIER ** attempt)
+        # For rate limit errors, use much longer delays starting from higher base
+        delay = RATE_LIMIT_BASE_DELAY * (RATE_LIMIT_DELAY_MULTIPLIER ** attempt)
     else:
         # For other errors, use standard exponential backoff
         delay = BASE_DELAY * (2 ** attempt)
@@ -134,7 +160,7 @@ def calculate_backoff_delay(attempt: int, is_rate_limit: bool = False) -> float:
 
 def call_llm(entry: str, prompt_template: str) -> tuple[str, dict, bool]:
     global total_input_tokens, total_thought_tokens, total_candidate_tokens, total_failed_calls
-    global request_times, token_usage_times
+    global request_times, token_usage_times, token_usage_amounts, rate_limit_events, consecutive_rate_limit_hits, rate_limit_hits
     
     client = genai.Client(api_key=API_KEY)
     prompt = f"{prompt_template}\n{entry.strip()}"
@@ -164,8 +190,15 @@ def call_llm(entry: str, prompt_template: str) -> tuple[str, dict, bool]:
     
     config = types.GenerateContentConfig(**config_args)
     
-    # Enhanced retry logic with exponential backoff and jitter for rate limits
-    for attempt in range(MAX_RETRIES):
+    # Separate retry counters
+    regular_attempts = 0
+    rate_limit_attempts = 0
+    
+    # Reset consecutive rate limit hits for this specific request
+    # (we'll track this globally but reset per request to avoid confusion)
+    request_consecutive_hits = 0
+    
+    while True:
         try:
             # Check rate limits before making request
             wait_for_rate_limit()
@@ -182,16 +215,20 @@ def call_llm(entry: str, prompt_template: str) -> tuple[str, dict, bool]:
                 config=config,
             )
             
+            # Reset consecutive rate limit hits on successful request
+            consecutive_rate_limit_hits = 0
+            
             if not response or not response.text:
                 logging.warning(f"Empty response from {FULL_MODEL_NAME}")
-                if attempt < MAX_RETRIES - 1:
-                    delay = calculate_backoff_delay(attempt, is_rate_limit=False)
-                    logging.warning(f"Retrying... (attempt {attempt + 1}/{MAX_RETRIES}) in {delay:.1f}s")
+                regular_attempts += 1
+                if regular_attempts < MAX_RETRIES:
+                    delay = calculate_backoff_delay(regular_attempts - 1, is_rate_limit=False)
+                    logging.warning(f"Empty response retry... (attempt {regular_attempts}/{MAX_RETRIES}) in {delay:.1f}s")
                     time.sleep(delay)
                     continue
                 else:
                     total_failed_calls += 1
-                    return "LLM failed", {}, True  # Third parameter indicates API failure after 3 attempts
+                    return "LLM failed", {}, True  # Third parameter indicates API failure after max attempts
             
             # Extract token usage
             usage = getattr(response, 'usage_metadata', None)
@@ -236,8 +273,9 @@ def call_llm(entry: str, prompt_template: str) -> tuple[str, dict, bool]:
                 total_candidate_tokens += ctk
                 total_thought_tokens += ttk
                 
-                # Record token usage time for rate limiting
+                # Record token usage time and amount for rate limiting
                 token_usage_times.append(time.time())
+                token_usage_amounts.append(ptk + ctk + ttk)  # Append total tokens for rate limiting
                 
                 token_info = {
                     'prompt_tokens': ptk,
@@ -278,60 +316,93 @@ def call_llm(entry: str, prompt_template: str) -> tuple[str, dict, bool]:
                     return "0", token_info, False
             
             logging.warning(f"Unexpected response from {FULL_MODEL_NAME}: '{text}'")
-            if attempt < MAX_RETRIES - 1:
-                delay = calculate_backoff_delay(attempt, is_rate_limit=False)
-                logging.warning(f"Retrying... (attempt {attempt + 1}/{MAX_RETRIES}) in {delay:.1f}s")
+            regular_attempts += 1
+            if regular_attempts < MAX_RETRIES:
+                delay = calculate_backoff_delay(regular_attempts - 1, is_rate_limit=False)
+                logging.warning(f"Unexpected response retry... (attempt {regular_attempts}/{MAX_RETRIES}) in {delay:.1f}s")
                 time.sleep(delay)
                 continue
             else:
                 total_failed_calls += 1
-                return "LLM failed", token_info, True  # Third parameter indicates API failure after 3 attempts
+                return "LLM failed", token_info, True  # Third parameter indicates API failure after max attempts
             
         except Exception as e:
             error_msg = str(e)
             
-            # Check if this is an API failure that should be retried
-            is_api_failure = (
+            # Check if this is a rate limit error
+            is_rate_limit_error = (
                 "429" in error_msg or 
                 "rate limit" in error_msg.lower() or 
-                "resource exhausted" in error_msg.lower() or
+                "resource exhausted" in error_msg.lower()
+            )
+            
+            # Check if this is any API failure that should be retried
+            is_api_failure = (
+                is_rate_limit_error or
                 "timeout" in error_msg.lower() or
                 "connection" in error_msg.lower() or
                 "network" in error_msg.lower()
             )
             
-            if is_api_failure and attempt < MAX_RETRIES - 1:
-                # Determine if this is specifically a rate limit error
-                is_rate_limit_error = (
-                    "429" in error_msg or 
-                    "rate limit" in error_msg.lower() or 
-                    "resource exhausted" in error_msg.lower()
-                )
+            if is_rate_limit_error:
+                # Handle rate limit errors with separate counter
+                rate_limit_attempts += 1
+                request_consecutive_hits += 1
+                consecutive_rate_limit_hits += 1  # Increment global consecutive rate limit hits
+                rate_limit_hits += 1  # Increment global rate limit hits
                 
-                delay = calculate_backoff_delay(attempt, is_rate_limit=is_rate_limit_error)
-                logging.warning(f"API failure for {FULL_MODEL_NAME} (attempt {attempt + 1}/{MAX_RETRIES}): {error_msg}")
-                logging.warning(f"Waiting {delay:.1f}s before retry...")
-                time.sleep(delay)
-                continue
+                # Log rate limit event for analysis
+                rate_limit_events.append({
+                    'timestamp': time.time(),
+                    'error_msg': error_msg,
+                    'attempt': rate_limit_attempts,
+                    'consecutive_hits': request_consecutive_hits,
+                    'current_workers': MAX_WORKERS
+                })
+                
+                if rate_limit_attempts < MAX_RATE_LIMIT_RETRIES:
+                    delay = calculate_backoff_delay(rate_limit_attempts - 1, is_rate_limit=True)
+                    logging.error(f"RATE LIMIT ERROR for {FULL_MODEL_NAME} (rate limit attempt {rate_limit_attempts}/{MAX_RATE_LIMIT_RETRIES}): {error_msg}")
+                    logging.error(f"Request consecutive hits: {request_consecutive_hits}, Global consecutive hits: {consecutive_rate_limit_hits}")
+                    logging.error(f"Waiting {delay:.1f}s before retry...")
+                    time.sleep(delay)
+                    continue
+                else:
+                    logging.error(f"MAX RATE LIMIT RETRIES REACHED for {FULL_MODEL_NAME} after {rate_limit_attempts} attempts")
+                    logging.error(f"Final error: {error_msg}")
+                    total_failed_calls += 1
+                    return "LLM failed", {}, True
+                    
+            elif is_api_failure:
+                # Handle other API failures with regular counter
+                regular_attempts += 1
+                if regular_attempts < MAX_RETRIES:
+                    delay = calculate_backoff_delay(regular_attempts - 1, is_rate_limit=False)
+                    logging.warning(f"API failure for {FULL_MODEL_NAME} (attempt {regular_attempts}/{MAX_RETRIES}): {error_msg}")
+                    logging.warning(f"Waiting {delay:.1f}s before retry...")
+                    time.sleep(delay)
+                    continue
+                else:
+                    logging.error(f"MAX API RETRIES REACHED for {FULL_MODEL_NAME} after {regular_attempts} attempts")
+                    logging.error(f"Final error: {error_msg}")
+                    total_failed_calls += 1
+                    return "LLM failed", {}, True
             else:
-                # Either not an API failure or max retries reached
-                logging.error(f"LLM call failed for {FULL_MODEL_NAME} (attempt {attempt + 1}/{max_retries}): {error_msg}")
+                # Non-API failure - log and return immediately
+                logging.error(f"Non-API error for {FULL_MODEL_NAME}: {error_msg}")
                 
                 # Check for specific error types
-                if "429" in error_msg or "rate limit" in error_msg.lower() or "resource exhausted" in error_msg.lower():
-                    logging.warning(f"Rate limit detected for {FULL_MODEL_NAME} (attempt {attempt + 1}/{MAX_RETRIES})")
-                    logging.warning(f"Consider reducing MAX_WORKERS or increasing delays")
-                    rate_limit_hits += 1 # Increment rate limit hit counter
-                elif "thinking" in error_msg.lower():
+                if "thinking" in error_msg.lower():
                     logging.error(f"Thinking budget configuration issue for {FULL_MODEL_NAME}")
                 elif "not found" in error_msg.lower() or "does not exist" in error_msg.lower():
                     logging.error(f"Model {FULL_MODEL_NAME} not found or not available")
                 
                 total_failed_calls += 1
-                return "LLM failed", {}, True  # Third parameter indicates API failure after 3 attempts
+                return "LLM failed", {}, True
     
+    # This should never be reached, but just in case
     total_failed_calls += 1
-    return "LLM failed", {}, True  # Third parameter indicates API failure after 3 attempts
+    return "LLM failed", {}, True
 
 def create_processing_log(logs_dir: Path, filestem: str, csv_name: str, row_count: int, 
                          processing_time: float, max_workers: int, api_failures: list) -> None:
@@ -340,6 +411,10 @@ def create_processing_log(logs_dir: Path, filestem: str, csv_name: str, row_coun
     
     # Count API failures
     api_fail_count = sum(api_failures)
+    
+    # Calculate rate limit statistics
+    rate_limit_event_count = len(rate_limit_events)
+    max_consecutive_rate_limit_hits = max([event['consecutive_hits'] for event in rate_limit_events]) if rate_limit_events else 0
     
     log_data = {
         "file_name": csv_name,
@@ -353,7 +428,11 @@ def create_processing_log(logs_dir: Path, filestem: str, csv_name: str, row_coun
         "api_failures_count": api_fail_count,  # Track rows where API failed 3+ times
         "processing_time_seconds": round(processing_time, 2),
         "max_workers": max_workers,
-        "processing_completed": processing_completed  # Track if processing completed successfully
+        "processing_completed": processing_completed,  # Track if processing completed successfully
+        "rate_limit_events_count": rate_limit_event_count,
+        "max_consecutive_rate_limit_hits": max_consecutive_rate_limit_hits,
+        "final_worker_count": MAX_WORKERS,
+        "rate_limit_events": rate_limit_events  # Include detailed rate limit events for analysis
     }
     
     try:
@@ -362,6 +441,24 @@ def create_processing_log(logs_dir: Path, filestem: str, csv_name: str, row_coun
         logging.info(f"Processing log saved to: {log_file}")
     except Exception as e:
         logging.error(f"Failed to write processing log {log_file}: {e}")
+    
+    # Also create a separate rate limit analysis file if there were rate limit events
+    if rate_limit_events:
+        rate_limit_analysis_file = logs_dir / f"{filestem}_rate_limit_analysis.json"
+        try:
+            with rate_limit_analysis_file.open("w", encoding="utf-8") as f:
+                json.dump({
+                    "rate_limit_events": rate_limit_events,
+                    "summary": {
+                        "total_rate_limit_events": rate_limit_event_count,
+                        "max_consecutive_hits": max_consecutive_rate_limit_hits,
+                        "final_worker_count": MAX_WORKERS,
+                        "processing_time_seconds": round(processing_time, 2)
+                    }
+                }, f, indent=2, ensure_ascii=False)
+            logging.info(f"Rate limit analysis saved to: {rate_limit_analysis_file}")
+        except Exception as e:
+            logging.error(f"Failed to write rate limit analysis {rate_limit_analysis_file}: {e}")
 
 def process_llm(df, prompt_template):
     results = [None] * len(df)
@@ -648,6 +745,7 @@ def main():
     logging.info(f"Processing {len(df)} rows from {input_csv.name}")
     logging.info(f"Model: {FULL_MODEL_NAME}")
     logging.info(f"Max Workers: {MAX_WORKERS}")
+    logging.info(f"Conservative rate limits: {SAFE_REQUESTS_PER_MINUTE}/{MAX_REQUESTS_PER_MINUTE} requests/min, {SAFE_TOKENS_PER_MINUTE:,}/{MAX_TOKENS_PER_MINUTE:,} tokens/min")
     start_time = time.time()
 
     try:
@@ -699,6 +797,19 @@ def main():
     logging.info(f"Rows with API failures (3+ attempts): {api_fail_count}")
     if api_fail_count > 0:
         logging.warning(f"Note: {api_fail_count} rows had API failures after 3 attempts and were set to '0' (incomplete)")
+    
+    # Log rate limit statistics
+    rate_limit_event_count = len(rate_limit_events)
+    if rate_limit_event_count > 0:
+        max_consecutive_hits = max([event['consecutive_hits'] for event in rate_limit_events])
+        logging.warning(f"Rate limit events: {rate_limit_event_count} total events")
+        logging.warning(f"Max consecutive rate limit hits: {max_consecutive_hits}")
+        logging.warning(f"Final worker count: {MAX_WORKERS} (started with {args.max_workers})")
+    else:
+        logging.info(f"No rate limit events occurred - processing completed smoothly")
+    
+    # Log conservative rate limiting info
+    logging.info(f"Used conservative rate limits: {SAFE_REQUESTS_PER_MINUTE}/{MAX_REQUESTS_PER_MINUTE} requests/min, {SAFE_TOKENS_PER_MINUTE:,}/{MAX_TOKENS_PER_MINUTE:,} tokens/min")
 
 if __name__ == "__main__":
     main() 
