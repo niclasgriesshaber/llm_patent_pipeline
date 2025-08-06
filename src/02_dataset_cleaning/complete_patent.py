@@ -47,9 +47,22 @@ processing_completed = False  # Track if processing completed successfully
 # Rate limiting tracking
 request_times = []
 token_usage_times = []
+rate_limit_hits = 0  # Track rate limit hits for dynamic worker adjustment
 
 def load_prompt() -> str:
     return PROMPT_PATH.read_text(encoding="utf-8")
+
+def adjust_workers_if_needed():
+    """Dynamically adjust MAX_WORKERS based on rate limit hits"""
+    global MAX_WORKERS, rate_limit_hits
+    
+    # If we've hit rate limits multiple times, reduce workers
+    if rate_limit_hits >= 3 and MAX_WORKERS > 20:
+        new_workers = max(20, MAX_WORKERS - 10)  # Reduce by 10, but never below 20
+        if new_workers != MAX_WORKERS:
+            logging.warning(f"Rate limits detected {rate_limit_hits} times. Reducing workers from {MAX_WORKERS} to {new_workers}")
+            MAX_WORKERS = new_workers
+            rate_limit_hits = 0  # Reset counter after adjustment
 
 def wait_for_rate_limit():
     """Wait if we're approaching rate limits"""
@@ -118,6 +131,9 @@ def call_llm(entry: str, prompt_template: str) -> tuple[str, dict]:
         try:
             # Check rate limits before making request
             wait_for_rate_limit()
+            
+            # Adjust workers if we've hit rate limits too often
+            adjust_workers_if_needed()
             
             # Record request time
             request_times.append(time.time())
@@ -259,6 +275,7 @@ def call_llm(entry: str, prompt_template: str) -> tuple[str, dict]:
                 # Check for specific error types
                 if "429" in error_msg or "rate limit" in error_msg.lower() or "resource exhausted" in error_msg.lower():
                     logging.warning(f"Rate limit detected for {FULL_MODEL_NAME}, consider reducing MAX_WORKERS")
+                    rate_limit_hits += 1 # Increment rate limit hit counter
                 elif "thinking" in error_msg.lower():
                     logging.error(f"Thinking budget configuration issue for {FULL_MODEL_NAME}")
                 elif "not found" in error_msg.lower() or "does not exist" in error_msg.lower():
@@ -327,23 +344,21 @@ def postprocess_and_save(df, xlsx_path, csv_path, failed_rows):
     # Rename the column to check_if_patent_complete
     df = df.rename(columns={'complete_patent': 'check_if_patent_complete'})
     
-    # Add double_incomplete column to identify first row in consecutive "0" sequences
+    # Add double_incomplete column to identify ALL rows in consecutive "0" sequences
     df['double_incomplete'] = "0"  # Default to 0
     
-    # Find consecutive sequences of "0" values and mark the first one
+    # Find consecutive sequences of "0" values and mark ALL rows in the sequence
     check_values = df['check_if_patent_complete'].values
     for i in range(len(check_values)):
         if check_values[i] == "0":
-            # Check if this is the first "0" in a consecutive sequence
-            is_first_in_sequence = False
+            # Check if this is part of a consecutive sequence (has at least one "0" above or below)
+            is_in_sequence = False
             
-            # If it's the first row or the previous row is not "0"
-            if i == 0 or check_values[i-1] != "0":
-                # Check if there's at least one more "0" following this one
-                if i < len(check_values) - 1 and check_values[i+1] == "0":
-                    is_first_in_sequence = True
+            # Check if previous row is "0" or next row is "0"
+            if (i > 0 and check_values[i-1] == "0") or (i < len(check_values) - 1 and check_values[i+1] == "0"):
+                is_in_sequence = True
             
-            if is_first_in_sequence:
+            if is_in_sequence:
                 df.at[i, 'double_incomplete'] = "1"
     
     # Save xlsx with check_if_patent_complete and double_incomplete columns (before merging) for checking merges
