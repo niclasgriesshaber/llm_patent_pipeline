@@ -392,11 +392,14 @@ def main():
     parser.add_argument("--model", type=str, default="gemini-2.5-flash-lite", 
                        choices=["gemini-2.0-flash", "gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.5-flash-lite"],
                        help="Model to use for LLM processing (default: gemini-2.5-flash-lite)")
+    parser.add_argument("--max_workers", type=int, default=20, 
+                       help="Max concurrent workers for API requests (default: 20)")
     args = parser.parse_args()
 
-    # Update global model name based on command line argument
-    global FULL_MODEL_NAME
+    # Update global model name and max workers based on command line arguments
+    global FULL_MODEL_NAME, MAX_WORKERS
     FULL_MODEL_NAME = args.model
+    MAX_WORKERS = args.max_workers
 
     input_csv = COMPLETE_CSVS / args.csv
     if not input_csv.exists():
@@ -423,6 +426,8 @@ def main():
 
     prompt_template = load_prompt()
     logging.info(f"Processing {len(df)} rows from {input_csv.name}")
+    logging.info(f"Model: {FULL_MODEL_NAME}")
+    logging.info(f"Max Workers: {MAX_WORKERS}")
     start_time = time.time()
 
     # LLM processing
