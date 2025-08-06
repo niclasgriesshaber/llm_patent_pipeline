@@ -91,7 +91,7 @@ def wait_for_rate_limit():
                 logging.warning(f"Token rate limit approaching. Waiting {sleep_time:.1f} seconds...")
                 time.sleep(sleep_time)
 
-def call_llm(entry: str, prompt_template: str) -> tuple[str, dict]:
+def call_llm(entry: str, prompt_template: str) -> tuple[str, dict, bool]:
     global total_input_tokens, total_thought_tokens, total_candidate_tokens, total_failed_calls
     global request_times, token_usage_times
     
@@ -153,7 +153,7 @@ def call_llm(entry: str, prompt_template: str) -> tuple[str, dict]:
                     continue
                 else:
                     total_failed_calls += 1
-                    return "LLM failed", {}
+                    return "LLM failed", {}, True  # Third parameter indicates API failure after 3 attempts
             
             # Extract token usage
             usage = getattr(response, 'usage_metadata', None)
@@ -221,23 +221,23 @@ def call_llm(entry: str, prompt_template: str) -> tuple[str, dict]:
             
             # Check for exact matches first
             if text == "1" or text == "0":
-                return text, token_info
+                return text, token_info, False  # Third parameter indicates no API failure
             
             # Check for responses that contain the expected values
             if "1" in text and "0" not in text:
                 logging.info(f"Extracted '1' from response: '{text}'")
-                return "1", token_info
+                return "1", token_info, False
             elif "0" in text and "1" not in text:
                 logging.info(f"Extracted '0' from response: '{text}'")
-                return "0", token_info
+                return "0", token_info, False
             elif "1" in text and "0" in text:
                 # If both are present, check which comes first or is more prominent
                 if text.find("1") < text.find("0"):
                     logging.info(f"Extracted '1' (appears first) from response: '{text}'")
-                    return "1", token_info
+                    return "1", token_info, False
                 else:
                     logging.info(f"Extracted '0' (appears first) from response: '{text}'")
-                    return "0", token_info
+                    return "0", token_info, False
             
             logging.warning(f"Unexpected response from {FULL_MODEL_NAME}: '{text}'")
             if attempt < max_retries - 1:
@@ -247,7 +247,7 @@ def call_llm(entry: str, prompt_template: str) -> tuple[str, dict]:
                 continue
             else:
                 total_failed_calls += 1
-                return "LLM failed", token_info
+                return "LLM failed", token_info, True  # Third parameter indicates API failure after 3 attempts
             
         except Exception as e:
             error_msg = str(e)
@@ -282,15 +282,18 @@ def call_llm(entry: str, prompt_template: str) -> tuple[str, dict]:
                     logging.error(f"Model {FULL_MODEL_NAME} not found or not available")
                 
                 total_failed_calls += 1
-                return "LLM failed", {}
+                return "LLM failed", {}, True  # Third parameter indicates API failure after 3 attempts
     
     total_failed_calls += 1
-    return "LLM failed", {}
+    return "LLM failed", {}, True  # Third parameter indicates API failure after 3 attempts
 
 def create_processing_log(logs_dir: Path, filestem: str, csv_name: str, row_count: int, 
-                         processing_time: float, max_workers: int) -> None:
+                         processing_time: float, max_workers: int, api_failures: list) -> None:
     """Create a JSON log file with processing information."""
     log_file = logs_dir / f"{filestem}_cleaned_log.json"
+    
+    # Count API failures
+    api_fail_count = sum(api_failures)
     
     log_data = {
         "file_name": csv_name,
@@ -301,6 +304,7 @@ def create_processing_log(logs_dir: Path, filestem: str, csv_name: str, row_coun
         "total_candidate_tokens": total_candidate_tokens,
         "total_tokens": total_input_tokens + total_thought_tokens + total_candidate_tokens,  # Add total tokens
         "total_failed_calls": total_failed_calls,  # Track failed calls for cost monitoring
+        "api_failures_count": api_fail_count,  # Track rows where API failed 3+ times
         "processing_time_seconds": round(processing_time, 2),
         "max_workers": max_workers,
         "processing_completed": processing_completed  # Track if processing completed successfully
@@ -315,6 +319,7 @@ def create_processing_log(logs_dir: Path, filestem: str, csv_name: str, row_coun
 
 def process_llm(df, prompt_template):
     results = [None] * len(df)
+    api_failures = [False] * len(df)  # Track API failures per row
     failures = 0
     failed_rows = []  # To store (idx, id, page) for rows that fail twice
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
@@ -325,24 +330,39 @@ def process_llm(df, prompt_template):
         for future in as_completed(future_to_idx):
             idx = future_to_idx[future]
             try:
-                result, token_info = future.result()
+                result, token_info, is_api_failure = future.result()
                 if result == "LLM failed":
                     failures += 1
                     failed_rows.append((idx, df.iloc[idx]["id"], df.iloc[idx]["page"]))
                     logging.error(f"Row {idx+1}: LLM failed after all retries.")
+                    # If API failed 3 times, set result to "0" and mark as API failure
+                    if is_api_failure:
+                        results[idx] = "0"
+                        api_failures[idx] = True
+                        logging.warning(f"Row {idx+1}: API failed 3 times, setting result to '0'")
+                    else:
+                        results[idx] = "LLM failed"
                 else:
                     results[idx] = result
+                    api_failures[idx] = is_api_failure
                     logging.info(f"Row {idx+1}: LLM result = {result}")
             except Exception as e:
                 results[idx] = "LLM failed"
+                api_failures[idx] = True  # Assume API failure for exceptions
                 failures += 1
                 failed_rows.append((idx, df.iloc[idx]["id"], df.iloc[idx]["page"]))
                 logging.error(f"Row {idx+1}: Exception during LLM processing: {e}")
-    return results, failures, failed_rows
+    return results, api_failures, failures, failed_rows
 
-def postprocess_and_save(df, xlsx_path, csv_path, failed_rows):
+def postprocess_and_save(df, xlsx_path, csv_path, failed_rows, api_failures):
     # Rename the column to check_if_patent_complete
     df = df.rename(columns={'complete_patent': 'check_if_patent_complete'})
+    
+    # Add cleaning_API_fail column
+    df['cleaning_API_fail'] = "0"  # Default to 0
+    for idx, is_api_failure in enumerate(api_failures):
+        if is_api_failure:
+            df.at[idx, 'cleaning_API_fail'] = "1"
     
     # Add double_incomplete column to identify ALL rows in consecutive "0" sequences
     df['double_incomplete'] = "0"  # Default to 0
@@ -361,7 +381,7 @@ def postprocess_and_save(df, xlsx_path, csv_path, failed_rows):
             if is_in_sequence:
                 df.at[i, 'double_incomplete'] = "1"
     
-    # Save xlsx with check_if_patent_complete and double_incomplete columns (before merging) for checking merges
+    # Save xlsx with check_if_patent_complete, cleaning_API_fail, and double_incomplete columns (before merging) for checking merges
     df.to_excel(xlsx_path, index=False)
     logging.info(f"Saved check merge xlsx to: {xlsx_path}")
 
@@ -378,12 +398,19 @@ def postprocess_and_save(df, xlsx_path, csv_path, failed_rows):
     pair_count = 0
     run_gt2_count = 0
     failed_count = (df_clean["check_if_patent_complete"] == "LLM failed").sum()
+    api_fail_count = (df_clean["cleaning_API_fail"] == "1").sum()
 
     # Track detailed information for logging
     merged_details = []  # (original_id, original_page, merged_with_id, merged_with_page, new_id)
     pair_details = []    # [(id, page), (id, page)]
     run_gt2_details = [] # [(id, page), (id, page), ...]
     failed_details = []  # (id, page)
+    api_fail_details = []  # (id, page)
+
+    # Collect API failure details
+    for idx, row in df_clean.iterrows():
+        if row["cleaning_API_fail"] == "1":
+            api_fail_details.append((row["id"], row["page"]))
 
     mask = (df_clean["check_if_patent_complete"] == "0")
     runs = []
@@ -415,6 +442,9 @@ def postprocess_and_save(df, xlsx_path, csv_path, failed_rows):
                 df_clean.at[start, "entry"] = df_clean.at[start, "entry"] + " " + df_clean.at[end+1, "entry"]
                 # For merged rows, set check_if_patent_complete to 0 so you can check if the merge was correct
                 df_clean.at[start, "check_if_patent_complete"] = "0"
+                # Also merge the cleaning_API_fail status (if either row had API failure, mark as failure)
+                if df_clean.at[start, "cleaning_API_fail"] == "1" or df_clean.at[end+1, "cleaning_API_fail"] == "1":
+                    df_clean.at[start, "cleaning_API_fail"] = "1"
                 # Remove the row below
                 to_remove.add(end+1)
                 merged_isolated += 1
@@ -445,7 +475,7 @@ def postprocess_and_save(df, xlsx_path, csv_path, failed_rows):
     # Reassign ids sequentially starting from 1
     df_clean["id"] = range(1, len(df_clean)+1)
 
-    # Keep check_if_patent_complete and double_incomplete columns in the CSV for transparency
+    # Keep check_if_patent_complete, cleaning_API_fail, and double_incomplete columns in the CSV for transparency
     df_clean.to_csv(csv_path, index=False)
     logging.info(f"Saved cleaned csv to: {csv_path}")
 
@@ -458,6 +488,7 @@ def postprocess_and_save(df, xlsx_path, csv_path, failed_rows):
         f.write(f"Pairs of incomplete rows: {pair_count}\n")
         f.write(f"Runs of >2 incomplete rows: {run_gt2_count}\n")
         f.write(f"LLM failures: {failed_count}\n")
+        f.write(f"API failures (3+ attempts): {api_fail_count}\n")
         f.write(f"Final row count: {len(df_clean)}\n\n")
         
         # Isolated incomplete rows merged with below
@@ -507,6 +538,14 @@ def postprocess_and_save(df, xlsx_path, csv_path, failed_rows):
             f.write("-" * 50 + "\n")
             for _, id_val, page_val in failed_rows:
                 f.write(f"(id: {id_val}, page: {page_val})\n")
+            f.write("\n")
+        
+        # API failures
+        if api_fail_details:
+            f.write("API FAILURES (3+ ATTEMPTS)\n")
+            f.write("-" * 50 + "\n")
+            for id_val, page_val in api_fail_details:
+                f.write(f"(id: {id_val}, page: {page_val})\n")
     
     logging.info(f"Saved detailed summary file to: {summary_path}")
 
@@ -514,6 +553,7 @@ def postprocess_and_save(df, xlsx_path, csv_path, failed_rows):
     logging.info("")
     logging.info("Summary".center(60, "-"))
     logging.info(f"LLM failures: {failed_count}")
+    logging.info(f"API failures (3+ attempts): {api_fail_count}")
     logging.info(f"Isolated incomplete rows merged with below: {merged_isolated}")
     logging.info(f"Pairs of incomplete rows: {pair_count}")
     logging.info(f"Runs of >2 incomplete rows: {run_gt2_count}")
@@ -566,11 +606,11 @@ def main():
 
     try:
         # LLM processing
-        results, failures, failed_rows = process_llm(df, prompt_template)
+        results, api_failures, failures, failed_rows = process_llm(df, prompt_template)
         df["complete_patent"] = results  # Keep original name for now, will be renamed in postprocess_and_save
 
         # Save xlsx and post-process for csv
-        postprocess_and_save(df, xlsx_path, csv_path, failed_rows)
+        postprocess_and_save(df, xlsx_path, csv_path, failed_rows, api_failures)
         
         # Mark processing as completed
         global processing_completed
@@ -602,11 +642,17 @@ def main():
 
     # Create processing log
     create_processing_log(logs_dir=CLEANED_XLSX_TEMP / "logs", filestem=filestem, csv_name=args.csv, 
-                          row_count=len(df), processing_time=elapsed, max_workers=MAX_WORKERS)
+                          row_count=len(df), processing_time=elapsed, max_workers=MAX_WORKERS, api_failures=api_failures)
 
     # Log token usage summary
     logging.info(f"Token usage summary: prompt={total_input_tokens:,}, candidate={total_candidate_tokens:,}, thoughts={total_thought_tokens:,}, total={total_input_tokens + total_thought_tokens + total_candidate_tokens:,}")
     logging.info(f"Failed API calls: {total_failed_calls}")
+    
+    # Log API failure summary
+    api_fail_count = sum(api_failures)
+    logging.info(f"Rows with API failures (3+ attempts): {api_fail_count}")
+    if api_fail_count > 0:
+        logging.warning(f"Note: {api_fail_count} rows had API failures after 3 attempts and were set to '0' (incomplete)")
 
 if __name__ == "__main__":
     main() 
