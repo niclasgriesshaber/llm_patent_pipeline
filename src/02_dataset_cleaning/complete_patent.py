@@ -5,6 +5,7 @@ import logging
 import pandas as pd
 import time
 import json
+import math
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dotenv import load_dotenv
@@ -28,6 +29,11 @@ FULL_MODEL_NAME = "gemini-2.5-flash-lite"  # Updated default model
 MAX_OUTPUT_TOKENS = 128
 MAX_WORKERS = 8
 
+# Rate limiting configuration
+MAX_REQUESTS_PER_MINUTE = 4000
+MAX_TOKENS_PER_MINUTE = 4000000
+REQUEST_WINDOW = 60  # seconds
+
 # Logging config
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(message)s", handlers=[logging.StreamHandler(sys.stdout)])
 
@@ -36,12 +42,45 @@ total_input_tokens = 0
 total_thought_tokens = 0
 total_candidate_tokens = 0
 total_failed_calls = 0  # Track failed API calls for cost monitoring
+processing_completed = False  # Track if processing completed successfully
+
+# Rate limiting tracking
+request_times = []
+token_usage_times = []
 
 def load_prompt() -> str:
     return PROMPT_PATH.read_text(encoding="utf-8")
 
+def wait_for_rate_limit():
+    """Wait if we're approaching rate limits"""
+    current_time = time.time()
+    
+    # Clean old requests (older than 1 minute)
+    global request_times, token_usage_times
+    request_times = [t for t in request_times if current_time - t < REQUEST_WINDOW]
+    token_usage_times = [t for t in token_usage_times if current_time - t < REQUEST_WINDOW]
+    
+    # Check request rate limit
+    if len(request_times) >= MAX_REQUESTS_PER_MINUTE:
+        sleep_time = REQUEST_WINDOW - (current_time - request_times[0])
+        if sleep_time > 0:
+            logging.warning(f"Rate limit approaching. Waiting {sleep_time:.1f} seconds...")
+            time.sleep(sleep_time)
+    
+    # Check token rate limit (estimate based on average tokens per request)
+    if len(token_usage_times) > 0:
+        avg_tokens_per_request = (total_input_tokens + total_thought_tokens + total_candidate_tokens) / max(len(token_usage_times), 1)
+        estimated_tokens_in_window = len(token_usage_times) * avg_tokens_per_request
+        
+        if estimated_tokens_in_window >= MAX_TOKENS_PER_MINUTE:
+            sleep_time = REQUEST_WINDOW - (current_time - token_usage_times[0])
+            if sleep_time > 0:
+                logging.warning(f"Token rate limit approaching. Waiting {sleep_time:.1f} seconds...")
+                time.sleep(sleep_time)
+
 def call_llm(entry: str, prompt_template: str) -> tuple[str, dict]:
     global total_input_tokens, total_thought_tokens, total_candidate_tokens, total_failed_calls
+    global request_times, token_usage_times
     
     client = genai.Client(api_key=API_KEY)
     prompt = f"{prompt_template}\n{entry.strip()}"
@@ -71,20 +110,30 @@ def call_llm(entry: str, prompt_template: str) -> tuple[str, dict]:
     
     config = types.GenerateContentConfig(**config_args)
     
-    # Retry logic for any failure to get valid response (0 or 1)
-    max_retries = 3
+    # Retry logic with exponential backoff for rate limits
+    max_retries = 5
+    base_delay = 1
+    
     for attempt in range(max_retries):
         try:
+            # Check rate limits before making request
+            wait_for_rate_limit()
+            
+            # Record request time
+            request_times.append(time.time())
+            
             response = client.models.generate_content(
                 model=FULL_MODEL_NAME,
                 contents=[prompt],
                 config=config,
             )
+            
             if not response or not response.text:
                 logging.warning(f"Empty response from {FULL_MODEL_NAME}")
                 if attempt < max_retries - 1:
-                    logging.warning(f"Retrying... (attempt {attempt + 1}/{max_retries})")
-                    time.sleep(2 ** attempt)  # Exponential backoff: 1s, 2s, 4s
+                    delay = base_delay * (2 ** attempt)
+                    logging.warning(f"Retrying... (attempt {attempt + 1}/{max_retries}) in {delay}s")
+                    time.sleep(delay)
                     continue
                 else:
                     total_failed_calls += 1
@@ -133,6 +182,9 @@ def call_llm(entry: str, prompt_template: str) -> tuple[str, dict]:
                 total_candidate_tokens += ctk
                 total_thought_tokens += ttk
                 
+                # Record token usage time for rate limiting
+                token_usage_times.append(time.time())
+                
                 token_info = {
                     'prompt_tokens': ptk,
                     'thoughts_tokens': ttk,
@@ -173,8 +225,9 @@ def call_llm(entry: str, prompt_template: str) -> tuple[str, dict]:
             
             logging.warning(f"Unexpected response from {FULL_MODEL_NAME}: '{text}'")
             if attempt < max_retries - 1:
-                logging.warning(f"Retrying... (attempt {attempt + 1}/{max_retries})")
-                time.sleep(2 ** attempt)  # Exponential backoff: 1s, 2s, 4s
+                delay = base_delay * (2 ** attempt)
+                logging.warning(f"Retrying... (attempt {attempt + 1}/{max_retries}) in {delay}s")
+                time.sleep(delay)
                 continue
             else:
                 total_failed_calls += 1
@@ -194,8 +247,10 @@ def call_llm(entry: str, prompt_template: str) -> tuple[str, dict]:
             )
             
             if is_api_failure and attempt < max_retries - 1:
+                delay = base_delay * (2 ** attempt)
                 logging.warning(f"API failure for {FULL_MODEL_NAME} (attempt {attempt + 1}/{max_retries}): {error_msg}")
-                time.sleep(2 ** attempt)  # Exponential backoff: 1s, 2s, 4s
+                logging.warning(f"Waiting {delay}s before retry...")
+                time.sleep(delay)
                 continue
             else:
                 # Either not an API failure or max retries reached
@@ -230,7 +285,8 @@ def create_processing_log(logs_dir: Path, filestem: str, csv_name: str, row_coun
         "total_tokens": total_input_tokens + total_thought_tokens + total_candidate_tokens,  # Add total tokens
         "total_failed_calls": total_failed_calls,  # Track failed calls for cost monitoring
         "processing_time_seconds": round(processing_time, 2),
-        "max_workers": max_workers
+        "max_workers": max_workers,
+        "processing_completed": processing_completed  # Track if processing completed successfully
     }
     
     try:
@@ -268,9 +324,31 @@ def process_llm(df, prompt_template):
     return results, failures, failed_rows
 
 def postprocess_and_save(df, xlsx_path, csv_path, failed_rows):
-    # Save xlsx with complete_patent column
+    # Rename the column to check_if_patent_complete
+    df = df.rename(columns={'complete_patent': 'check_if_patent_complete'})
+    
+    # Add double_incomplete column to identify first row in consecutive "0" sequences
+    df['double_incomplete'] = "0"  # Default to 0
+    
+    # Find consecutive sequences of "0" values and mark the first one
+    check_values = df['check_if_patent_complete'].values
+    for i in range(len(check_values)):
+        if check_values[i] == "0":
+            # Check if this is the first "0" in a consecutive sequence
+            is_first_in_sequence = False
+            
+            # If it's the first row or the previous row is not "0"
+            if i == 0 or check_values[i-1] != "0":
+                # Check if there's at least one more "0" following this one
+                if i < len(check_values) - 1 and check_values[i+1] == "0":
+                    is_first_in_sequence = True
+            
+            if is_first_in_sequence:
+                df.at[i, 'double_incomplete'] = "1"
+    
+    # Save xlsx with check_if_patent_complete and double_incomplete columns (before merging) for checking merges
     df.to_excel(xlsx_path, index=False)
-    logging.info(f"Saved intermediate xlsx to: {xlsx_path}")
+    logging.info(f"Saved check merge xlsx to: {xlsx_path}")
 
     # Create logs directory if it doesn't exist
     logs_dir = CLEANED_XLSX_TEMP / "logs"
@@ -284,7 +362,7 @@ def postprocess_and_save(df, xlsx_path, csv_path, failed_rows):
     merged_isolated = 0
     pair_count = 0
     run_gt2_count = 0
-    failed_count = (df_clean["complete_patent"] == "LLM failed").sum()
+    failed_count = (df_clean["check_if_patent_complete"] == "LLM failed").sum()
 
     # Track detailed information for logging
     merged_details = []  # (original_id, original_page, merged_with_id, merged_with_page, new_id)
@@ -292,7 +370,7 @@ def postprocess_and_save(df, xlsx_path, csv_path, failed_rows):
     run_gt2_details = [] # [(id, page), (id, page), ...]
     failed_details = []  # (id, page)
 
-    mask = (df_clean["complete_patent"] == "0")
+    mask = (df_clean["check_if_patent_complete"] == "0")
     runs = []
     run_start = None
     for i, val in enumerate(mask):
@@ -320,8 +398,8 @@ def postprocess_and_save(df, xlsx_path, csv_path, failed_rows):
                 
                 # Merge entries
                 df_clean.at[start, "entry"] = df_clean.at[start, "entry"] + " " + df_clean.at[end+1, "entry"]
-                # For merged rows, set complete_patent to 1 (complete) since we're creating a complete entry
-                df_clean.at[start, "complete_patent"] = "1"
+                # For merged rows, set check_if_patent_complete to 0 so you can check if the merge was correct
+                df_clean.at[start, "check_if_patent_complete"] = "0"
                 # Remove the row below
                 to_remove.add(end+1)
                 merged_isolated += 1
@@ -352,7 +430,7 @@ def postprocess_and_save(df, xlsx_path, csv_path, failed_rows):
     # Reassign ids sequentially starting from 1
     df_clean["id"] = range(1, len(df_clean)+1)
 
-    # Keep complete_patent column in the CSV for transparency
+    # Keep check_if_patent_complete and double_incomplete columns in the CSV for transparency
     df_clean.to_csv(csv_path, index=False)
     logging.info(f"Saved cleaned csv to: {csv_path}")
 
@@ -376,7 +454,11 @@ def postprocess_and_save(df, xlsx_path, csv_path, failed_rows):
                 # Look for the row that contains the merged entry
                 new_id = None
                 for idx, row in df_clean.iterrows():
-                    if orig_page in str(row["entry"]) and merged_page in str(row["entry"]):
+                    # Fix the TypeError by converting page values to strings
+                    entry_str = str(row["entry"])
+                    orig_page_str = str(orig_page)
+                    merged_page_str = str(merged_page)
+                    if orig_page_str in entry_str and merged_page_str in entry_str:
                         new_id = row["id"]
                         break
                 
@@ -447,7 +529,7 @@ def main():
     filestem = input_csv.stem
     # Extract year from filename (e.g., "Patentamt_1889" -> "1889")
     year = filestem.split('_')[-1] if '_' in filestem else filestem
-    xlsx_path = CLEANED_XLSX_TEMP / f"Patentamt_{year}_cleaned.xlsx"
+    xlsx_path = CLEANED_XLSX_TEMP / f"Patentamt_{year}_check_merge.xlsx"  # Renamed to indicate purpose
     csv_path = CLEANED_CSVS / f"Patentamt_{year}_cleaned.csv"
     
     # Create output directories if they don't exist
@@ -467,12 +549,39 @@ def main():
     logging.info(f"Max Workers: {MAX_WORKERS}")
     start_time = time.time()
 
-    # LLM processing
-    results, failures, failed_rows = process_llm(df, prompt_template)
-    df["complete_patent"] = results
+    try:
+        # LLM processing
+        results, failures, failed_rows = process_llm(df, prompt_template)
+        df["complete_patent"] = results  # Keep original name for now, will be renamed in postprocess_and_save
 
-    # Save xlsx and post-process for csv
-    postprocess_and_save(df, xlsx_path, csv_path, failed_rows)
+        # Save xlsx and post-process for csv
+        postprocess_and_save(df, xlsx_path, csv_path, failed_rows)
+        
+        # Mark processing as completed
+        global processing_completed
+        processing_completed = True
+        
+    except Exception as e:
+        logging.error(f"Processing failed with error: {e}")
+        # Mark processing as incomplete
+        processing_completed = False
+        
+        # Write warning to log file
+        logs_dir = CLEANED_XLSX_TEMP / "logs"
+        logs_dir.mkdir(exist_ok=True)
+        warning_path = logs_dir / f"{filestem}_WARNING.txt"
+        
+        with open(warning_path, "w", encoding="utf-8") as f:
+            f.write("WARNING: PROCESSING INCOMPLETE\n")
+            f.write("=" * 50 + "\n")
+            f.write("THE SCRIPT FAILED BEFORE COMPLETING ALL ROWS.\n")
+            f.write("PLEASE CHECK THE LOGS AND RESTART THE PROCESS.\n")
+            f.write(f"Error: {str(e)}\n")
+            f.write(f"Failed at: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+        
+        logging.error(f"WARNING: Processing incomplete. Check {warning_path} for details.")
+        raise  # Re-raise the exception to exit with error code
+    
     elapsed = time.time() - start_time
     logging.info(f"Total script time: {elapsed:.1f} seconds")
 
