@@ -633,7 +633,7 @@ def postprocess_and_save(df, xlsx_path, csv_path, failed_rows, api_failures):
         f.write(f"Pairs of incomplete rows: {pair_count}\n")
         f.write(f"Runs of >2 incomplete rows: {run_gt2_count}\n")
         f.write(f"LLM failures: {failed_count}\n")
-        f.write(f"API failures (3+ attempts): {api_fail_count}\n")
+        f.write(f"API failures (5+ attempts): {api_fail_count}\n")
         f.write(f"Final row count: {len(df_clean)}\n\n")
         
         # Isolated incomplete rows merged with below
@@ -685,7 +685,7 @@ def postprocess_and_save(df, xlsx_path, csv_path, failed_rows, api_failures):
         
         # API failures
         if api_fail_details:
-            f.write("API FAILURES (3+ ATTEMPTS)\n")
+            f.write("API FAILURES (5+ ATTEMPTS)\n")
             f.write("-" * 50 + "\n")
             for id_val, page_val in api_fail_details:
                 f.write(f"(id: {id_val}, page: {page_val})\n")
@@ -696,7 +696,7 @@ def postprocess_and_save(df, xlsx_path, csv_path, failed_rows, api_failures):
     logging.info("")
     logging.info("Summary".center(60, "-"))
     logging.info(f"LLM failures: {failed_count}")
-    logging.info(f"API failures (3+ attempts): {api_fail_count}")
+    logging.info(f"API failures (5+ attempts): {api_fail_count}")
     logging.info(f"Isolated incomplete rows merged with below: {merged_isolated}")
     logging.info(f"Pairs of incomplete rows: {pair_count}")
     logging.info(f"Runs of >2 incomplete rows: {run_gt2_count}")
@@ -794,9 +794,9 @@ def main():
     
     # Log API failure summary
     api_fail_count = sum(api_failures)
-    logging.info(f"Rows with API failures (3+ attempts): {api_fail_count}")
+    logging.info(f"Rows with API failures (5+ attempts): {api_fail_count}")
     if api_fail_count > 0:
-        logging.warning(f"Note: {api_fail_count} rows had API failures after 3 attempts and were set to '0' (incomplete)")
+        logging.warning(f"Note: {api_fail_count} rows had API failures after 5 attempts and were set to '0' (incomplete)")
     
     # Log rate limit statistics
     rate_limit_event_count = len(rate_limit_events)
