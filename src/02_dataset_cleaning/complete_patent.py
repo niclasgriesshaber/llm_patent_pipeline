@@ -27,12 +27,18 @@ API_KEY = os.getenv("GOOGLE_API_KEY")
 # LLM config - Updated to support gemini-2.5-flash-lite
 FULL_MODEL_NAME = "gemini-2.5-flash-lite"  # Updated default model
 MAX_OUTPUT_TOKENS = 128
-MAX_WORKERS = 8
+MAX_WORKERS = 10
 
 # Rate limiting configuration
 MAX_REQUESTS_PER_MINUTE = 4000
 MAX_TOKENS_PER_MINUTE = 4000000
 REQUEST_WINDOW = 60  # seconds
+
+# Enhanced retry configuration
+MAX_RETRIES = 5
+BASE_DELAY = 5  # Increased from 1 to 5 seconds
+MAX_DELAY = 300  # Maximum delay of 5 minutes
+RATE_LIMIT_DELAY_MULTIPLIER = 3  # Multiply delay for rate limit errors
 
 # Logging config
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(message)s", handlers=[logging.StreamHandler(sys.stdout)])
@@ -56,9 +62,11 @@ def adjust_workers_if_needed():
     """Dynamically adjust MAX_WORKERS based on rate limit hits"""
     global MAX_WORKERS, rate_limit_hits
     
-    # If we've hit rate limits multiple times, reduce workers
-    if rate_limit_hits >= 3 and MAX_WORKERS > 20:
-        new_workers = max(20, MAX_WORKERS - 10)  # Reduce by 10, but never below 20
+    # If we've hit rate limits multiple times, reduce workers more aggressively
+    if rate_limit_hits >= 2 and MAX_WORKERS > 10:
+        # More aggressive reduction: reduce by 50% or at least 10 workers
+        reduction = max(10, MAX_WORKERS // 2)
+        new_workers = max(10, MAX_WORKERS - reduction)
         if new_workers != MAX_WORKERS:
             logging.warning(f"Rate limits detected {rate_limit_hits} times. Reducing workers from {MAX_WORKERS} to {new_workers}")
             MAX_WORKERS = new_workers
@@ -90,6 +98,39 @@ def wait_for_rate_limit():
             if sleep_time > 0:
                 logging.warning(f"Token rate limit approaching. Waiting {sleep_time:.1f} seconds...")
                 time.sleep(sleep_time)
+
+def calculate_backoff_delay(attempt: int, is_rate_limit: bool = False) -> float:
+    """
+    Calculate backoff delay with exponential backoff and jitter.
+    
+    Args:
+        attempt: Current attempt number (0-based)
+        is_rate_limit: Whether this is a rate limit error (uses longer delays)
+    
+    Returns:
+        Delay in seconds
+    """
+    import random
+    
+    # Base exponential backoff
+    if is_rate_limit:
+        # For rate limit errors, use longer delays
+        delay = BASE_DELAY * (RATE_LIMIT_DELAY_MULTIPLIER ** attempt)
+    else:
+        # For other errors, use standard exponential backoff
+        delay = BASE_DELAY * (2 ** attempt)
+    
+    # Cap the delay at maximum
+    delay = min(delay, MAX_DELAY)
+    
+    # Add jitter (±25% random variation) to prevent thundering herd
+    jitter = delay * 0.25 * random.uniform(-1, 1)
+    delay += jitter
+    
+    # Ensure minimum delay
+    delay = max(delay, 1.0)
+    
+    return delay
 
 def call_llm(entry: str, prompt_template: str) -> tuple[str, dict, bool]:
     global total_input_tokens, total_thought_tokens, total_candidate_tokens, total_failed_calls
@@ -123,11 +164,8 @@ def call_llm(entry: str, prompt_template: str) -> tuple[str, dict, bool]:
     
     config = types.GenerateContentConfig(**config_args)
     
-    # Retry logic with exponential backoff for rate limits
-    max_retries = 5
-    base_delay = 1
-    
-    for attempt in range(max_retries):
+    # Enhanced retry logic with exponential backoff and jitter for rate limits
+    for attempt in range(MAX_RETRIES):
         try:
             # Check rate limits before making request
             wait_for_rate_limit()
@@ -146,9 +184,9 @@ def call_llm(entry: str, prompt_template: str) -> tuple[str, dict, bool]:
             
             if not response or not response.text:
                 logging.warning(f"Empty response from {FULL_MODEL_NAME}")
-                if attempt < max_retries - 1:
-                    delay = base_delay * (2 ** attempt)
-                    logging.warning(f"Retrying... (attempt {attempt + 1}/{max_retries}) in {delay}s")
+                if attempt < MAX_RETRIES - 1:
+                    delay = calculate_backoff_delay(attempt, is_rate_limit=False)
+                    logging.warning(f"Retrying... (attempt {attempt + 1}/{MAX_RETRIES}) in {delay:.1f}s")
                     time.sleep(delay)
                     continue
                 else:
@@ -240,9 +278,9 @@ def call_llm(entry: str, prompt_template: str) -> tuple[str, dict, bool]:
                     return "0", token_info, False
             
             logging.warning(f"Unexpected response from {FULL_MODEL_NAME}: '{text}'")
-            if attempt < max_retries - 1:
-                delay = base_delay * (2 ** attempt)
-                logging.warning(f"Retrying... (attempt {attempt + 1}/{max_retries}) in {delay}s")
+            if attempt < MAX_RETRIES - 1:
+                delay = calculate_backoff_delay(attempt, is_rate_limit=False)
+                logging.warning(f"Retrying... (attempt {attempt + 1}/{MAX_RETRIES}) in {delay:.1f}s")
                 time.sleep(delay)
                 continue
             else:
@@ -262,10 +300,17 @@ def call_llm(entry: str, prompt_template: str) -> tuple[str, dict, bool]:
                 "network" in error_msg.lower()
             )
             
-            if is_api_failure and attempt < max_retries - 1:
-                delay = base_delay * (2 ** attempt)
-                logging.warning(f"API failure for {FULL_MODEL_NAME} (attempt {attempt + 1}/{max_retries}): {error_msg}")
-                logging.warning(f"Waiting {delay}s before retry...")
+            if is_api_failure and attempt < MAX_RETRIES - 1:
+                # Determine if this is specifically a rate limit error
+                is_rate_limit_error = (
+                    "429" in error_msg or 
+                    "rate limit" in error_msg.lower() or 
+                    "resource exhausted" in error_msg.lower()
+                )
+                
+                delay = calculate_backoff_delay(attempt, is_rate_limit=is_rate_limit_error)
+                logging.warning(f"API failure for {FULL_MODEL_NAME} (attempt {attempt + 1}/{MAX_RETRIES}): {error_msg}")
+                logging.warning(f"Waiting {delay:.1f}s before retry...")
                 time.sleep(delay)
                 continue
             else:
@@ -274,7 +319,8 @@ def call_llm(entry: str, prompt_template: str) -> tuple[str, dict, bool]:
                 
                 # Check for specific error types
                 if "429" in error_msg or "rate limit" in error_msg.lower() or "resource exhausted" in error_msg.lower():
-                    logging.warning(f"Rate limit detected for {FULL_MODEL_NAME}, consider reducing MAX_WORKERS")
+                    logging.warning(f"Rate limit detected for {FULL_MODEL_NAME} (attempt {attempt + 1}/{MAX_RETRIES})")
+                    logging.warning(f"Consider reducing MAX_WORKERS or increasing delays")
                     rate_limit_hits += 1 # Increment rate limit hit counter
                 elif "thinking" in error_msg.lower():
                     logging.error(f"Thinking budget configuration issue for {FULL_MODEL_NAME}")
@@ -566,8 +612,8 @@ def main():
     parser.add_argument("--model", type=str, default="gemini-2.5-flash-lite", 
                        choices=["gemini-2.0-flash", "gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.5-flash-lite"],
                        help="Model to use for LLM processing (default: gemini-2.5-flash-lite)")
-    parser.add_argument("--max_workers", type=int, default=20, 
-                       help="Max concurrent workers for API requests (default: 20)")
+    parser.add_argument("--max_workers", type=int, default=10, 
+                       help="Max concurrent workers for API requests (default: 10, reduced from 20 for better rate limit handling)")
     args = parser.parse_args()
 
     # Update global model name and max workers based on command line arguments
