@@ -7,7 +7,7 @@ You are a data validator. Your task is to classify a German patent entry as eith
 **EXAMPLES:**
 
 **TRUNCATED (tag as `0`)** - These start normally but are cut off mid-sentence:
-- "(†) 15322. — SCHWINTZER & GRÄFF in Berlin S., Sebastianstrafse 18. Neuerungen an Hänge- und Steh-Schiebelampen, bestehend in einem gläsernen, mit leicht zerlegbarer Metallumkleidung"
+- "(†) 15322. — SCHWINTZER & GRÄFF in Berlin S., Sebastianstr. 18. Neuerungen an Hänge- und Steh-Schiebelampen, bestehend in einem gläsernen, mit leicht zerlegbarer Metallumkleidung"
 - "240938. Sulzer, Robert, Winterthur, Schweiz; Vertr.:"
 
 **VALID (tag as `1`)** - These contain the end with date/registration, even if they start mid-sentence:
