@@ -23,8 +23,8 @@ ENV_PATH = PROJECT_ROOT / "config" / ".env"
 load_dotenv(dotenv_path=ENV_PATH)
 API_KEY = os.getenv("GOOGLE_API_KEY")
 
-# LLM config
-FULL_MODEL_NAME = "gemini-2.0-flash"
+# LLM config - Updated to support gemini-2.5-flash-lite
+FULL_MODEL_NAME = "gemini-2.5-flash-lite"  # Updated default model
 MAX_OUTPUT_TOKENS = 128
 MAX_WORKERS = 8
 
@@ -35,52 +35,149 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(message)s", hand
 total_input_tokens = 0
 total_thought_tokens = 0
 total_candidate_tokens = 0
+total_failed_calls = 0  # Track failed API calls for cost monitoring
 
 def load_prompt() -> str:
     return PROMPT_PATH.read_text(encoding="utf-8")
 
 def call_llm(entry: str, prompt_template: str) -> tuple[str, dict]:
-    global total_input_tokens, total_thought_tokens, total_candidate_tokens
+    global total_input_tokens, total_thought_tokens, total_candidate_tokens, total_failed_calls
     
     client = genai.Client(api_key=API_KEY)
     prompt = f"{prompt_template}\n{entry.strip()}"
-    try:
-        response = client.models.generate_content(
-            model=FULL_MODEL_NAME,
-            contents=[prompt],
-            config=types.GenerateContentConfig(
-                temperature=0.0,
-                max_output_tokens=MAX_OUTPUT_TOKENS,
-            ),
-        )
-        if not response or not response.text:
-            return "LLM failed", {}
-        
-        # Extract token usage (Gemini 2.0 Flash doesn't support thought tokens)
-        usage = getattr(response, 'usage_metadata', None)
-        if usage:
-            ptk = getattr(usage, 'prompt_token_count', 0) or 0
-            ctk = getattr(usage, 'candidates_token_count', 0) or 0
-            
-            # Update global token counts (thought tokens are always 0 for Gemini 2.0 Flash)
-            total_input_tokens += ptk
-            total_candidate_tokens += ctk
-            
-            token_info = {
-                'prompt_tokens': ptk,
-                'thoughts_tokens': 0,  # Gemini 2.0 Flash doesn't support thought tokens
-                'candidate_tokens': ctk
-            }
+    
+    # Configure model-specific settings
+    config_args = {
+        "temperature": 0.0,
+        "max_output_tokens": MAX_OUTPUT_TOKENS,
+    }
+    
+    # For gemini-2.5 models, set thinking_config with minimum thinking_budget
+    if "2.5" in FULL_MODEL_NAME:
+        if "lite" in FULL_MODEL_NAME:
+            # For lite model: no thinking, minimal output tokens
+            config_args["max_output_tokens"] = 1
+            config_args["thinking_config"] = types.ThinkingConfig(
+                thinking_budget=0,
+                include_thoughts=False
+            )
         else:
-            token_info = {}
-        
-        text = response.text.strip()
-        if text == "1" or text == "0":
-            return text, token_info
-        return "LLM failed", token_info
-    except Exception as e:
-        logging.error(f"LLM call failed: {e}")
-        return "LLM failed", {}
+            # For other 2.5 models: use thinking config
+            thinking_budget = 128  # Minimum required for other 2.5 models
+            config_args["thinking_config"] = types.ThinkingConfig(
+                thinking_budget=thinking_budget,
+                include_thoughts=True
+            )
+    
+    config = types.GenerateContentConfig(**config_args)
+    
+    # Retry logic for any failure to get valid response (0 or 1)
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            response = client.models.generate_content(
+                model=FULL_MODEL_NAME,
+                contents=[prompt],
+                config=config,
+            )
+            if not response or not response.text:
+                logging.warning(f"Empty response from {FULL_MODEL_NAME}")
+                if attempt < max_retries - 1:
+                    logging.warning(f"Retrying... (attempt {attempt + 1}/{max_retries})")
+                    time.sleep(2 ** attempt)  # Exponential backoff: 1s, 2s, 4s
+                    continue
+                else:
+                    total_failed_calls += 1
+                    return "LLM failed", {}
+            
+            # Extract token usage
+            usage = getattr(response, 'usage_metadata', None)
+            if usage:
+                ptk = getattr(usage, 'prompt_token_count', 0) or 0
+                ctk = getattr(usage, 'candidates_token_count', 0) or 0
+                ttk = getattr(usage, 'thinking_token_count', 0) or 0
+                
+                # Update global token counts
+                total_input_tokens += ptk
+                total_candidate_tokens += ctk
+                total_thought_tokens += ttk
+                
+                token_info = {
+                    'prompt_tokens': ptk,
+                    'thoughts_tokens': ttk,
+                    'candidate_tokens': ctk
+                }
+            else:
+                token_info = {}
+            
+            text = response.text.strip()
+            
+            # Debug: Log the actual response for troubleshooting
+            logging.info(f"Raw response from {FULL_MODEL_NAME}: '{text}'")
+            
+            # Check for exact matches first
+            if text == "1" or text == "0":
+                return text, token_info
+            
+            # Check for responses that contain the expected values
+            if "1" in text and "0" not in text:
+                logging.info(f"Extracted '1' from response: '{text}'")
+                return "1", token_info
+            elif "0" in text and "1" not in text:
+                logging.info(f"Extracted '0' from response: '{text}'")
+                return "0", token_info
+            elif "1" in text and "0" in text:
+                # If both are present, check which comes first or is more prominent
+                if text.find("1") < text.find("0"):
+                    logging.info(f"Extracted '1' (appears first) from response: '{text}'")
+                    return "1", token_info
+                else:
+                    logging.info(f"Extracted '0' (appears first) from response: '{text}'")
+                    return "0", token_info
+            
+            logging.warning(f"Unexpected response from {FULL_MODEL_NAME}: '{text}'")
+            if attempt < max_retries - 1:
+                logging.warning(f"Retrying... (attempt {attempt + 1}/{max_retries})")
+                time.sleep(2 ** attempt)  # Exponential backoff: 1s, 2s, 4s
+                continue
+            else:
+                total_failed_calls += 1
+                return "LLM failed", token_info
+            
+        except Exception as e:
+            error_msg = str(e)
+            
+            # Check if this is an API failure that should be retried
+            is_api_failure = (
+                "429" in error_msg or 
+                "rate limit" in error_msg.lower() or 
+                "resource exhausted" in error_msg.lower() or
+                "timeout" in error_msg.lower() or
+                "connection" in error_msg.lower() or
+                "network" in error_msg.lower()
+            )
+            
+            if is_api_failure and attempt < max_retries - 1:
+                logging.warning(f"API failure for {FULL_MODEL_NAME} (attempt {attempt + 1}/{max_retries}): {error_msg}")
+                time.sleep(2 ** attempt)  # Exponential backoff: 1s, 2s, 4s
+                continue
+            else:
+                # Either not an API failure or max retries reached
+                logging.error(f"LLM call failed for {FULL_MODEL_NAME} (attempt {attempt + 1}/{max_retries}): {error_msg}")
+                
+                # Check for specific error types
+                if "429" in error_msg or "rate limit" in error_msg.lower() or "resource exhausted" in error_msg.lower():
+                    logging.warning(f"Rate limit detected for {FULL_MODEL_NAME}, consider reducing MAX_WORKERS")
+                elif "thinking" in error_msg.lower():
+                    logging.error(f"Thinking budget configuration issue for {FULL_MODEL_NAME}")
+                elif "not found" in error_msg.lower() or "does not exist" in error_msg.lower():
+                    logging.error(f"Model {FULL_MODEL_NAME} not found or not available")
+                
+                total_failed_calls += 1
+                return "LLM failed", {}
+    
+    total_failed_calls += 1
+    return "LLM failed", {}
 
 def create_processing_log(logs_dir: Path, filestem: str, csv_name: str, row_count: int, 
                          processing_time: float, max_workers: int) -> None:
@@ -94,6 +191,7 @@ def create_processing_log(logs_dir: Path, filestem: str, csv_name: str, row_coun
         "total_input_tokens": total_input_tokens,
         "total_thought_tokens": total_thought_tokens,
         "total_candidate_tokens": total_candidate_tokens,
+        "total_failed_calls": total_failed_calls,  # Track failed calls for cost monitoring
         "processing_time_seconds": round(processing_time, 2),
         "max_workers": max_workers
     }
@@ -119,17 +217,9 @@ def process_llm(df, prompt_template):
             try:
                 result, token_info = future.result()
                 if result == "LLM failed":
-                    # Retry once
-                    logging.info(f"Row {idx+1}: LLM failed, retrying...")
-                    result_retry, token_info_retry = call_llm(df.iloc[idx]["entry"], prompt_template)
-                    if result_retry == "LLM failed":
-                        failures += 1
-                        failed_rows.append((idx, df.iloc[idx]["id"], df.iloc[idx]["page"]))
-                        results[idx] = "LLM failed"
-                        logging.error(f"Row {idx+1}: LLM failed after retry.")
-                    else:
-                        results[idx] = result_retry
-                        logging.info(f"Row {idx+1}: LLM retry result = {result_retry}")
+                    failures += 1
+                    failed_rows.append((idx, df.iloc[idx]["id"], df.iloc[idx]["page"]))
+                    logging.error(f"Row {idx+1}: LLM failed after all retries.")
                 else:
                     results[idx] = result
                     logging.info(f"Row {idx+1}: LLM result = {result}")
@@ -299,7 +389,14 @@ def postprocess_and_save(df, xlsx_path, csv_path, failed_rows):
 def main():
     parser = argparse.ArgumentParser(description="Check completeness of patent entries using LLM.")
     parser.add_argument("--csv", type=str, required=True, help="Name of the CSV file in data/complete_csvs/ to process.")
+    parser.add_argument("--model", type=str, default="gemini-2.5-flash-lite", 
+                       choices=["gemini-2.0-flash", "gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.5-flash-lite"],
+                       help="Model to use for LLM processing (default: gemini-2.5-flash-lite)")
     args = parser.parse_args()
+
+    # Update global model name based on command line argument
+    global FULL_MODEL_NAME
+    FULL_MODEL_NAME = args.model
 
     input_csv = COMPLETE_CSVS / args.csv
     if not input_csv.exists():

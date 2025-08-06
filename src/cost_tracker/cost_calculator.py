@@ -12,6 +12,14 @@ PRICING = {
         "input_tokens": 1.25,  # USD per 1M tokens
         "output_tokens": 10.00  # USD per 1M tokens (thought + candidate)
     },
+    "gemini-2.5-flash": {
+        "input_tokens": 0.1,   # USD per 1M tokens
+        "output_tokens": 0.4   # USD per 1M tokens (thought + candidate)
+    },
+    "gemini-2.5-flash-lite": {
+        "input_tokens": 0.1,   # USD per 1M tokens
+        "output_tokens": 0.4   # USD per 1M tokens (thought + candidate)
+    },
     "gemini-2.0-flash": {
         "input_tokens": 0.1,   # USD per 1M tokens
         "output_tokens": 0.4   # USD per 1M tokens (thought + candidate)
