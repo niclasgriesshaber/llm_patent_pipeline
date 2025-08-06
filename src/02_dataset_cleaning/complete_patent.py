@@ -93,9 +93,40 @@ def call_llm(entry: str, prompt_template: str) -> tuple[str, dict]:
             # Extract token usage
             usage = getattr(response, 'usage_metadata', None)
             if usage:
-                ptk = getattr(usage, 'prompt_token_count', 0) or 0
-                ctk = getattr(usage, 'candidates_token_count', 0) or 0
-                ttk = getattr(usage, 'thinking_token_count', 0) or 0
+                # Extract token counts with robust handling of "N/A" and non-numeric values
+                ptk_raw = getattr(usage, 'prompt_token_count', None)
+                ctk_raw = getattr(usage, 'candidates_token_count', None)
+                ttk_raw = getattr(usage, 'thinking_token_count', None)
+                totk_raw = getattr(usage, 'total_token_count', None)
+                
+                # Convert to integers, treating "N/A" and non-numeric values as 0
+                try:
+                    ptk = int(ptk_raw) if ptk_raw is not None and ptk_raw != "N/A" else 0
+                except (ValueError, TypeError):
+                    ptk = 0
+                    logging.warning(f"Invalid prompt_token_count value: {ptk_raw}, using 0")
+                
+                try:
+                    ctk = int(ctk_raw) if ctk_raw is not None and ctk_raw != "N/A" else 0
+                except (ValueError, TypeError):
+                    ctk = 0
+                    logging.warning(f"Invalid candidates_token_count value: {ctk_raw}, using 0")
+                
+                try:
+                    ttk = int(ttk_raw) if ttk_raw is not None and ttk_raw != "N/A" else 0
+                except (ValueError, TypeError):
+                    ttk = 0
+                    logging.warning(f"Invalid thinking_token_count value: {ttk_raw}, using 0")
+                
+                try:
+                    totk = int(totk_raw) if totk_raw is not None and totk_raw != "N/A" else 0
+                except (ValueError, TypeError):
+                    totk = 0
+                    logging.warning(f"Invalid total_token_count value: {totk_raw}, using 0")
+                
+                # Log if we encountered any "N/A" values
+                if any(val == "N/A" for val in [ptk_raw, ctk_raw, ttk_raw, totk_raw]):
+                    logging.info(f"Encountered 'N/A' token values: prompt={ptk_raw}, candidate={ctk_raw}, thoughts={ttk_raw}, total={totk_raw}")
                 
                 # Update global token counts
                 total_input_tokens += ptk
@@ -105,7 +136,8 @@ def call_llm(entry: str, prompt_template: str) -> tuple[str, dict]:
                 token_info = {
                     'prompt_tokens': ptk,
                     'thoughts_tokens': ttk,
-                    'candidate_tokens': ctk
+                    'candidate_tokens': ctk,
+                    'total_tokens': totk
                 }
             else:
                 token_info = {}
@@ -114,6 +146,10 @@ def call_llm(entry: str, prompt_template: str) -> tuple[str, dict]:
             
             # Debug: Log the actual response for troubleshooting
             logging.info(f"Raw response from {FULL_MODEL_NAME}: '{text}'")
+            
+            # Log token usage for successful API calls
+            if usage:
+                logging.info(f"Token usage: prompt={ptk}, candidate={ctk}, thoughts={ttk}, total={totk}")
             
             # Check for exact matches first
             if text == "1" or text == "0":
@@ -191,6 +227,7 @@ def create_processing_log(logs_dir: Path, filestem: str, csv_name: str, row_coun
         "total_input_tokens": total_input_tokens,
         "total_thought_tokens": total_thought_tokens,
         "total_candidate_tokens": total_candidate_tokens,
+        "total_tokens": total_input_tokens + total_thought_tokens + total_candidate_tokens,  # Add total tokens
         "total_failed_calls": total_failed_calls,  # Track failed calls for cost monitoring
         "processing_time_seconds": round(processing_time, 2),
         "max_workers": max_workers
@@ -442,6 +479,10 @@ def main():
     # Create processing log
     create_processing_log(logs_dir=CLEANED_XLSX_TEMP / "logs", filestem=filestem, csv_name=args.csv, 
                           row_count=len(df), processing_time=elapsed, max_workers=MAX_WORKERS)
+
+    # Log token usage summary
+    logging.info(f"Token usage summary: prompt={total_input_tokens:,}, candidate={total_candidate_tokens:,}, thoughts={total_thought_tokens:,}, total={total_input_tokens + total_thought_tokens + total_candidate_tokens:,}")
+    logging.info(f"Failed API calls: {total_failed_calls}")
 
 if __name__ == "__main__":
     main() 
