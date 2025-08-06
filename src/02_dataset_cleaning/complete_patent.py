@@ -447,7 +447,7 @@ def postprocess_and_save(df, xlsx_path, csv_path, failed_rows, api_failures):
     api_fail_count = (df_clean["cleaning_API_fail"] == "1").sum()
 
     # Track detailed information for logging
-    merged_details = []  # (original_id, original_page, merged_with_id, merged_with_page, new_id)
+    merged_details = []  # Will store (original_id, original_page, merged_with_id, merged_with_page, new_id)
     pair_details = []    # [(id, page), (id, page)]
     run_gt2_details = [] # [(id, page), (id, page), ...]
     failed_details = []  # (id, page)
@@ -473,6 +473,8 @@ def postprocess_and_save(df, xlsx_path, csv_path, failed_rows, api_failures):
         runs.append((run_start, len(mask)-1))
 
     to_remove = set()
+    merged_details = []  # Will store (original_id, original_page, merged_with_id, merged_with_page, new_id)
+    
     for start, end in runs:
         length = end - start + 1
         if length == 1:
@@ -496,7 +498,7 @@ def postprocess_and_save(df, xlsx_path, csv_path, failed_rows, api_failures):
                 merged_isolated += 1
                 
                 # Store details for logging (new_id will be calculated after reassignment)
-                merged_details.append((original_id, original_page, merged_with_id, merged_with_page))
+                merged_details.append((original_id, original_page, merged_with_id, merged_with_page, start))
         elif length == 2:
             # Pair: leave as is, count
             pair_details.append([
@@ -541,18 +543,16 @@ def postprocess_and_save(df, xlsx_path, csv_path, failed_rows, api_failures):
         if merged_details:
             f.write("ISOLATED INCOMPLETE ROWS MERGED WITH BELOW\n")
             f.write("-" * 50 + "\n")
-            for i, (orig_id, orig_page, merged_id, merged_page) in enumerate(merged_details):
-                # Find the new ID in the cleaned dataframe
-                # Look for the row that contains the merged entry
-                new_id = None
-                for idx, row in df_clean.iterrows():
-                    # Fix the TypeError by converting page values to strings
-                    entry_str = str(row["entry"])
-                    orig_page_str = str(orig_page)
-                    merged_page_str = str(merged_page)
-                    if orig_page_str in entry_str and merged_page_str in entry_str:
-                        new_id = row["id"]
-                        break
+            
+            for i, (orig_id, orig_page, merged_id, merged_page, original_row_index) in enumerate(merged_details):
+                # Calculate the new ID by adjusting the original row index for removed rows
+                adjusted_index = original_row_index
+                for removed_idx in to_remove:
+                    if removed_idx < original_row_index:
+                        adjusted_index -= 1
+                
+                # Get the new ID from the cleaned dataframe
+                new_id = df_clean.at[adjusted_index, "id"] if adjusted_index < len(df_clean) else None
                 
                 f.write(f"Merge {i+1}: Original (id: {orig_id}, page: {orig_page}) + (id: {merged_id}, page: {merged_page}) -> New (id: {new_id})\n")
             f.write("\n")
