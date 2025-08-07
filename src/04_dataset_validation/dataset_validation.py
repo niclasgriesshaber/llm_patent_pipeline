@@ -18,8 +18,10 @@ def validate_required_columns(df, csv_path):
     Returns:
         bool: True if validation passes, False otherwise
     """
-    required_columns = ["id", "page", "entry", "category", "complete_patent", "patent_id", 
-                       "name", "location", "description", "date", "successful_variable_extraction"]
+    required_columns = ["id", "page", "entry", "category", "check_if_patent_complete", 
+                       "cleaning_API_fail", "double_incomplete", "patent_id", "name", 
+                       "location", "description", "date", "successful_variable_extraction", 
+                       "variable_API_fail"]
     
     actual_columns = list(df.columns)
     
@@ -42,8 +44,19 @@ def reorder_columns(df):
     Returns:
         DataFrame: Reordered DataFrame
     """
-    new_order = ["id", "page", "entry", "category", "patent_id", "name", "location", 
-                 "description", "date", "complete_patent", "successful_variable_extraction"]
+    new_order = ["global_id", "book_id", "page", "entry", "category", "patent_id", "name", 
+                 "location", "description", "date", "check_if_patent_complete", 
+                 "double_incomplete", "cleaning_API_fail", "successful_variable_extraction", 
+                 "variable_API_fail"]
+    
+    # Create new columns if they don't exist
+    if 'book_id' not in df.columns:
+        # book_id starts at 1 for each file (local ID within the book)
+        df['book_id'] = range(1, len(df) + 1)
+    if 'global_id' not in df.columns:
+        # global_id will be set later when processing all files together
+        # For now, use a placeholder that will be updated in the main processing loop
+        df['global_id'] = df['id']  # Temporary placeholder
     
     return df[new_order]
 
@@ -70,9 +83,38 @@ def clean_patent_id_column(df):
     return df
 
 
+def parse_category(category_str):
+    """
+    Parse category string to extract main number and subcategory letter.
+    
+    Args:
+        category_str: Category string (e.g., "1", "1a", "2b", "3")
+    
+    Returns:
+        tuple: (main_number, subcategory_letter) where subcategory_letter is None if no letter
+    """
+    if pd.isna(category_str):
+        return None, None
+    
+    category_str = str(category_str).strip()
+    
+    # Check if it's a simple number
+    if category_str.isdigit():
+        return int(category_str), None
+    
+    # Check if it's a number followed by a letter
+    match = re.match(r'^(\d+)([a-z])$', category_str)
+    if match:
+        return int(match.group(1)), match.group(2)
+    
+    # Invalid format
+    return None, None
+
+
 def validate_category_sequence(df, csv_path):
     """
     Validate that categories follow ascending order and report violations.
+    Supports both numbered categories (1, 2, 3) and lettered subcategories (1a, 1b, 2a, 2b, 3, 4a, etc.)
     
     Args:
         df: DataFrame to validate
@@ -81,54 +123,69 @@ def validate_category_sequence(df, csv_path):
     Returns:
         dict: Dictionary with validation results and violations
     """
-    # Define valid category sequence
-    valid_categories = []
-    for i in range(1, 90):  # 1 to 89
-        valid_categories.append(str(i))
-        if i <= 89:  # Add subclasses for categories that can have them
-            for letter in 'abcdefghijklmnopqrstuvwxyz':
-                valid_categories.append(f"{i}{letter}")
-    
-    # Track violations
     violations = []
-    current_category = None
+    current_main_num = None
+    current_sub_letter = None
     first_violation_id = None
     
     for idx, row in df.iterrows():
         category = str(row['category']).strip()
         entry_id = row['id']
         
-        # Check if category is valid
-        if category not in valid_categories:
-            if first_violation_id is None or category != current_category:
+        # Parse the category
+        main_num, sub_letter = parse_category(category)
+        
+        if main_num is None:
+            if first_violation_id is None:
                 violations.append({
                     'id': entry_id,
                     'category': category,
                     'type': 'invalid_category',
-                    'message': f"Invalid category '{category}' at id {entry_id}"
+                    'message': f"Invalid category format '{category}' at id {entry_id}"
                 })
                 first_violation_id = entry_id
-                current_category = category
             continue
         
         # Check ascending order
-        if current_category is not None:
-            current_idx = valid_categories.index(current_category)
-            new_idx = valid_categories.index(category)
-            
-            if new_idx < current_idx:
-                if first_violation_id is None or category != current_category:
+        if current_main_num is not None:
+            # First check main number
+            if main_num < current_main_num:
+                if first_violation_id is None:
                     violations.append({
                         'id': entry_id,
                         'category': category,
                         'type': 'sequence_violation',
-                        'message': f"Category '{category}' appears before '{current_category}' at id {entry_id}"
+                        'message': f"Category '{category}' (main={main_num}) appears before '{current_main_num}' at id {entry_id}"
                     })
                     first_violation_id = entry_id
-                    current_category = category
                 continue
+            elif main_num == current_main_num:
+                # Same main number, check subcategory letter
+                if current_sub_letter is not None and sub_letter is not None:
+                    if sub_letter < current_sub_letter:
+                        if first_violation_id is None:
+                            violations.append({
+                                'id': entry_id,
+                                'category': category,
+                                'type': 'sequence_violation',
+                                'message': f"Category '{category}' appears before '{current_main_num}{current_sub_letter}' at id {entry_id}"
+                            })
+                            first_violation_id = entry_id
+                        continue
+                elif current_sub_letter is None and sub_letter is not None:
+                    # Main number without subcategory should come before subcategories
+                    if first_violation_id is None:
+                        violations.append({
+                            'id': entry_id,
+                            'category': category,
+                            'type': 'sequence_violation',
+                            'message': f"Category '{category}' (subcategory) appears after '{current_main_num}' (main category) at id {entry_id}"
+                        })
+                        first_violation_id = entry_id
+                    continue
         
-        current_category = category
+        current_main_num = main_num
+        current_sub_letter = sub_letter
     
     return {
         'valid': len(violations) == 0,
@@ -137,200 +194,7 @@ def validate_category_sequence(df, csv_path):
     }
 
 
-def validate_csv_file(csv_path, output_base_dir, start_id=None, end_id=None):
-    """
-    Validate a single CSV file and create both XLSX and log files.
-    
-    Args:
-        csv_path: Path to the input CSV file
-        output_base_dir: Base directory for outputs
-        start_id: Lower bound of patent_id range to check for gaps
-        end_id: Upper bound of patent_id range to check for gaps
-    
-    Returns:
-        tuple: (xlsx_path, log_path) - paths to created files
-    """
-    try:
-        df = pd.read_csv(csv_path, dtype=str)
-    except Exception as e:
-        print(f"Error reading CSV {csv_path}: {e}")
-        return None, None
 
-    # Step 1: Validate required columns
-    if not validate_required_columns(df, csv_path):
-        return None, None
-
-    # Step 2: Reorder columns
-    df = reorder_columns(df)
-
-    # Step 3: Clean patent_id column
-    df = clean_patent_id_column(df)
-
-    # Step 4: Validate category sequence
-    category_validation = validate_category_sequence(df, csv_path)
-
-    # Step 5: Original patent_id validation logic
-    nan_patent_id_count = df['patent_id'].isna().sum()
-    
-    # Clean and convert patent_id for validation (keep original for display)
-    def clean_patent_id_for_validation(val):
-        if pd.isna(val):
-            return None
-        val = str(val).strip()
-        if not val.isdigit():
-            raise ValueError(f"patent_id '{val}' is not convertible to integer.")
-        return int(val)
-
-    try:
-        df['patent_id_cleaned'] = df['patent_id'].apply(clean_patent_id_for_validation)
-    except Exception as e:
-        print(f"Error in {csv_path}: {e}")
-        return None, None
-
-    # Only use valid integer patent_ids for further checks
-    valid_patent_ids_df = df[df['patent_id_cleaned'].notna()].copy()
-    valid_patent_ids_df['patent_id_cleaned'] = valid_patent_ids_df['patent_id_cleaned'].astype(int)
-    all_patent_ids = valid_patent_ids_df['patent_id_cleaned'].tolist()
-
-    # Determine start and end for gap checking
-    if start_id is not None:
-        check_start_id = start_id
-    else:
-        check_start_id = min(all_patent_ids) if all_patent_ids else None
-    if end_id is not None:
-        check_end_id = end_id
-    else:
-        check_end_id = max(all_patent_ids) if all_patent_ids else None
-
-    # Find out-of-range patent_ids with id and page
-    smaller_than_start = []
-    greater_than_end = []
-    if check_start_id is not None:
-        smaller_df = valid_patent_ids_df[valid_patent_ids_df['patent_id_cleaned'] < check_start_id]
-        for pid, group in smaller_df.groupby('patent_id_cleaned'):
-            entries = [(row['id'], row['page']) for _, row in group.iterrows()]
-            smaller_than_start.append((pid, entries))
-    if check_end_id is not None:
-        greater_df = valid_patent_ids_df[valid_patent_ids_df['patent_id_cleaned'] > check_end_id]
-        for pid, group in greater_df.groupby('patent_id_cleaned'):
-            entries = [(row['id'], row['page']) for _, row in group.iterrows()]
-            greater_than_end.append((pid, entries))
-
-    # Find gaps within [check_start_id, check_end_id]
-    if check_start_id is not None and check_end_id is not None:
-        in_range_ids = set([pid for pid in all_patent_ids if check_start_id <= pid <= check_end_id])
-        full_range = set(range(check_start_id, check_end_id + 1))
-        missing_ids = sorted(full_range - in_range_ids)
-    else:
-        missing_ids = []
-
-    # Find duplicates
-    duplicates = valid_patent_ids_df[valid_patent_ids_df.duplicated('patent_id_cleaned', keep=False)]
-    duplicate_groups = duplicates.groupby('patent_id_cleaned')
-
-    # Prepare output file paths
-    filestem = os.path.splitext(os.path.basename(csv_path))[0]
-    
-    # Create XLSX file with validation results
-    xlsx_path = os.path.join(output_base_dir, 'validated_xlsx', f"{filestem}_validated.xlsx")
-    
-    # Create a new DataFrame for the XLSX with validation information
-    xlsx_df = df.copy()
-    xlsx_df['validation_notes'] = ''
-    
-    # Add validation notes
-    for idx, row in xlsx_df.iterrows():
-        notes = []
-        
-        # Category validation notes
-        category = str(row['category']).strip()
-        for violation in category_validation['violations']:
-            if violation['category'] == category and violation['id'] == row['id']:
-                notes.append(violation['message'])
-        
-        # Patent ID validation notes
-        if pd.isna(row['patent_id']):
-            notes.append("NaN patent_id")
-        else:
-            try:
-                pid_clean = clean_patent_id_for_validation(row['patent_id'])
-                if pid_clean is not None:
-                    if check_start_id is not None and pid_clean < check_start_id:
-                        notes.append(f"patent_id {pid_clean} < start ({check_start_id})")
-                    if check_end_id is not None and pid_clean > check_end_id:
-                        notes.append(f"patent_id {pid_clean} > end ({check_end_id})")
-                    if pid_clean in [dup_pid for dup_pid, _ in duplicate_groups]:
-                        notes.append(f"Duplicate patent_id {pid_clean}")
-            except:
-                notes.append("Invalid patent_id format")
-        
-        xlsx_df.at[idx, 'validation_notes'] = '; '.join(notes) if notes else 'Valid'
-    
-    # Save XLSX file
-    try:
-        xlsx_df.to_excel(xlsx_path, index=False)
-        print(f"Created XLSX file: {xlsx_path}")
-    except Exception as e:
-        print(f"Error creating XLSX file {xlsx_path}: {e}")
-        xlsx_path = None
-
-    # Create log file
-    log_path = os.path.join(output_base_dir, 'logs', f"{filestem}_validation.txt")
-    
-    with open(log_path, 'w', encoding='utf-8') as f:
-        f.write(f"=== Validation Report for {os.path.basename(csv_path)} ===\n\n")
-        
-        # Category validation section
-        f.write("=== Category Sequence Validation ===\n")
-        if category_validation['valid']:
-            f.write("Category sequence is valid.\n")
-        else:
-            f.write("Category sequence violations found:\n")
-            for violation in category_validation['violations']:
-                f.write(f"  {violation['message']}\n")
-        f.write("\n")
-        
-        f.write("=== NaN patent_id values ===\n")
-        if nan_patent_id_count == 0:
-            f.write("No NaN patent_id values found.\n")
-        else:
-            f.write(f"Number of NaN patent_id values: {nan_patent_id_count}\n")
-        f.write("\n")
-        f.write("=== Duplicate patent_id entries ===\n")
-        if duplicate_groups.ngroups == 0:
-            f.write("No duplicate patent_id values found.\n")
-        else:
-            for pid, group in duplicate_groups:
-                f.write(f"patent_id: {pid}\n")
-                for _, row in group.iterrows():
-                    f.write(f"  id: {row['id']}, page: {row['page']}\n")
-                f.write("\n")
-        f.write("\n=== patent_id values smaller than start ({}) ===\n".format(check_start_id if check_start_id is not None else 'N/A'))
-        if not smaller_than_start:
-            f.write("None found.\n")
-        else:
-            for pid, entries in smaller_than_start:
-                f.write(f"patent_id: {pid}\n")
-                for id_val, page_val in entries:
-                    f.write(f"  id: {id_val}, page: {page_val}\n")
-                f.write("\n")
-        f.write("\n=== patent_id values greater than end ({}) ===\n".format(check_end_id if check_end_id is not None else 'N/A'))
-        if not greater_than_end:
-            f.write("None found.\n")
-        else:
-            for pid, entries in greater_than_end:
-                f.write(f"patent_id: {pid}\n")
-                for id_val, page_val in entries:
-                    f.write(f"  id: {id_val}, page: {page_val}\n")
-                f.write("\n")
-        f.write("\n=== Missing patent_id values (gaps) between {} and {} ===\n".format(check_start_id, check_end_id))
-        if not missing_ids:
-            f.write("No gaps found in patent_id sequence.\n")
-        else:
-            f.write(", ".join(str(x) for x in missing_ids) + "\n")
-
-    print(f"Created log file: {log_path}")
-    return xlsx_path, log_path
 
 
 def load_patent_ranges(ranges_csv_path):
@@ -444,6 +308,8 @@ def main():
 
     # Process each CSV file
     processed_count = 0
+    global_id_counter = 1  # Start global ID counter at 1
+    
     for csv_file in csv_files:
         print(f"\nProcessing: {csv_file}")
         
@@ -463,9 +329,192 @@ def main():
         start_id, end_id = patent_ranges[file_prefix]
         print(f"Using patent range for {year}: {start_id} - {end_id}")
         
-        xlsx_path, log_path = validate_csv_file(csv_file, output_base_dir, start_id, end_id)
-        if xlsx_path and log_path:
-            processed_count += 1
+        # Read the CSV file
+        try:
+            df = pd.read_csv(csv_file, dtype=str)
+        except Exception as e:
+            print(f"Error reading CSV {csv_file}: {e}")
+            continue
+        
+        # Validate required columns
+        if not validate_required_columns(df, csv_file):
+            continue
+        
+        # Assign global IDs to this file
+        df['global_id'] = range(global_id_counter, global_id_counter + len(df))
+        global_id_counter += len(df)
+        
+        # Reorder columns (this will set book_id to 1, 2, 3, etc. for this file)
+        df = reorder_columns(df)
+        
+        # Clean patent_id column
+        df = clean_patent_id_column(df)
+        
+        # Validate category sequence
+        category_validation = validate_category_sequence(df, csv_file)
+        
+        # Continue with the rest of validation...
+        nan_patent_id_count = df['patent_id'].isna().sum()
+        
+        # Clean and convert patent_id for validation (keep original for display)
+        def clean_patent_id_for_validation(val):
+            if pd.isna(val):
+                return None
+            val = str(val).strip()
+            if not val.isdigit():
+                raise ValueError(f"patent_id '{val}' is not convertible to integer.")
+            return int(val)
+
+        try:
+            df['patent_id_cleaned'] = df['patent_id'].apply(clean_patent_id_for_validation)
+        except Exception as e:
+            print(f"Error in {csv_file}: {e}")
+            continue
+
+        # Only use valid integer patent_ids for further checks
+        valid_patent_ids_df = df[df['patent_id_cleaned'].notna()].copy()
+        valid_patent_ids_df['patent_id_cleaned'] = valid_patent_ids_df['patent_id_cleaned'].astype(int)
+        all_patent_ids = valid_patent_ids_df['patent_id_cleaned'].tolist()
+
+        # Determine start and end for gap checking
+        if start_id is not None:
+            check_start_id = start_id
+        else:
+            check_start_id = min(all_patent_ids) if all_patent_ids else None
+        if end_id is not None:
+            check_end_id = end_id
+        else:
+            check_end_id = max(all_patent_ids) if all_patent_ids else None
+
+        # Find out-of-range patent_ids with id and page
+        smaller_than_start = []
+        greater_than_end = []
+        if check_start_id is not None:
+            smaller_df = valid_patent_ids_df[valid_patent_ids_df['patent_id_cleaned'] < check_start_id]
+            for pid, group in smaller_df.groupby('patent_id_cleaned'):
+                entries = [(row['global_id'], row['page']) for _, row in group.iterrows()]
+                smaller_than_start.append((pid, entries))
+        if check_end_id is not None:
+            greater_df = valid_patent_ids_df[valid_patent_ids_df['patent_id_cleaned'] > check_end_id]
+            for pid, group in greater_df.groupby('patent_id_cleaned'):
+                entries = [(row['global_id'], row['page']) for _, row in group.iterrows()]
+                greater_than_end.append((pid, entries))
+
+        # Find gaps within [check_start_id, check_end_id]
+        if check_start_id is not None and check_end_id is not None:
+            in_range_ids = set([pid for pid in all_patent_ids if check_start_id <= pid <= check_end_id])
+            full_range = set(range(check_start_id, check_end_id + 1))
+            missing_ids = sorted(full_range - in_range_ids)
+        else:
+            missing_ids = []
+
+        # Find duplicates
+        duplicates = valid_patent_ids_df[valid_patent_ids_df.duplicated('patent_id_cleaned', keep=False)]
+        duplicate_groups = duplicates.groupby('patent_id_cleaned')
+
+        # Prepare output file paths
+        filestem = os.path.splitext(os.path.basename(csv_file))[0]
+        
+        # Create XLSX file with validation results
+        xlsx_path = os.path.join(output_base_dir, 'validated_xlsx', f"{filestem}_validated.xlsx")
+        
+        # Create a new DataFrame for the XLSX with validation information
+        xlsx_df = df.copy()
+        xlsx_df['validation_notes'] = ''
+        
+        # Add validation notes
+        for idx, row in xlsx_df.iterrows():
+            notes = []
+            
+            # Category validation notes
+            category = str(row['category']).strip()
+            for violation in category_validation['violations']:
+                if violation['category'] == category and violation['id'] == row['global_id']:
+                    notes.append(violation['message'])
+            
+            # Patent ID validation notes
+            if pd.isna(row['patent_id']):
+                notes.append("NaN patent_id")
+            else:
+                try:
+                    pid_clean = clean_patent_id_for_validation(row['patent_id'])
+                    if pid_clean is not None:
+                        if check_start_id is not None and pid_clean < check_start_id:
+                            notes.append(f"patent_id {pid_clean} < start ({check_start_id})")
+                        if check_end_id is not None and pid_clean > check_end_id:
+                            notes.append(f"patent_id {pid_clean} > end ({check_end_id})")
+                        if pid_clean in [dup_pid for dup_pid, _ in duplicate_groups]:
+                            notes.append(f"Duplicate patent_id {pid_clean}")
+                except:
+                    notes.append("Invalid patent_id format")
+            
+            xlsx_df.at[idx, 'validation_notes'] = '; '.join(notes) if notes else 'Valid'
+        
+        # Save XLSX file
+        try:
+            xlsx_df.to_excel(xlsx_path, index=False)
+            print(f"Created XLSX file: {xlsx_path}")
+        except Exception as e:
+            print(f"Error creating XLSX file {xlsx_path}: {e}")
+            xlsx_path = None
+
+        # Create log file
+        log_path = os.path.join(output_base_dir, 'logs', f"{filestem}_validation.txt")
+        
+        with open(log_path, 'w', encoding='utf-8') as f:
+            f.write(f"=== Validation Report for {os.path.basename(csv_file)} ===\n\n")
+            
+            # Category validation section
+            f.write("=== Category Sequence Validation ===\n")
+            if category_validation['valid']:
+                f.write("Category sequence is valid.\n")
+            else:
+                f.write("Category sequence violations found:\n")
+                for violation in category_validation['violations']:
+                    f.write(f"  {violation['message']}\n")
+            f.write("\n")
+            
+            f.write("=== NaN patent_id values ===\n")
+            if nan_patent_id_count == 0:
+                f.write("No NaN patent_id values found.\n")
+            else:
+                f.write(f"Number of NaN patent_id values: {nan_patent_id_count}\n")
+            f.write("\n")
+            f.write("=== Duplicate patent_id entries ===\n")
+            if duplicate_groups.ngroups == 0:
+                f.write("No duplicate patent_id values found.\n")
+            else:
+                for pid, group in duplicate_groups:
+                    f.write(f"patent_id: {pid}\n")
+                    for _, row in group.iterrows():
+                        f.write(f"  global_id: {row['global_id']}, page: {row['page']}\n")
+                    f.write("\n")
+            f.write("\n=== patent_id values smaller than start ({}) ===\n".format(check_start_id if check_start_id is not None else 'N/A'))
+            if not smaller_than_start:
+                f.write("None found.\n")
+            else:
+                for pid, entries in smaller_than_start:
+                    f.write(f"patent_id: {pid}\n")
+                    for id_val, page_val in entries:
+                        f.write(f"  global_id: {id_val}, page: {page_val}\n")
+                    f.write("\n")
+            f.write("\n=== patent_id values greater than end ({}) ===\n".format(check_end_id if check_end_id is not None else 'N/A'))
+            if not greater_than_end:
+                f.write("None found.\n")
+            else:
+                for pid, entries in greater_than_end:
+                    f.write(f"patent_id: {pid}\n")
+                    for id_val, page_val in entries:
+                        f.write(f"  global_id: {id_val}, page: {page_val}\n")
+                    f.write("\n")
+            f.write("\n=== Missing patent_id values (gaps) between {} and {} ===\n".format(check_start_id, check_end_id))
+            if not missing_ids:
+                f.write("No gaps found in patent_id sequence.\n")
+            else:
+                f.write(", ".join(str(x) for x in missing_ids) + "\n")
+
+        print(f"Created log file: {log_path}")
+        processed_count += 1
 
     print(f"\nValidation complete. Processed {processed_count} files.")
     print(f"XLSX files saved to: {os.path.join(output_base_dir, 'validated_xlsx')}")
