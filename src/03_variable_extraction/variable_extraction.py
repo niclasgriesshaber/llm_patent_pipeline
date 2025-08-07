@@ -286,7 +286,7 @@ def call_llm(entry: str, prompt_template: str) -> tuple[dict, dict, bool]:
     if "2.5" in FULL_MODEL_NAME:
         if "lite" in FULL_MODEL_NAME:
             # For lite model: no thinking, minimal output tokens
-            config_args["max_output_tokens"] = 1
+            config_args["max_output_tokens"] = 1000
             config_args["thinking_config"] = types.ThinkingConfig(
                 thinking_budget=0,
                 include_thoughts=False
