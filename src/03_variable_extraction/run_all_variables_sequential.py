@@ -25,7 +25,7 @@ VARIABLE_EXTRACTION_SCRIPT = SCRIPT_DIR / "variable_extraction.py"
 
 # CLI arguments for variable_extraction.py
 MODEL = "gemini-2.5-flash-lite"
-MAX_WORKERS = 50  # Start with 50 workers for variable extraction
+MAX_WORKERS = 20  # Start with 50 workers for variable extraction
 
 def get_input_files() -> List[Path]:
     """Get all CSV files from the input directory."""

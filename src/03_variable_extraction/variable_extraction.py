@@ -45,7 +45,7 @@ SAFE_TOKENS_PER_MINUTE = int(MAX_TOKENS_PER_MINUTE * 0.8)      # 3,200,000 token
 MAX_RETRIES = 10
 MAX_RATE_LIMIT_RETRIES = 10  # Separate retry limit for rate limit errors
 BASE_DELAY = 5  # Increased from 1 to 5 seconds
-MAX_DELAY = 60  # Maximum delay of 1 minute (60 seconds)
+MAX_DELAY = 30  # Maximum delay of 1 minute (60 seconds)
 RATE_LIMIT_DELAY_MULTIPLIER = 5  # More aggressive multiplier for rate limit errors
 RATE_LIMIT_BASE_DELAY = 30  # Start with 30 seconds for rate limit errors
 
