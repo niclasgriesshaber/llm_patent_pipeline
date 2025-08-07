@@ -63,7 +63,7 @@ def find_all_log_files() -> Dict[str, List[str]]:
     log_files["dataset_cleaning"] = glob.glob(str(cleaning_pattern))
     
     # Variable extraction logs
-    extraction_pattern = base_path / "03_variable_extraction/cleaned_with_variables_csvs/logs/*_variable_extraction_logs.json"
+    extraction_pattern = base_path / "03_variable_extraction/check_variable_extraction_xlsx/logs/*_variable_extraction_log.json"
     log_files["variable_extraction"] = glob.glob(str(extraction_pattern))
     
     return log_files

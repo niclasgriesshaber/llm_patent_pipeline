@@ -524,7 +524,7 @@ def classify_entry(entry: str, prompt_template: str, temperature: float) -> tupl
 ###############################################################################
 def main():
     parser = argparse.ArgumentParser(description="Classify entries using Gemini")
-    parser.add_argument("--csv", type=str, required=True, help="Input CSV filename located in data/cleaned_csvs (e.g., Patentamt_1889.csv)")
+    parser.add_argument("--csv", type=str, required=True, help="Input CSV filename located in data/cleaned_csvs (e.g., Patentamt_1889_cleaned.csv)")
     parser.add_argument("--temperature", type=float, default=0.0, help="Temperature for Gemini API (default=0.0)")
     parser.add_argument("--max_workers", type=int, default=20, help="Max concurrent workers (default=20)")
     parser.add_argument("--model", type=str, default="gemini-2.5-flash-lite", 
@@ -681,15 +681,15 @@ def main():
     df.to_csv(output_path, index=False)
     logging.info(f"Saved CSV to: {output_path}")
     
-    # Save to XLSX format in cleaned_with_variables_xlsx
-    xlsx_output_dir = PROJECT_ROOT / "data" / "03_variable_extraction" / "cleaned_with_variables_xlsx"
+    # Save to XLSX format in check_variable_extraction_xlsx
+    xlsx_output_dir = PROJECT_ROOT / "data" / "03_variable_extraction" / "check_variable_extraction_xlsx"
     xlsx_output_dir.mkdir(parents=True, exist_ok=True)
     xlsx_output_path = xlsx_output_dir / f"{output_filename.replace('.csv', '.xlsx')}"
     df.to_excel(xlsx_output_path, index=False)
     logging.info(f"Saved XLSX to: {xlsx_output_path}")
 
     # Create logs directory if it doesn't exist
-    logs_dir = output_dir / "logs"
+    logs_dir = xlsx_output_dir / "logs"
     logs_dir.mkdir(exist_ok=True)
     
     # Save runtime summary to logs folder with improved terminology
