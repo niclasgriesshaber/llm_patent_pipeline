@@ -42,7 +42,7 @@ SAFE_REQUESTS_PER_MINUTE = int(MAX_REQUESTS_PER_MINUTE * 0.8)  # 3200 requests/m
 SAFE_TOKENS_PER_MINUTE = int(MAX_TOKENS_PER_MINUTE * 0.8)      # 3,200,000 tokens/min
 
 # Enhanced retry configuration
-MAX_RETRIES = 5
+MAX_RETRIES = 10
 MAX_RATE_LIMIT_RETRIES = 10  # Separate retry limit for rate limit errors
 BASE_DELAY = 5  # Increased from 1 to 5 seconds
 MAX_DELAY = 300  # Maximum delay of 5 minutes
@@ -739,9 +739,9 @@ def main():
     
     # Log API failure summary
     api_fail_count = sum(api_failures)
-    logging.info(f"Rows with API failures (5+ attempts): {api_fail_count}")
+    logging.info(f"Rows with API failures (10+ attempts): {api_fail_count}")
     if api_fail_count > 0:
-        logging.warning(f"Note: {api_fail_count} rows had API failures after 5 attempts and were set to 'NaN'")
+        logging.warning(f"Note: {api_fail_count} rows had API failures after 10 attempts and were set to 'NaN'")
     
     # Log rate limit statistics
     rate_limit_event_count = len(rate_limit_events)
