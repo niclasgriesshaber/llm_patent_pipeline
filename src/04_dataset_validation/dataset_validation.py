@@ -44,19 +44,10 @@ def reorder_columns(df):
     Returns:
         DataFrame: Reordered DataFrame
     """
-    new_order = ["global_id", "book_id", "page", "entry", "category", "patent_id", "name", 
+    new_order = ["id", "page", "entry", "category", "patent_id", "name", 
                  "location", "description", "date", "check_if_patent_complete", 
                  "double_incomplete", "cleaning_API_fail", "successful_variable_extraction", 
                  "variable_API_fail"]
-    
-    # Create new columns if they don't exist
-    if 'book_id' not in df.columns:
-        # book_id starts at 1 for each file (local ID within the book)
-        df['book_id'] = range(1, len(df) + 1)
-    if 'global_id' not in df.columns:
-        # global_id will be set later when processing all files together
-        # For now, use a placeholder that will be updated in the main processing loop
-        df['global_id'] = df['id']  # Temporary placeholder
     
     return df[new_order]
 
@@ -130,7 +121,7 @@ def validate_category_sequence(df, csv_path):
     
     for idx, row in df.iterrows():
         category = str(row['category']).strip()
-        entry_id = row['id']
+        entry_id = row['id'] # Changed from global_id to id
         
         # Parse the category
         main_num, sub_letter = parse_category(category)
@@ -308,7 +299,6 @@ def main():
 
     # Process each CSV file
     processed_count = 0
-    global_id_counter = 1  # Start global ID counter at 1
     
     for csv_file in csv_files:
         print(f"\nProcessing: {csv_file}")
@@ -340,11 +330,7 @@ def main():
         if not validate_required_columns(df, csv_file):
             continue
         
-        # Assign global IDs to this file
-        df['global_id'] = range(global_id_counter, global_id_counter + len(df))
-        global_id_counter += len(df)
-        
-        # Reorder columns (this will set book_id to 1, 2, 3, etc. for this file)
+        # Reorder columns
         df = reorder_columns(df)
         
         # Clean patent_id column
@@ -392,12 +378,12 @@ def main():
         if check_start_id is not None:
             smaller_df = valid_patent_ids_df[valid_patent_ids_df['patent_id_cleaned'] < check_start_id]
             for pid, group in smaller_df.groupby('patent_id_cleaned'):
-                entries = [(row['global_id'], row['page']) for _, row in group.iterrows()]
+                entries = [(row['id'], row['page']) for _, row in group.iterrows()]
                 smaller_than_start.append((pid, entries))
         if check_end_id is not None:
             greater_df = valid_patent_ids_df[valid_patent_ids_df['patent_id_cleaned'] > check_end_id]
             for pid, group in greater_df.groupby('patent_id_cleaned'):
-                entries = [(row['global_id'], row['page']) for _, row in group.iterrows()]
+                entries = [(row['id'], row['page']) for _, row in group.iterrows()]
                 greater_than_end.append((pid, entries))
 
         # Find gaps within [check_start_id, check_end_id]
@@ -429,7 +415,7 @@ def main():
             # Category validation notes
             category = str(row['category']).strip()
             for violation in category_validation['violations']:
-                if violation['category'] == category and violation['id'] == row['global_id']:
+                if violation['category'] == category and violation['id'] == row['id']:
                     notes.append(violation['message'])
             
             # Patent ID validation notes
@@ -487,7 +473,7 @@ def main():
                 for pid, group in duplicate_groups:
                     f.write(f"patent_id: {pid}\n")
                     for _, row in group.iterrows():
-                        f.write(f"  global_id: {row['global_id']}, page: {row['page']}\n")
+                        f.write(f"  id: {row['id']}, page: {row['page']}\n")
                     f.write("\n")
             f.write("\n=== patent_id values smaller than start ({}) ===\n".format(check_start_id if check_start_id is not None else 'N/A'))
             if not smaller_than_start:
@@ -496,7 +482,7 @@ def main():
                 for pid, entries in smaller_than_start:
                     f.write(f"patent_id: {pid}\n")
                     for id_val, page_val in entries:
-                        f.write(f"  global_id: {id_val}, page: {page_val}\n")
+                        f.write(f"  id: {id_val}, page: {page_val}\n")
                     f.write("\n")
             f.write("\n=== patent_id values greater than end ({}) ===\n".format(check_end_id if check_end_id is not None else 'N/A'))
             if not greater_than_end:
@@ -505,7 +491,7 @@ def main():
                 for pid, entries in greater_than_end:
                     f.write(f"patent_id: {pid}\n")
                     for id_val, page_val in entries:
-                        f.write(f"  global_id: {id_val}, page: {page_val}\n")
+                        f.write(f"  id: {id_val}, page: {page_val}\n")
                     f.write("\n")
             f.write("\n=== Missing patent_id values (gaps) between {} and {} ===\n".format(check_start_id, check_end_id))
             if not missing_ids:
