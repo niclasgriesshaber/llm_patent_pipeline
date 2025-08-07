@@ -38,7 +38,7 @@ for f in excel_files:
 expected_column_order = [
     "global_id", "book", "book_id", "page", "entry", "category", 
     "patent_id", "name", "location", "description", "date", 
-    "complete_patent", "successful_variable_extraction", 
+    "check_if_patent_complete", "successful_variable_extraction", 
     "patent_id_cleaned", "validation_notes"
 ]
 
