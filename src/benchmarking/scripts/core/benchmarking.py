@@ -385,7 +385,636 @@ def make_side_by_side_diff(gt_text, llm_text, file, year, cer):
     
     return ''.join(html_parts)  # Use join without newlines to prevent artificial breaks
 
+# --- File Matching and Availability Logic ---
+
+def find_matching_files(sampled_pdfs_dir: Path, student_xlsx_dir: Path, perfect_xlsx_dir: Path, llm_csv_dir: Path) -> Dict[str, Dict[str, Path]]:
+    """
+    Find matching files across all three directories and return availability matrix.
+    
+    Returns:
+        Dict with file stems as keys, containing paths to available files
+    """
+    # Get all file stems from each directory
+    pdf_stems = {f.stem for f in sampled_pdfs_dir.glob('*.pdf')}
+    student_stems = {f.stem for f in student_xlsx_dir.glob('*.xlsx')}
+    perfect_stems = {f.stem for f in perfect_xlsx_dir.glob('*.xlsx')}
+    
+    # Handle perfect transcription naming variations
+    perfect_stems_normalized = set()
+    for stem in perfect_stems:
+        # Handle cases like "Patentamt_1901_sampled_.perfected" -> "Patentamt_1901_sampled"
+        if stem.endswith('_perfected') or stem.endswith('_.perfected'):
+            base_stem = stem.replace('_perfected', '').replace('_.perfected', '')
+            perfect_stems_normalized.add(base_stem)
+        else:
+            perfect_stems_normalized.add(stem)
+    
+    # Find all possible file stems
+    all_stems = pdf_stems.union(student_stems).union(perfect_stems_normalized)
+    
+    # Create file availability matrix
+    file_matrix = {}
+    for stem in sorted(all_stems):
+        file_matrix[stem] = {
+            'pdf': None,
+            'student': None,
+            'perfect': None,
+            'available': []
+        }
+        
+        # Check PDF availability
+        pdf_path = sampled_pdfs_dir / f"{stem}.pdf"
+        if pdf_path.exists():
+            file_matrix[stem]['pdf'] = pdf_path
+            file_matrix[stem]['available'].append('pdf')
+        
+        # Check student transcription availability
+        student_path = student_xlsx_dir / f"{stem}.xlsx"
+        if student_path.exists():
+            file_matrix[stem]['student'] = student_path
+            file_matrix[stem]['available'].append('student')
+        
+        # Check LLM CSV availability
+        llm_path = llm_csv_dir / f"{stem}.csv"
+        if llm_path.exists():
+            file_matrix[stem]['llm'] = llm_path
+            file_matrix[stem]['available'].append('llm')
+        
+        # Check perfect transcription availability (handle naming variations)
+        perfect_candidates = [
+            perfect_xlsx_dir / f"{stem}_perfected.xlsx",
+            perfect_xlsx_dir / f"{stem}_.perfected.xlsx",
+            perfect_xlsx_dir / f"{stem}_perfected.xlsx"
+        ]
+        
+        for perfect_path in perfect_candidates:
+            if perfect_path.exists():
+                file_matrix[stem]['perfect'] = perfect_path
+                file_matrix[stem]['available'].append('perfect')
+                break
+    
+    return file_matrix
+
+def create_three_table_comparison(perfect_df: pd.DataFrame, llm_df: pd.DataFrame, student_df: pd.DataFrame, 
+                                 filename_stem: str, fuzzy_threshold: float = 0.85) -> Dict[str, Any]:
+    """
+    Create a three-table comparison showing Perfect, LLM, and Student transcriptions.
+    
+    Returns:
+        Dict containing comparison results and HTML sections
+    """
+    # Perform fuzzy matching for both comparisons
+    perfect_llm_matches, llm_matches, perfect_llm_ids, llm_match_ids = match_entries_fuzzy(perfect_df, llm_df, fuzzy_threshold)
+    perfect_student_matches, student_matches, perfect_student_ids, student_match_ids = match_entries_fuzzy(perfect_df, student_df, fuzzy_threshold)
+    
+    # Calculate CER for both comparisons
+    perfect_text = create_text_file_from_entries(perfect_df)
+    llm_text = create_text_file_from_entries(llm_df)
+    student_text = create_text_file_from_entries(student_df)
+    
+    # Clean text for CER calculation
+    perfect_text_clean = create_clean_text_for_cer(perfect_df)
+    llm_text_clean = create_clean_text_for_cer(llm_df)
+    student_text_clean = create_clean_text_for_cer(student_df)
+    
+    # Calculate CERs
+    llm_cer = Levenshtein.normalized_distance(perfect_text_clean, llm_text_clean)
+    student_cer = Levenshtein.normalized_distance(perfect_text_clean, student_text_clean)
+    
+    # Calculate performance gap
+    performance_gap = student_cer - llm_cer
+    
+    # Create HTML tables with color coding
+    perfect_table_html = make_three_table_html(perfect_df, [True] * len(perfect_df), ['—'] * len(perfect_df), 
+                                              'Perfect Transcriptions (Reference)', 'perfect')
+    llm_table_html = make_three_table_html(llm_df, llm_matches, llm_match_ids, 
+                                          'LLM-Generated Transcriptions', 'llm')
+    student_table_html = make_three_table_html(student_df, student_matches, student_match_ids, 
+                                             'Student Transcriptions', 'student')
+    
+    return {
+        'filename': filename_stem,
+        'perfect_table': perfect_table_html,
+        'llm_table': llm_table_html,
+        'student_table': student_table_html,
+        'llm_cer': llm_cer,
+        'student_cer': student_cer,
+        'performance_gap': performance_gap,
+        'llm_matches': sum(llm_matches),
+        'student_matches': sum(student_matches),
+        'perfect_entries': len(perfect_df),
+        'llm_entries': len(llm_df),
+        'student_entries': len(student_df)
+    }
+
+def make_three_table_html(df: pd.DataFrame, matches: List[bool], match_ids: List[str], 
+                         title: str, table_type: str) -> str:
+    """Create HTML table with color coding for three-table comparison."""
+    rows_html = []
+    for i, row in df.iterrows():
+        # Color coding based on table type
+        if table_type == 'perfect':
+            # Perfect table: highlight any differences (yellow background)
+            color = '#fff3cd' if not matches[i] else '#d4edda'  # yellow for differences, green for matches
+        elif table_type == 'llm':
+            # LLM table: highlight differences from perfect (blue background)
+            color = '#cce5ff' if not matches[i] else '#d4edda'  # blue for differences, green for matches
+        elif table_type == 'student':
+            # Student table: highlight differences from perfect (red background)
+            color = '#f8d7da' if not matches[i] else '#d4edda'  # red for differences, green for matches
+        else:
+            color = '#d4edda'  # default green
+        
+        rows_html.append(
+            f'<tr style="background-color:{color}">'
+            f'<td>{html_escape(row["id"])}</td>'
+            f'<td>{html_escape(row["entry"])}</td>'
+            f'<td>{html_escape(match_ids[i])}</td>'
+            f'</tr>'
+        )
+    
+    return (
+        f'<table class="three-table">\n'
+        f'<caption>{title}</caption>\n'
+        f'<tr><th>ID</th><th>Entry</th><th>Match ID</th></tr>\n'
+        f'{"".join(rows_html)}\n'
+        f'</table>'
+    )
+
+def make_three_table_diff_html(perfect_text: str, llm_text: str, student_text: str, 
+                              filename: str, llm_cer: float, student_cer: float, performance_gap: float) -> str:
+    """Create side-by-side text comparison for three tables."""
+    
+    # Create diffs for both comparisons
+    perfect_llm_matcher = difflib.SequenceMatcher(None, perfect_text, llm_text)
+    perfect_student_matcher = difflib.SequenceMatcher(None, perfect_text, student_text)
+    
+    html_parts = [
+        f'<section class="three-diff-section">',
+        f'<h2 class="diff-file-heading">{html_escape(filename)}</h2>',
+        f'<div class="metrics-row">',
+        f'<div class="metric-box llm-metric">',
+        f'<h3>LLM vs Perfect</h3>',
+        f'<p><strong>CER:</strong> {llm_cer:.2%}</p>',
+        f'</div>',
+        f'<div class="metric-box student-metric">',
+        f'<h3>Student vs Perfect</h3>',
+        f'<p><strong>CER:</strong> {student_cer:.2%}</p>',
+        f'</div>',
+        f'<div class="metric-box gap-metric">',
+        f'<h3>Performance Gap</h3>',
+        f'<p><strong>Gap:</strong> {performance_gap:+.2%}</p>',
+        f'<p><em>{"LLM better" if performance_gap > 0 else "Student better" if performance_gap < 0 else "Equal"}</em></p>',
+        f'</div>',
+        f'</div>',
+        f'<div class="three-text-comparison">',
+        f'<div class="text-container">',
+        f'<div class="text-header perfect-header">Perfect Transcriptions (Reference)</div>',
+        f'<div class="text-content">'
+    ]
+    
+    # Process perfect text with highlighting for both comparisons
+    for tag, i1, i2, j1, j2 in perfect_llm_matcher.get_opcodes():
+        if tag == 'equal':
+            html_parts.append(html_escape(perfect_text[i1:i2]))
+        else:
+            # Highlight differences with yellow (reference)
+            html_parts.append(f'<span class="diff-highlight-perfect">{html_escape(perfect_text[i1:i2])}</span>')
+    
+    html_parts.extend([
+        f'</div>',  # Close text-content
+        f'</div>',  # Close text-container
+        f'<div class="text-container">',
+        f'<div class="text-header llm-header">LLM-Generated Transcriptions</div>',
+        f'<div class="text-content">'
+    ])
+    
+    # Process LLM text with blue highlighting
+    for tag, i1, i2, j1, j2 in perfect_llm_matcher.get_opcodes():
+        if tag == 'equal':
+            html_parts.append(html_escape(llm_text[j1:j2]))
+        else:
+            html_parts.append(f'<span class="diff-highlight-llm">{html_escape(llm_text[j1:j2])}</span>')
+    
+    html_parts.extend([
+        f'</div>',  # Close text-content
+        f'</div>',  # Close text-container
+        f'<div class="text-container">',
+        f'<div class="text-header student-header">Student Transcriptions</div>',
+        f'<div class="text-content">'
+    ])
+    
+    # Process student text with red highlighting
+    for tag, i1, i2, j1, j2 in perfect_student_matcher.get_opcodes():
+        if tag == 'equal':
+            html_parts.append(html_escape(student_text[j1:j2]))
+        else:
+            html_parts.append(f'<span class="diff-highlight-student">{html_escape(student_text[j1:j2])}</span>')
+    
+    html_parts.extend([
+        f'</div>',  # Close text-content
+        f'</div>',  # Close text-container
+        f'</div>',  # Close three-text-comparison
+        f'</section>'
+    ])
+    
+    return ''.join(html_parts)
+
 # --- Main Comparison Logic ---
+
+def run_unified_comparison(llm_csv_dir: Path, student_xlsx_dir: Path, perfect_xlsx_dir: Path, 
+                          sampled_pdfs_dir: Path, output_dir: Path, fuzzy_threshold: float = 0.85):
+    """
+    Run unified comparison with three-table format: Perfect, LLM, and Student.
+    Generates comprehensive HTML reports with academic transparency.
+    """
+    logging.info("Starting unified three-table comparison")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Find matching files
+    file_matrix = find_matching_files(sampled_pdfs_dir, student_xlsx_dir, perfect_xlsx_dir, llm_csv_dir)
+    
+    # Filter files that have at least two of the three components
+    valid_files = {stem: data for stem, data in file_matrix.items() 
+                   if len(data['available']) >= 2}
+    
+    if not valid_files:
+        logging.warning("No valid file combinations found. Cannot proceed with comparison.")
+        return None
+    
+    logging.info(f"Found {len(valid_files)} files with valid combinations")
+    
+    # Process each file
+    comparison_results = []
+    diff_sections = []
+    summary_rows = []
+    
+    for stem, file_data in valid_files.items():
+        logging.info(f"Processing {stem}")
+        
+        # Load available data
+        perfect_df = pd.DataFrame({'id': [], 'entry': []})
+        llm_df = pd.DataFrame({'id': [], 'entry': []})
+        student_df = pd.DataFrame({'id': [], 'entry': []})
+        
+        if 'perfect' in file_data['available']:
+            perfect_df = load_gt_file(file_data['perfect'])
+        if 'llm' in file_data['available']:
+            llm_df = load_llm_file(llm_csv_dir / f"{stem}.csv")
+        if 'student' in file_data['available']:
+            student_df = load_gt_file(file_data['student'])
+        
+        # Create comparison if we have perfect + at least one other
+        if not perfect_df.empty and (not llm_df.empty or not student_df.empty):
+            if not llm_df.empty and not student_df.empty:
+                # Full three-way comparison
+                result = create_three_table_comparison(perfect_df, llm_df, student_df, stem, fuzzy_threshold)
+                comparison_results.append(result)
+                
+                # Create diff section
+                perfect_text = create_text_file_from_entries(perfect_df)
+                llm_text = create_text_file_from_entries(llm_df)
+                student_text = create_text_file_from_entries(student_df)
+                
+                diff_sections.append(make_three_table_diff_html(
+                    perfect_text, llm_text, student_text, stem, 
+                    result['llm_cer'], result['student_cer'], result['performance_gap']
+                ))
+                
+                # Add to summary
+                year = extract_year_from_filename(stem)
+                summary_rows.append({
+                    'file': stem,
+                    'year': year,
+                    'llm_cer': result['llm_cer'],
+                    'student_cer': result['student_cer'],
+                    'performance_gap': result['performance_gap'],
+                    'llm_matches': result['llm_matches'],
+                    'student_matches': result['student_matches'],
+                    'perfect_entries': result['perfect_entries']
+                })
+            else:
+                # Partial comparison - create empty table with "File not available"
+                logging.warning(f"Partial data for {stem}: {file_data['available']}")
+                # Add empty result for missing files
+                if llm_df.empty:
+                    comparison_results.append({
+                        'filename': stem,
+                        'perfect_table': make_empty_table_html('Perfect Transcriptions (Reference)', 'perfect'),
+                        'llm_table': make_empty_table_html('LLM-Generated Transcriptions - File not available', 'llm'),
+                        'student_table': make_three_table_html(student_df, [True] * len(student_df), ['—'] * len(student_df), 'Student Transcriptions', 'student') if not student_df.empty else make_empty_table_html('Student Transcriptions', 'student'),
+                        'llm_cer': None,
+                        'student_cer': None,
+                        'performance_gap': None
+                    })
+                if student_df.empty:
+                    comparison_results.append({
+                        'filename': stem,
+                        'perfect_table': make_empty_table_html('Perfect Transcriptions (Reference)', 'perfect'),
+                        'llm_table': make_three_table_html(llm_df, [True] * len(llm_df), ['—'] * len(llm_df), 'LLM-Generated Transcriptions', 'llm') if not llm_df.empty else make_empty_table_html('LLM-Generated Transcriptions', 'llm'),
+                        'student_table': make_empty_table_html('Student Transcriptions - File not available', 'student'),
+                        'llm_cer': None,
+                        'student_cer': None,
+                        'performance_gap': None
+                    })
+    
+    # Generate reports
+    generate_unified_reports(comparison_results, diff_sections, summary_rows, file_matrix, output_dir, fuzzy_threshold)
+    
+    return {
+        'total_files': len(valid_files),
+        'comparison_results': len(comparison_results),
+        'summary_rows': len(summary_rows)
+    }
+
+def make_empty_table_html(title: str, table_type: str) -> str:
+    """Create empty table with 'File not available' message."""
+    color = '#f8f9fa' if table_type == 'perfect' else '#e9ecef'
+    return (
+        f'<table class="three-table empty-table">\n'
+        f'<caption>{title}</caption>\n'
+        f'<tr><th>ID</th><th>Entry</th><th>Match ID</th></tr>\n'
+        f'<tr style="background-color:{color}"><td colspan="3" style="text-align: center; font-style: italic;">File not available</td></tr>\n'
+        f'</table>'
+    )
+
+def generate_unified_reports(comparison_results: List[Dict], diff_sections: List[str], 
+                           summary_rows: List[Dict], file_matrix: Dict, output_dir: Path, fuzzy_threshold: float):
+    """Generate unified HTML reports with three-table format."""
+    
+    # Generate fuzzy report
+    generate_fuzzy_report(comparison_results, file_matrix, output_dir, fuzzy_threshold)
+    
+    # Generate diff report
+    generate_diff_report(diff_sections, summary_rows, file_matrix, output_dir)
+
+def generate_fuzzy_report(comparison_results: List[Dict], file_matrix: Dict, output_dir: Path, fuzzy_threshold: float):
+    """Generate fuzzy matching report with three-table format."""
+    
+    # Create file availability summary
+    availability_summary = create_availability_summary(file_matrix)
+    
+    # Create comparison sections
+    sections_html = []
+    for result in comparison_results:
+        section_html = f'''
+        <section class="three-comparison-section">
+            <h2>File: {html_escape(result['filename'])}</h2>
+            <div class="three-table-container">
+                {result['perfect_table']}
+                {result['llm_table']}
+                {result['student_table']}
+            </div>
+        </section>
+        '''
+        sections_html.append(section_html)
+    
+    # Create summary metrics
+    summary_html = create_unified_summary(comparison_results, fuzzy_threshold)
+    
+    # Generate full HTML
+    title = "Unified Fuzzy Matching Report - Perfect, LLM, and Student Transcriptions"
+    full_html = make_unified_html(title, availability_summary + summary_html, ''.join(sections_html))
+    
+    fuzzy_report_path = output_dir / "fuzzy_report.html"
+    fuzzy_report_path.write_text(full_html, encoding='utf-8')
+    logging.info(f"Fuzzy report saved to {fuzzy_report_path}")
+
+def generate_diff_report(diff_sections: List[str], summary_rows: List[Dict], file_matrix: Dict, output_dir: Path):
+    """Generate diff report with three-table text comparison."""
+    
+    # Create file availability summary
+    availability_summary = create_availability_summary(file_matrix)
+    
+    # Create CER definition with academic formula
+    cer_definition = create_cer_definition()
+    
+    # Create summary table
+    summary_table_html = create_summary_table_html(summary_rows)
+    
+    # Create performance gap analysis
+    gap_analysis_html = create_performance_gap_analysis(summary_rows)
+    
+    # Generate full HTML
+    title = "Unified Text Comparison Report - Perfect, LLM, and Student Transcriptions"
+    full_html = make_unified_diff_html(
+        title, availability_summary, cer_definition, summary_table_html, 
+        gap_analysis_html, ''.join(diff_sections)
+    )
+    
+    diff_report_path = output_dir / "diff_report.html"
+    diff_report_path.write_text(full_html, encoding='utf-8')
+    logging.info(f"Diff report saved to {diff_report_path}")
+
+def create_availability_summary(file_matrix: Dict) -> str:
+    """Create file availability summary."""
+    total_files = len(file_matrix)
+    perfect_available = sum(1 for data in file_matrix.values() if 'perfect' in data['available'])
+    llm_available = sum(1 for data in file_matrix.values() if 'llm' in data['available'])
+    student_available = sum(1 for data in file_matrix.values() if 'student' in data['available'])
+    
+    return f'''
+    <div class="availability-summary">
+        <h2>File Availability Summary</h2>
+        <p><strong>Total files:</strong> {total_files}</p>
+        <p><strong>Perfect transcriptions available:</strong> {perfect_available}</p>
+        <p><strong>LLM-generated transcriptions available:</strong> {llm_available}</p>
+        <p><strong>Student transcriptions available:</strong> {student_available}</p>
+        <p><strong>Files with all three components:</strong> {sum(1 for data in file_matrix.values() if len(data['available']) == 3)}</p>
+    </div>
+    '''
+
+def create_cer_definition() -> str:
+    """Create CER definition with academic formula."""
+    return '''
+    <div class="cer-definition">
+        <h2>Character Error Rate (CER) Definition</h2>
+        <p>The Character Error Rate is calculated using the Levenshtein distance formula:</p>
+        <p style="text-align: center; font-size: 1.2em; margin: 20px 0;">
+            $$\mathrm{CER} = \frac{\text{Levenshtein distance}}{\text{number of characters in ground truth}}$$
+        </p>
+        <p><strong>Academic Standard:</strong> Lower CER indicates higher similarity. Insertions, deletions, and substitutions are counted as edit operations.</p>
+        <p><strong>Normalized CER:</strong> Uses text normalized to ASCII letters (a-z), digits (0-9), lowercase, no linebreaks, and trimmed whitespace.</p>
+    </div>
+    '''
+
+def create_summary_table_html(summary_rows: List[Dict]) -> str:
+    """Create summary table with all metrics."""
+    if not summary_rows:
+        return '<p>No summary data available.</p>'
+    
+    table_html = [
+        '<table class="summary-table">',
+        '<caption>File-level Performance Metrics</caption>',
+        '<tr><th>File</th><th>Year</th><th>LLM CER</th><th>Student CER</th><th>Performance Gap</th><th>LLM Matches</th><th>Student Matches</th><th>Perfect Entries</th></tr>'
+    ]
+    
+    for row in summary_rows:
+        gap_text = f"{row['performance_gap']:+.2%}" if row['performance_gap'] is not None else "N/A"
+        gap_color = "color: #d32f2f;" if row['performance_gap'] and row['performance_gap'] > 0 else "color: #388e3c;" if row['performance_gap'] and row['performance_gap'] < 0 else ""
+        
+        table_html.append(
+            f'<tr>'
+            f'<td>{html_escape(row["file"])}</td>'
+            f'<td>{html_escape(row["year"])}</td>'
+            f'<td>{row["llm_cer"]:.2%}</td>'
+            f'<td>{row["student_cer"]:.2%}</td>'
+            f'<td style="{gap_color}">{gap_text}</td>'
+            f'<td>{row["llm_matches"]}</td>'
+            f'<td>{row["student_matches"]}</td>'
+            f'<td>{row["perfect_entries"]}</td>'
+            f'</tr>'
+        )
+    
+    table_html.append('</table>')
+    return '\n'.join(table_html)
+
+def create_performance_gap_analysis(summary_rows: List[Dict]) -> str:
+    """Create performance gap analysis."""
+    if not summary_rows:
+        return '<p>No performance data available.</p>'
+    
+    valid_gaps = [row['performance_gap'] for row in summary_rows if row['performance_gap'] is not None]
+    if not valid_gaps:
+        return '<p>No performance gap data available.</p>'
+    
+    avg_gap = sum(valid_gaps) / len(valid_gaps)
+    llm_better_count = sum(1 for gap in valid_gaps if gap > 0)
+    student_better_count = sum(1 for gap in valid_gaps if gap < 0)
+    equal_count = sum(1 for gap in valid_gaps if gap == 0)
+    
+    return f'''
+    <div class="performance-analysis">
+        <h2>Performance Gap Analysis</h2>
+        <p><strong>Average Performance Gap:</strong> {avg_gap:+.2%}</p>
+        <p><strong>Files where LLM performs better:</strong> {llm_better_count}</p>
+        <p><strong>Files where Student performs better:</strong> {student_better_count}</p>
+        <p><strong>Files with equal performance:</strong> {equal_count}</p>
+        <p><em>Positive gap indicates LLM is closer to perfect than Student. Negative gap indicates Student is closer to perfect than LLM.</em></p>
+    </div>
+    '''
+
+def create_unified_summary(comparison_results: List[Dict], fuzzy_threshold: float) -> str:
+    """Create unified summary for fuzzy matching report."""
+    if not comparison_results:
+        return '<p>No comparison results available.</p>'
+    
+    # Calculate overall statistics
+    total_llm_matches = sum(result.get('llm_matches', 0) for result in comparison_results)
+    total_student_matches = sum(result.get('student_matches', 0) for result in comparison_results)
+    total_perfect_entries = sum(result.get('perfect_entries', 0) for result in comparison_results)
+    
+    # Calculate average CERs
+    valid_llm_cers = [result['llm_cer'] for result in comparison_results if result.get('llm_cer') is not None]
+    valid_student_cers = [result['student_cer'] for result in comparison_results if result.get('student_cer') is not None]
+    
+    avg_llm_cer = sum(valid_llm_cers) / len(valid_llm_cers) if valid_llm_cers else 0
+    avg_student_cer = sum(valid_student_cers) / len(valid_student_cers) if valid_student_cers else 0
+    
+    return f'''
+    <div class="unified-summary">
+        <h2>Unified Comparison Summary</h2>
+        <p><strong>Fuzzy Matching Threshold:</strong> {fuzzy_threshold}</p>
+        <p><strong>Total Perfect Entries:</strong> {total_perfect_entries}</p>
+        <p><strong>Total LLM Matches:</strong> {total_llm_matches}</p>
+        <p><strong>Total Student Matches:</strong> {total_student_matches}</p>
+        <p><strong>Average LLM CER:</strong> {avg_llm_cer:.2%}</p>
+        <p><strong>Average Student CER:</strong> {avg_student_cer:.2%}</p>
+        <p><strong>Overall Performance Gap:</strong> {avg_student_cer - avg_llm_cer:+.2%}</p>
+    </div>
+    '''
+
+def make_unified_html(title: str, summary_html: str, sections_html: str) -> str:
+    """Create unified HTML with three-table styling."""
+    css = '''
+    <style>
+        body { font-family: 'Segoe UI', Arial, sans-serif; background: #f4f4f9; color: #222; margin: 0; }
+        .container { max-width: 1400px; margin: auto; padding: 20px; }
+        .availability-summary { background: #e3f2fd; border: 1px solid #2196f3; border-radius: 8px; padding: 20px; margin-bottom: 30px; }
+        .three-comparison-section { background: #fff; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 30px; padding: 20px; }
+        .three-table-container { display: flex; gap: 15px; overflow-x: auto; }
+        .three-table { flex: 1; min-width: 300px; border-collapse: collapse; margin: 10px 0; }
+        .three-table th, .three-table td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        .three-table th { background-color: #f2f2f2; font-weight: bold; }
+        .three-table caption { font-weight: bold; margin-bottom: 10px; font-size: 1.1em; }
+        .empty-table td { text-align: center; font-style: italic; color: #666; }
+        .summary-section { background: #fff; border-radius: 8px; padding: 20px; margin: 20px 0; }
+    </style>
+    '''
+    
+    return f'''
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <title>{title}</title>
+        {css}
+    </head>
+    <body>
+        <div class="container">
+            <h1>{title}</h1>
+            {summary_html}
+            {sections_html}
+        </div>
+    </body>
+    </html>
+    '''
+
+def make_unified_diff_html(title: str, availability_summary: str, cer_definition: str, 
+                          summary_table_html: str, gap_analysis_html: str, diff_sections: str) -> str:
+    """Create unified diff HTML with three-table text comparison."""
+    css = '''
+    <style>
+        body { font-family: 'Segoe UI', Arial, sans-serif; background: #f4f4f9; color: #222; margin: 0; }
+        .container { max-width: 1400px; margin: auto; padding: 20px; }
+        .availability-summary { background: #e3f2fd; border: 1px solid #2196f3; border-radius: 8px; padding: 20px; margin-bottom: 30px; }
+        .cer-definition { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 20px; margin: 20px 0; }
+        .summary-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        .summary-table th, .summary-table td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+        .summary-table th { background-color: #f2f2f2; font-weight: bold; }
+        .performance-analysis { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 20px; margin: 20px 0; }
+        .three-diff-section { background: #f9fafc; border: 1px solid #dbe2ea; border-radius: 14px; margin-bottom: 40px; padding: 28px; }
+        .metrics-row { display: flex; gap: 20px; margin-bottom: 20px; }
+        .metric-box { flex: 1; background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 15px; text-align: center; }
+        .llm-metric { border-left: 4px solid #2196f3; }
+        .student-metric { border-left: 4px solid #f44336; }
+        .gap-metric { border-left: 4px solid #ff9800; }
+        .three-text-comparison { display: flex; gap: 15px; margin-top: 20px; }
+        .text-container { flex: 1; background: #fff; border: 1px solid #ddd; border-radius: 8px; }
+        .text-header { background: #f2f2f2; font-weight: bold; padding: 12px; border-bottom: 1px solid #ddd; }
+        .perfect-header { border-left: 4px solid #ffc107; }
+        .llm-header { border-left: 4px solid #2196f3; }
+        .student-header { border-left: 4px solid #f44336; }
+        .text-content { padding: 15px; font-family: monospace; font-size: 0.9em; line-height: 1.5; white-space: pre-wrap; }
+        .diff-highlight-perfect { background-color: rgba(255, 193, 7, 0.3); padding: 1px 2px; border-radius: 2px; }
+        .diff-highlight-llm { background-color: rgba(33, 150, 243, 0.3); padding: 1px 2px; border-radius: 2px; }
+        .diff-highlight-student { background-color: rgba(244, 67, 54, 0.3); padding: 1px 2px; border-radius: 2px; }
+    </style>
+    '''
+    
+    mathjax_script = '<script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>\n<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>'
+    
+    return f'''
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <title>{title}</title>
+        {mathjax_script}
+        {css}
+    </head>
+    <body>
+        <div class="container">
+            <h1>{title}</h1>
+            {availability_summary}
+            {cer_definition}
+            {summary_table_html}
+            {gap_analysis_html}
+            {diff_sections}
+        </div>
+    </body>
+    </html>
+    '''
 
 def run_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Path, fuzzy_threshold: float = 0.85, comparison_type: str = "perfect"):
     """

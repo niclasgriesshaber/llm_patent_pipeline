@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Core modules are now in the same directory
 from core.llm_processing import process_pdf
-from core.benchmarking import run_comparison
+from core.benchmarking import run_comparison, run_unified_comparison
 from create_dashboard import create_dashboard
 
 # --- Configuration ---
@@ -46,13 +46,9 @@ def run_single_benchmark(model_name: str, prompt_name: str, max_workers: int = 2
     prompt_stem = prompt_file.stem
     run_output_dir = BENCHMARKING_ROOT / 'results' / '01_dataset_construction' / model_name / prompt_stem
     llm_csv_output_dir = run_output_dir / 'llm_csv'
-    perfect_comparison_dir = run_output_dir / 'perfect_transcriptions_xlsx'
-    student_comparison_dir = run_output_dir / 'student_transcriptions_xlsx'
     
     run_output_dir.mkdir(parents=True, exist_ok=True)
     llm_csv_output_dir.mkdir(exist_ok=True)
-    perfect_comparison_dir.mkdir(exist_ok=True)
-    student_comparison_dir.mkdir(exist_ok=True)
     
     logging.info(f"Output will be saved in: {run_output_dir}")
 
@@ -115,73 +111,35 @@ def run_single_benchmark(model_name: str, prompt_name: str, max_workers: int = 2
                     logging.error(f"Exception occurred while processing {pdf_path.name}: {e}")
     
     logging.info(f"PDF processing complete. Processed: {processed_count}, Skipped: {skipped_count}")
-    logging.info("--- Starting comparison phase. ---")
+    logging.info("--- Starting unified comparison phase. ---")
 
-    # 2. Run comparisons against both ground truth types
-    all_results = {}
+    # 2. Run unified comparison with three-table format
+    student_xlsx_dir = BENCHMARKING_ROOT / 'input_data' / 'transcriptions_xlsx' / 'student_transcriptions_xlsx'
+    perfect_xlsx_dir = BENCHMARKING_ROOT / 'input_data' / 'transcriptions_xlsx' / 'perfect_transcriptions_xlsx'
     
-    # Perfect transcriptions comparison
-    perfect_gt_dir = BENCHMARKING_ROOT / 'input_data' / 'transcriptions_xlsx' / 'perfect_transcriptions_xlsx'
-    if perfect_gt_dir.exists():
-        logging.info("Running comparison against perfect transcriptions...")
-        perfect_results = run_comparison(
+    if student_xlsx_dir.exists() and perfect_xlsx_dir.exists():
+        logging.info("Running unified three-table comparison...")
+        unified_results = run_unified_comparison(
             llm_csv_dir=llm_csv_output_dir,
-            gt_xlsx_dir=perfect_gt_dir,
-            output_dir=perfect_comparison_dir,
-            comparison_type="perfect"
+            student_xlsx_dir=student_xlsx_dir,
+            perfect_xlsx_dir=perfect_xlsx_dir,
+            sampled_pdfs_dir=SAMPLED_PDFS_DIR,
+            output_dir=run_output_dir,
+            fuzzy_threshold=0.85
         )
-        if perfect_results:
-            all_results['perfect'] = perfect_results
-            logging.info("Perfect transcriptions comparison completed.")
-        else:
-            logging.warning("No perfect transcriptions comparison results generated.")
-    else:
-        logging.warning(f"Perfect transcriptions directory not found: {perfect_gt_dir}")
-    
-    # Student transcriptions comparison
-    student_gt_dir = BENCHMARKING_ROOT / 'input_data' / 'transcriptions_xlsx' / 'student_transcriptions_xlsx'
-    if student_gt_dir.exists():
-        logging.info("Running comparison against student transcriptions...")
-        student_results = run_comparison(
-            llm_csv_dir=llm_csv_output_dir,
-            gt_xlsx_dir=student_gt_dir,
-            output_dir=student_comparison_dir,
-            comparison_type="student"
-        )
-        if student_results:
-            all_results['student'] = student_results
-            logging.info("Student transcriptions comparison completed.")
-        else:
-            logging.warning("No student transcriptions comparison results generated.")
-    else:
-        logging.warning(f"Student transcriptions directory not found: {student_gt_dir}")
-    
-    # 3. Generate combined results.json at prompt level
-    if all_results:
-        combined_results = {
-            'model': model_name,
-            'prompt': prompt_stem,
-            'timestamp': pd.Timestamp.now().isoformat(),
-            'perfect': all_results.get('perfect', {}),
-            'student': all_results.get('student', {}),
-            'summary': {
-                'perfect_cer': all_results.get('perfect', {}).get('character_error_rate', 0),
-                'student_cer': all_results.get('student', {}).get('character_error_rate', 0),
-                'perfect_match_rate': all_results.get('perfect', {}).get('overall_match_rate', 0),
-                'student_match_rate': all_results.get('student', {}).get('overall_match_rate', 0),
-                'files_processed': len(set(
-                    all_results.get('perfect', {}).get('files_with_results', []) +
-                    all_results.get('student', {}).get('files_with_results', [])
-                ))
-            }
-        }
         
-        results_path = run_output_dir / "results.json"
-        with results_path.open('w', encoding='utf-8') as f:
-            json.dump(combined_results, f, indent=4)
-        logging.info(f"Combined results saved to {results_path}")
+        if unified_results:
+            logging.info("Unified comparison completed successfully.")
+            logging.info(f"Total files processed: {unified_results.get('total_files', 0)}")
+            logging.info(f"Comparison results generated: {unified_results.get('comparison_results', 0)}")
+        else:
+            logging.warning("No unified comparison results generated.")
     else:
-        logging.warning("No comparison results generated. Check if ground truth files exist.")
+        logging.warning(f"Required directories not found:")
+        if not student_xlsx_dir.exists():
+            logging.warning(f"  - Student transcriptions: {student_xlsx_dir}")
+        if not perfect_xlsx_dir.exists():
+            logging.warning(f"  - Perfect transcriptions: {perfect_xlsx_dir}")
     
     logging.info(f"--- Benchmark finished for model: [{model_name}] with prompt: [{prompt_name}] ---")
 
