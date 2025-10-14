@@ -840,11 +840,10 @@ def create_cer_definition() -> str:
     <div class="cer-definition">
         <h2>Character Error Rate (CER) Definition</h2>
         <p>The Character Error Rate is calculated using the Levenshtein distance formula:</p>
-        <p style="text-align: center; font-size: 1.2em; margin: 20px 0;">
-            $$\text{CER} = \frac{\text{Levenshtein distance}}{\text{number of characters in ground truth}}$$
-        </p>
+        <div style="text-align: center; font-size: 1.4em; margin: 30px 0; padding: 20px; background-color: #f8f9fa; border-radius: 8px;">
+            $$\mathrm{CER} = \frac{\mathrm{Levenshtein\ distance}}{\mathrm{number\ of\ characters\ in\ ground\ truth}}$$
+        </div>
         <p><strong>Academic Standard:</strong> Lower CER indicates higher similarity. Insertions, deletions, and substitutions are counted as edit operations.</p>
-        <p><strong>Formula in plain text:</strong> CER = (Levenshtein distance) / (number of characters in ground truth)</p>
     </div>
     '''
 
@@ -882,14 +881,14 @@ def create_document_outline() -> str:
     <div class="document-outline">
         <h2>Document Outline</h2>
         <p><strong>Note:</strong> This entire document was AI-generated using advanced language models and automated analysis tools.</p>
-        <p>This report provides a comprehensive analysis of transcription accuracy comparing LLM-generated and Student transcriptions against Perfect ground truth. The analysis includes:</p>
+        <p>This report provides a comprehensive analysis of transcription accuracy comparing LLM-generated and student-generated transcriptions against Perfect ground truth. The analysis includes:</p>
         <ol>
-            <li><strong>File Availability Summary</strong> - Overview of data availability across all transcription types</li>
-            <li><strong>Character Error Rate (CER) Definition</strong> - Academic methodology and formula</li>
+            <li><strong>File Availability Summary</strong></li>
+            <li><strong>Character Error Rate (CER) Definition</strong></li>
             <li><strong>File-level Performance Metrics Table</strong> - Detailed CER and performance gap for each file</li>
             <li><strong>Character Error Rate by Year Chart</strong> - Interactive visualization of CER trends over time</li>
-            <li><strong>Performance Gap Analysis</strong> - Overall statistics and methodology explanation</li>
-            <li><strong>Side-by-Side Text Comparisons</strong> - Detailed three-table format showing differences between Perfect, LLM, and Student transcriptions</li>
+            <li><strong>Performance Gap Analysis</strong> - Overall statistics</li>
+            <li><strong>Side-by-Side Text Comparisons</strong> - Detailed three-table format showing character differences between Perfect, LLM, and Student transcriptions</li>
         </ol>
     </div>
     '''
