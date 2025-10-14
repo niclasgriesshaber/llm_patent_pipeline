@@ -821,7 +821,8 @@ def create_availability_summary(file_matrix: Dict) -> str:
     llm_available = sum(1 for data in file_matrix.values() if 'llm' in data['available'])
     student_available = sum(1 for data in file_matrix.values() if 'student' in data['available'])
     all_three_available = sum(1 for data in file_matrix.values() if len(data['available']) == 3)
-    missing_files = total_files - all_three_available
+    files_with_at_least_two = sum(1 for data in file_matrix.values() if len(data['available']) >= 2)
+    files_processed = files_with_at_least_two
     
     return f'''
     <div class="availability-summary">
@@ -830,8 +831,6 @@ def create_availability_summary(file_matrix: Dict) -> str:
         <p><strong>Perfect transcriptions available:</strong> {perfect_available}</p>
         <p><strong>LLM-generated transcriptions available:</strong> {llm_available}</p>
         <p><strong>Student transcriptions available:</strong> {student_available}</p>
-        <p><strong>Files with all three components:</strong> {all_three_available}</p>
-        <p><strong>Files with missing components:</strong> {missing_files}</p>
     </div>
     '''
 
@@ -842,7 +841,7 @@ def create_cer_definition() -> str:
         <h2>Character Error Rate (CER) Definition</h2>
         <p>The Character Error Rate is calculated using the Levenshtein distance formula:</p>
         <p style="text-align: center; font-size: 1.2em; margin: 20px 0;">
-            $$\mathrm{CER} = \frac{\text{Levenshtein distance}}{\text{number of characters in ground truth}}$$
+            $$\mathrm{CER} = \frac{\mathrm{Levenshtein\ distance}}{\mathrm{number\ of\ characters\ in\ ground\ truth}}$$
         </p>
         <p><strong>Academic Standard:</strong> Lower CER indicates higher similarity. Insertions, deletions, and substitutions are counted as edit operations.</p>
         <p><strong>Formula in plain text:</strong> CER = (Levenshtein distance) / (number of characters in ground truth)</p>
@@ -892,7 +891,6 @@ def create_document_outline() -> str:
             <li><strong>Performance Gap Analysis</strong> - Overall statistics and methodology explanation</li>
             <li><strong>Side-by-Side Text Comparisons</strong> - Detailed three-table format showing differences between Perfect, LLM, and Student transcriptions</li>
         </ol>
-        <p><em>Each section provides academic-grade analysis with transparent methodology and clear visual indicators for differences.</em></p>
     </div>
     '''
 
@@ -1042,15 +1040,12 @@ def create_performance_gap_analysis(summary_rows: List[Dict], file_matrix: Dict,
     return f'''
     <div class="performance-analysis">
         <h2>Performance Gap Analysis</h2>
-        <p><strong>Overall Performance Gap (Concatenated):</strong> {overall_gap:+.2%}</p>
-        <p><strong>Overall LLM CER (Concatenated):</strong> {overall_llm_cer:.2%}</p>
-        <p><strong>Overall Student CER (Concatenated):</strong> {overall_student_cer:.2%}</p>
-        <p><strong>Average File-level Performance Gap:</strong> {avg_gap:+.2%}</p>
+        <p><strong>Average File-level Performance Gap:</strong> {avg_gap:+.2%}<sup>1</sup></p>
         <p><strong>Files where LLM performs better:</strong> {llm_better_count}</p>
         <p><strong>Files where Student performs better:</strong> {student_better_count}</p>
         <p><strong>Files with equal performance:</strong> {equal_count}</p>
-        <p><em><strong>Methodology:</strong> The overall performance gap is calculated by concatenating all text files and computing the CER on the combined text. This accounts for differences in file lengths and provides a more accurate overall assessment. If concatenation fails, the system falls back to averaging individual file CERs. The file-level average is the mean of individual file performance gaps.</em></p>
         <p><em>Positive gap indicates LLM is closer to perfect than Student. Negative gap indicates Student is closer to perfect than LLM.</em></p>
+        <p><sup>1</sup> <em>Average File-level Performance Gap is computed as the mean of individual file performance gaps (Student CER - LLM CER) for all files with valid data.</em></p>
     </div>
     '''
 
@@ -1169,7 +1164,7 @@ def make_unified_diff_html(title: str, document_outline: str, availability_summa
     </head>
     <body>
         <div class="container">
-            <h1>{title}</h1>
+            <h1 style="text-align: center;">{title}</h1>
             {document_outline}
             {availability_summary}
             {cer_definition}
