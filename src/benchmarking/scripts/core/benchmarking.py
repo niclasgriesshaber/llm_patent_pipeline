@@ -546,10 +546,10 @@ def make_three_table_diff_html(perfect_text: str, llm_text: str, student_text: s
     """Create side-by-side text comparison for three tables with character-level highlighting."""
     
     def create_character_level_diff(text1: str, text2: str, highlight_class: str) -> str:
-        """Create precise character-level diff highlighting between two texts."""
+        """Create very conservative character-level diff highlighting between two texts."""
         html_parts = []
         
-        # Use a more conservative approach: only highlight when we're very sure there's a difference
+        # Use a very conservative approach: only highlight when we're absolutely sure there's a difference
         matcher = difflib.SequenceMatcher(None, text1, text2)
         
         for tag, i1, i2, j1, j2 in matcher.get_opcodes():
@@ -557,16 +557,16 @@ def make_three_table_diff_html(perfect_text: str, llm_text: str, student_text: s
                 # Same text - no highlighting
                 html_parts.append(html_escape(text1[i1:i2]))
             elif tag == 'replace':
-                # For replace operations, be very conservative
-                # Only highlight if the segments are significantly different
+                # For replace operations, be extremely conservative
                 segment1 = text1[i1:i2]
                 segment2 = text2[j1:j2]
                 
-                # If segments are very different in length, highlight the whole thing
-                if abs(len(segment1) - len(segment2)) > 2:
+                # Only highlight if segments are very different in length (>5 characters) OR
+                # if they're short but completely different
+                if abs(len(segment1) - len(segment2)) > 5:
                     html_parts.append(f'<span class="{highlight_class}">{html_escape(segment1)}</span>')
-                else:
-                    # For similar length segments, do character-by-character comparison
+                elif len(segment1) <= 3 and len(segment2) <= 3:
+                    # For very short segments, do character-by-character comparison
                     min_len = min(len(segment1), len(segment2))
                     for k in range(min_len):
                         if segment1[k] == segment2[k]:
@@ -577,6 +577,27 @@ def make_three_table_diff_html(perfect_text: str, llm_text: str, student_text: s
                     # Handle remaining characters in segment1
                     for k in range(min_len, len(segment1)):
                         html_parts.append(f'<span class="{highlight_class}">{html_escape(segment1[k])}</span>')
+                else:
+                    # For medium-length segments, be very conservative - only highlight if most characters differ
+                    min_len = min(len(segment1), len(segment2))
+                    if min_len > 0:
+                        diff_count = sum(1 for k in range(min_len) if segment1[k] != segment2[k])
+                        # Only highlight if more than 70% of characters differ
+                        if diff_count / min_len > 0.7:
+                            html_parts.append(f'<span class="{highlight_class}">{html_escape(segment1)}</span>')
+                        else:
+                            # Do character-by-character for high-confidence differences
+                            for k in range(min_len):
+                                if segment1[k] == segment2[k]:
+                                    html_parts.append(html_escape(segment1[k]))
+                                else:
+                                    html_parts.append(f'<span class="{highlight_class}">{html_escape(segment1[k])}</span>')
+                            
+                            # Handle remaining characters in segment1
+                            for k in range(min_len, len(segment1)):
+                                html_parts.append(f'<span class="{highlight_class}">{html_escape(segment1[k])}</span>')
+                    else:
+                        html_parts.append(f'<span class="{highlight_class}">{html_escape(segment1)}</span>')
             elif tag == 'delete':
                 # Text exists in text1 but not in text2 - highlight it
                 html_parts.append(f'<span class="{highlight_class}">{html_escape(text1[i1:i2])}</span>')
@@ -607,18 +628,21 @@ def make_three_table_diff_html(perfect_text: str, llm_text: str, student_text: s
         f'<div class="three-text-comparison">',
         f'<div class="text-container">',
         f'<div class="text-header perfect-header">Perfect Transcription</div>',
+        f'<div class="highlight-note">Reference text - no highlighting applied</div>',
         f'<div class="text-content">',
         html_escape(perfect_text),  # No highlighting for perfect text
         f'</div>',
         f'</div>',
         f'<div class="text-container">',
         f'<div class="text-header llm-header">LLM-Generated Transcription</div>',
+        f'<div class="highlight-note">Highlighted text indicates potential differences from perfect transcription. Highlighting is conservative and may not capture all differences due to algorithmic limitations in text alignment.</div>',
         f'<div class="text-content">',
         create_character_level_diff(llm_text, perfect_text, 'diff-highlight-llm'),
         f'</div>',
         f'</div>',
         f'<div class="text-container">',
         f'<div class="text-header student-header">Student Transcription</div>',
+        f'<div class="highlight-note">Highlighted text indicates potential differences from perfect transcription. Highlighting is conservative and may not capture all differences due to algorithmic limitations in text alignment.</div>',
         f'<div class="text-content">',
         create_character_level_diff(student_text, perfect_text, 'diff-highlight-student'),
         f'</div>',
@@ -1150,6 +1174,7 @@ def make_unified_diff_html(title: str, document_outline: str, availability_summa
         .diff-highlight-perfect { background-color: rgba(255, 193, 7, 0.3); padding: 0; border-radius: 1px; display: inline; }
         .diff-highlight-llm { background-color: rgba(33, 150, 243, 0.3); padding: 0; border-radius: 1px; display: inline; }
         .diff-highlight-student { background-color: rgba(244, 67, 54, 0.3); padding: 0; border-radius: 1px; display: inline; }
+        .highlight-note { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; padding: 8px 12px; margin: 8px 0; font-size: 0.85em; color: #6c757d; font-style: italic; }
         .document-outline { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; padding: 20px; margin-bottom: 30px; }
         .document-outline ol { margin: 15px 0; padding-left: 25px; }
         .document-outline li { margin: 8px 0; line-height: 1.6; }
