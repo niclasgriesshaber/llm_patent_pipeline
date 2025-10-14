@@ -507,6 +507,32 @@ def create_three_table_comparison(perfect_df: pd.DataFrame, llm_df: pd.DataFrame
         'student_entries': len(student_df)
     }
 
+def create_two_table_comparison(perfect_df: pd.DataFrame, llm_df: pd.DataFrame, 
+                               filename_stem: str, fuzzy_threshold: float = 0.85) -> Dict[str, Any]:
+    """
+    Create a two-table comparison showing Perfect and LLM transcriptions only.
+    
+    Returns:
+        Dict containing comparison results and HTML sections
+    """
+    # Perform fuzzy matching between Perfect and LLM
+    perfect_llm_matches, llm_matches, perfect_llm_ids, llm_match_ids = match_entries_fuzzy(perfect_df, llm_df, fuzzy_threshold)
+    
+    # Create HTML tables with color coding
+    perfect_table_html = make_three_table_html(perfect_df, [True] * len(perfect_df), ['—'] * len(perfect_df), 
+                                              'Perfect Transcription', 'perfect')
+    llm_table_html = make_three_table_html(llm_df, llm_matches, llm_match_ids, 
+                                          'LLM-Generated Transcription', 'llm')
+    
+    return {
+        'filename': filename_stem,
+        'perfect_table': perfect_table_html,
+        'llm_table': llm_table_html,
+        'llm_matches': sum(llm_matches),
+        'perfect_entries': len(perfect_df),
+        'llm_entries': len(llm_df)
+    }
+
 def make_three_table_html(df: pd.DataFrame, matches: List[bool], match_ids: List[str], 
                          title: str, table_type: str) -> str:
     """Create HTML table with color coding for three-table comparison."""
@@ -774,45 +800,59 @@ def make_empty_table_html(title: str, table_type: str) -> str:
 def generate_unified_reports(comparison_results: List[Dict], diff_sections: List[str], 
                            summary_rows: List[Dict], file_matrix: Dict, output_dir: Path, fuzzy_threshold: float,
                            llm_csv_dir: Path, student_xlsx_dir: Path, perfect_xlsx_dir: Path):
-    """Generate unified HTML reports with three-table format."""
+    """Generate unified HTML reports with separate two-way and three-way formats."""
     
-    # Generate fuzzy report
-    generate_fuzzy_report(comparison_results, file_matrix, output_dir, fuzzy_threshold)
+    # Create 2-way comparison results for fuzzy report (Perfect vs LLM only)
+    two_way_comparison_results = []
+    for stem, file_data in file_matrix.items():
+        if 'perfect' in file_data['available'] and 'llm' in file_data['available']:
+            try:
+                perfect_df = load_gt_file(file_data['perfect'])
+                llm_df = load_llm_file(llm_csv_dir / f"{stem}.csv")
+                
+                if not perfect_df.empty and not llm_df.empty:
+                    result = create_two_table_comparison(perfect_df, llm_df, stem, fuzzy_threshold)
+                    two_way_comparison_results.append(result)
+            except Exception as e:
+                logging.warning(f"Error creating 2-way comparison for {stem}: {e}")
+                continue
     
-    # Generate diff report
+    # Generate fuzzy report (2-way)
+    generate_fuzzy_report(two_way_comparison_results, file_matrix, output_dir, fuzzy_threshold)
+    
+    # Generate diff report (3-way)
     generate_diff_report(diff_sections, summary_rows, file_matrix, output_dir, llm_csv_dir, student_xlsx_dir, perfect_xlsx_dir)
 
 def generate_fuzzy_report(comparison_results: List[Dict], file_matrix: Dict, output_dir: Path, fuzzy_threshold: float):
-    """Generate fuzzy matching report with three-table format."""
+    """Generate fuzzy matching report with two-table format (Perfect vs LLM only)."""
     
-    # Create file availability summary
-    availability_summary = create_availability_summary(file_matrix)
+    # Create file availability summary (Perfect and LLM only)
+    availability_summary = create_two_way_availability_summary(file_matrix)
     
-    # Create comparison sections
+    # Create comparison sections (Perfect vs LLM only)
     sections_html = []
     for result in comparison_results:
         section_html = f'''
-        <section class="three-comparison-section">
+        <section class="two-comparison-section">
             <h2>Patentamt_{html_escape(result['filename'].split('_')[1])}_sampled.pdf</h2>
-            <div class="three-table-container">
+            <div class="two-table-container">
                 {result['perfect_table']}
                 {result['llm_table']}
-                {result['student_table']}
             </div>
         </section>
         '''
         sections_html.append(section_html)
     
-    # Create summary metrics
-    summary_html = create_unified_summary(comparison_results, fuzzy_threshold)
+    # Create summary metrics (Perfect vs LLM only)
+    summary_html = create_two_way_summary(comparison_results, fuzzy_threshold)
     
     # Generate full HTML
-    title = "Unified Fuzzy Matching Report - Perfect, LLM, and Student Transcriptions"
-    full_html = make_unified_html(title, availability_summary + summary_html, ''.join(sections_html))
+    title = "Patent Entry Matching Before Cleaning - Perfect vs LLM Transcriptions"
+    full_html = make_two_way_html(title, availability_summary + summary_html, ''.join(sections_html))
     
-    fuzzy_report_path = output_dir / "fuzzy_report.html"
+    fuzzy_report_path = output_dir / "patent_entry_matching_before_cleaning.html"
     fuzzy_report_path.write_text(full_html, encoding='utf-8')
-    logging.info(f"Fuzzy report saved to {fuzzy_report_path}")
+    logging.info(f"Patent entry matching report saved to {fuzzy_report_path}")
 
 def generate_diff_report(diff_sections: List[str], summary_rows: List[Dict], file_matrix: Dict, output_dir: Path, 
                          llm_csv_dir: Path, student_xlsx_dir: Path, perfect_xlsx_dir: Path):
@@ -843,7 +883,7 @@ def generate_diff_report(diff_sections: List[str], summary_rows: List[Dict], fil
         cer_chart_html, gap_analysis_html, ''.join(diff_sections)
     )
     
-    diff_report_path = output_dir / "diff_report.html"
+    diff_report_path = output_dir / "character_error_rate.html"
     diff_report_path.write_text(full_html, encoding='utf-8')
     logging.info(f"Diff report saved to {diff_report_path}")
 
@@ -864,6 +904,23 @@ def create_availability_summary(file_matrix: Dict) -> str:
         <p><strong>Perfect transcriptions available:</strong> {perfect_available}</p>
         <p><strong>LLM-generated transcriptions available:</strong> {llm_available}</p>
         <p><strong>Student transcriptions available:</strong> {student_available}</p>
+    </div>
+    '''
+
+def create_two_way_availability_summary(file_matrix: Dict) -> str:
+    """Create file availability summary for two-way comparison (Perfect vs LLM only)."""
+    total_files = len(file_matrix)
+    perfect_available = sum(1 for data in file_matrix.values() if 'perfect' in data['available'])
+    llm_available = sum(1 for data in file_matrix.values() if 'llm' in data['available'])
+    both_available = sum(1 for data in file_matrix.values() if 'perfect' in data['available'] and 'llm' in data['available'])
+    
+    return f'''
+    <div class="availability-summary">
+        <h2>File Availability Summary</h2>
+        <p><strong>Total files:</strong> {total_files}</p>
+        <p><strong>Perfect transcriptions available:</strong> {perfect_available}</p>
+        <p><strong>LLM-generated transcriptions available:</strong> {llm_available}</p>
+        <p><strong>Files with both Perfect and LLM transcriptions:</strong> {both_available}</p>
     </div>
     '''
 
@@ -1109,6 +1166,32 @@ def create_unified_summary(comparison_results: List[Dict], fuzzy_threshold: floa
     </div>
     '''
 
+def create_two_way_summary(comparison_results: List[Dict], fuzzy_threshold: float) -> str:
+    """Create summary for two-way comparison (Perfect vs LLM only)."""
+    if not comparison_results:
+        return '<p>No comparison results available.</p>'
+    
+    # Calculate overall statistics
+    total_llm_matches = sum(result.get('llm_matches', 0) for result in comparison_results)
+    total_perfect_entries = sum(result.get('perfect_entries', 0) for result in comparison_results)
+    total_llm_entries = sum(result.get('llm_entries', 0) for result in comparison_results)
+    
+    # Calculate match rates
+    match_rate_perfect_perspective = (total_llm_matches / total_perfect_entries * 100) if total_perfect_entries > 0 else 0
+    match_rate_llm_perspective = (total_llm_matches / total_llm_entries * 100) if total_llm_entries > 0 else 0
+    
+    return f'''
+    <div class="two-way-summary">
+        <h2>Patent Entry Matching Summary</h2>
+        <p><strong>Fuzzy Matching Threshold:</strong> {fuzzy_threshold}</p>
+        <p><strong>Total Perfect Entries:</strong> {total_perfect_entries}</p>
+        <p><strong>Total LLM Entries:</strong> {total_llm_entries}</p>
+        <p><strong>Total Matches:</strong> {total_llm_matches}</p>
+        <p><strong>Match Rate (Perfect perspective):</strong> {match_rate_perfect_perspective:.2f}%</p>
+        <p><strong>Match Rate (LLM perspective):</strong> {match_rate_llm_perspective:.2f}%</p>
+    </div>
+    '''
+
 def make_unified_html(title: str, summary_html: str, sections_html: str) -> str:
     """Create unified HTML with three-table styling."""
     css = '''
@@ -1124,6 +1207,42 @@ def make_unified_html(title: str, summary_html: str, sections_html: str) -> str:
         .three-table caption { font-weight: bold; margin-bottom: 10px; font-size: 1.1em; }
         .empty-table td { text-align: center; font-style: italic; color: #666; }
         .summary-section { background: #fff; border-radius: 8px; padding: 20px; margin: 20px 0; }
+    </style>
+    '''
+    
+    return f'''
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <title>{title}</title>
+        {css}
+    </head>
+    <body>
+        <div class="container">
+            <h1>{title}</h1>
+            {summary_html}
+            {sections_html}
+        </div>
+    </body>
+    </html>
+    '''
+
+def make_two_way_html(title: str, summary_html: str, sections_html: str) -> str:
+    """Create HTML with two-table styling (Perfect vs LLM only)."""
+    css = '''
+    <style>
+        body { font-family: 'Segoe UI', Arial, sans-serif; background: #f4f4f9; color: #222; margin: 0; }
+        .container { max-width: 1400px; margin: auto; padding: 20px; }
+        .availability-summary { background: #e3f2fd; border: 1px solid #2196f3; border-radius: 8px; padding: 20px; margin-bottom: 30px; }
+        .two-comparison-section { background: #fff; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 30px; padding: 20px; }
+        .two-table-container { display: flex; gap: 20px; overflow-x: auto; }
+        .three-table { flex: 1; min-width: 400px; border-collapse: collapse; margin: 10px 0; }
+        .three-table th, .three-table td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        .three-table th { background-color: #f2f2f2; font-weight: bold; }
+        .three-table caption { font-weight: bold; margin-bottom: 10px; font-size: 1.1em; }
+        .empty-table td { text-align: center; font-style: italic; color: #666; }
+        .two-way-summary { background: #fff; border-radius: 8px; padding: 20px; margin: 20px 0; }
     </style>
     '''
     
@@ -1317,7 +1436,7 @@ def run_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Path, fuzzy
     sections_with_spacing = f'<div style="margin-top: 40px;">{"".join(pair_sections_html)}</div>'
     
     fuzzy_html_content = make_full_html(f"Fuzzy Matching Report - {comparison_type.title()}", sections_with_spacing, summary_html, top_notes)
-    fuzzy_report_path = output_dir / "fuzzy_report.html"
+    fuzzy_report_path = output_dir / "patent_entry_matching_before_cleaning.html"
     fuzzy_report_path.write_text(fuzzy_html_content, encoding='utf-8')
     logging.info(f"Fuzzy report saved to {fuzzy_report_path}")
 
@@ -1504,7 +1623,7 @@ def run_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Path, fuzzy
             diff_legend_html=diff_legend_html,
             diff_sections=''.join(diff_sections)
         )
-        diff_report_path = output_dir / "diff_report.html"
+        diff_report_path = output_dir / "character_error_rate.html"
         diff_report_path.write_text(full_html, encoding='utf-8')
         logging.info(f"Diff report saved to {diff_report_path}")
 
