@@ -843,7 +843,7 @@ def create_cer_definition() -> str:
         <div style="text-align: center; font-size: 1.4em; margin: 30px 0; padding: 20px; background-color: #f8f9fa; border-radius: 8px;">
             $$\mathrm{CER} = \frac{\mathrm{Levenshtein\ distance}}{\mathrm{number\ of\ characters\ in\ ground\ truth}}$$
         </div>
-        <p><strong>Academic Standard:</strong> Lower CER indicates higher similarity. Insertions, deletions, and substitutions are counted as edit operations.</p>
+        <p><strong>Note:</strong> Levenshtein distance is the minimum number of single-character edits (insertions, deletions, substitutions) required to transform one text into another. Lower CER indicates higher similarity.</p>
     </div>
     '''
 
@@ -1039,12 +1039,10 @@ def create_performance_gap_analysis(summary_rows: List[Dict], file_matrix: Dict,
     return f'''
     <div class="performance-analysis">
         <h2>Performance Gap Analysis</h2>
-        <p><strong>Average File-level Performance Gap:</strong> {avg_gap:+.2%}<sup>1</sup></p>
         <p><strong>Files where LLM performs better:</strong> {llm_better_count}</p>
         <p><strong>Files where Student performs better:</strong> {student_better_count}</p>
         <p><strong>Files with equal performance:</strong> {equal_count}</p>
         <p><em>Positive gap indicates LLM is closer to perfect than Student. Negative gap indicates Student is closer to perfect than LLM.</em></p>
-        <p><sup>1</sup> <em>Average File-level Performance Gap is computed as the mean of individual file performance gaps (Student CER - LLM CER) for all files with valid data.</em></p>
     </div>
     '''
 
