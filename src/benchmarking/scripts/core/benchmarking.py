@@ -551,7 +551,7 @@ def make_three_table_diff_html(perfect_text: str, llm_text: str, student_text: s
     
     html_parts = [
         f'<section class="three-diff-section">',
-        f'<h2 class="diff-file-heading">{html_escape(filename)}</h2>',
+        f'<h2 class="diff-file-heading">{html_escape(filename)}.pdf</h2>',
         f'<div class="metrics-row">',
         f'<div class="metric-box gap-metric">',
         f'<h3>Performance Gap</h3>',
@@ -845,6 +845,7 @@ def create_cer_definition() -> str:
             $$\mathrm{CER} = \frac{\text{Levenshtein distance}}{\text{number of characters in ground truth}}$$
         </p>
         <p><strong>Academic Standard:</strong> Lower CER indicates higher similarity. Insertions, deletions, and substitutions are counted as edit operations.</p>
+        <p><strong>Formula in plain text:</strong> CER = (Levenshtein distance) / (number of characters in ground truth)</p>
     </div>
     '''
 
@@ -865,7 +866,7 @@ def create_summary_table_html(summary_rows: List[Dict]) -> str:
         
         table_html.append(
             f'<tr>'
-            f'<td>{html_escape(row["file"])}</td>'
+            f'<td>{html_escape(row["file"])}.pdf</td>'
             f'<td>{html_escape(row["year"])}</td>'
             f'<td>{row["llm_cer"]:.2%}</td>'
             f'<td>{row["student_cer"]:.2%}</td>'
@@ -881,6 +882,7 @@ def create_document_outline() -> str:
     return '''
     <div class="document-outline">
         <h2>Document Outline</h2>
+        <p><strong>Note:</strong> This entire document was AI-generated using advanced language models and automated analysis tools.</p>
         <p>This report provides a comprehensive analysis of transcription accuracy comparing LLM-generated and Student transcriptions against Perfect ground truth. The analysis includes:</p>
         <ol>
             <li><strong>File Availability Summary</strong> - Overview of data availability across all transcription types</li>
@@ -907,6 +909,12 @@ def create_cer_chart_html(summary_rows: List[Dict]) -> str:
     student_cers = [row['student_cer'] for row in sorted_rows if row['year'].isdigit()]
     files = [row['file'] for row in sorted_rows if row['year'].isdigit()]
     
+    # Convert to JSON strings for JavaScript
+    years_js = json.dumps(years)
+    llm_cers_js = json.dumps(llm_cers)
+    student_cers_js = json.dumps(student_cers)
+    files_js = json.dumps(files)
+    
     return f'''
     <div class="cer-chart-section">
         <h2>Character Error Rate by Year</h2>
@@ -914,26 +922,31 @@ def create_cer_chart_html(summary_rows: List[Dict]) -> str:
         <div id="cer-chart" style="height: 500px; margin: 20px 0;"></div>
         <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
         <script>
+            var years = {years_js};
+            var llmCers = {llm_cers_js};
+            var studentCers = {student_cers_js};
+            var files = {files_js};
+            
             var trace1 = {{
-                x: {years},
-                y: {llm_cers},
+                x: years,
+                y: llmCers,
                 type: 'scatter',
                 mode: 'lines+markers',
                 name: 'LLM vs Perfect',
                 line: {{ color: '#2196f3', width: 3 }},
                 marker: {{ size: 8, color: '#2196f3' }},
-                hovertemplate: 'Year: %{{x}}<br>LLM CER: %{{y:.2%}}<br>File: {files}<extra></extra>'
+                hovertemplate: 'Year: %{{x}}<br>LLM CER: %{{y:.2%}}<extra></extra>'
             }};
             
             var trace2 = {{
-                x: {years},
-                y: {student_cers},
+                x: years,
+                y: studentCers,
                 type: 'scatter',
                 mode: 'lines+markers',
                 name: 'Student vs Perfect',
                 line: {{ color: '#f44336', width: 3 }},
                 marker: {{ size: 8, color: '#f44336' }},
-                hovertemplate: 'Year: %{{x}}<br>Student CER: %{{y:.2%}}<br>File: {files}<extra></extra>'
+                hovertemplate: 'Year: %{{x}}<br>Student CER: %{{y:.2%}}<extra></extra>'
             }};
             
             var data = [trace1, trace2];
@@ -986,22 +999,39 @@ def create_performance_gap_analysis(summary_rows: List[Dict], file_matrix: Dict,
     all_llm_text = ""
     all_student_text = ""
     
+    files_processed = 0
     for stem, file_data in file_matrix.items():
         if len(file_data['available']) == 3:  # Only files with all three components
-            # Load data
-            perfect_df = load_gt_file(file_data['perfect'])
-            llm_df = load_llm_file(llm_csv_dir / f"{stem}.csv")
-            student_df = load_gt_file(file_data['student'])
-            
-            if not perfect_df.empty and not llm_df.empty and not student_df.empty:
-                all_perfect_text += create_clean_text_for_cer(perfect_df) + " "
-                all_llm_text += create_clean_text_for_cer(llm_df) + " "
-                all_student_text += create_clean_text_for_cer(student_df) + " "
+            try:
+                # Load data
+                perfect_df = load_gt_file(file_data['perfect'])
+                llm_df = load_llm_file(llm_csv_dir / f"{stem}.csv")
+                student_df = load_gt_file(file_data['student'])
+                
+                if not perfect_df.empty and not llm_df.empty and not student_df.empty:
+                    perfect_text = create_clean_text_for_cer(perfect_df)
+                    llm_text = create_clean_text_for_cer(llm_df)
+                    student_text = create_clean_text_for_cer(student_df)
+                    
+                    if perfect_text and llm_text and student_text:
+                        all_perfect_text += perfect_text + " "
+                        all_llm_text += llm_text + " "
+                        all_student_text += student_text + " "
+                        files_processed += 1
+            except Exception as e:
+                logging.warning(f"Error processing {stem} for concatenated CER: {e}")
+                continue
     
     # Calculate overall CER using concatenated approach
-    overall_llm_cer = Levenshtein.normalized_distance(all_perfect_text, all_llm_text) if all_perfect_text and all_llm_text else 0
-    overall_student_cer = Levenshtein.normalized_distance(all_perfect_text, all_student_text) if all_perfect_text and all_student_text else 0
-    overall_gap = overall_student_cer - overall_llm_cer
+    if all_perfect_text and all_llm_text and all_student_text:
+        overall_llm_cer = Levenshtein.normalized_distance(all_perfect_text, all_llm_text)
+        overall_student_cer = Levenshtein.normalized_distance(all_perfect_text, all_student_text)
+        overall_gap = overall_student_cer - overall_llm_cer
+    else:
+        # Fallback to average of individual CERs
+        overall_llm_cer = sum(row['llm_cer'] for row in summary_rows if row['llm_cer'] is not None) / len([row for row in summary_rows if row['llm_cer'] is not None])
+        overall_student_cer = sum(row['student_cer'] for row in summary_rows if row['student_cer'] is not None) / len([row for row in summary_rows if row['student_cer'] is not None])
+        overall_gap = overall_student_cer - overall_llm_cer
     
     # File-level statistics
     avg_gap = sum(valid_gaps) / len(valid_gaps)
@@ -1019,7 +1049,7 @@ def create_performance_gap_analysis(summary_rows: List[Dict], file_matrix: Dict,
         <p><strong>Files where LLM performs better:</strong> {llm_better_count}</p>
         <p><strong>Files where Student performs better:</strong> {student_better_count}</p>
         <p><strong>Files with equal performance:</strong> {equal_count}</p>
-        <p><em><strong>Methodology:</strong> The overall performance gap is calculated by concatenating all text files and computing the CER on the combined text. This accounts for differences in file lengths and provides a more accurate overall assessment. The file-level average is the mean of individual file performance gaps.</em></p>
+        <p><em><strong>Methodology:</strong> The overall performance gap is calculated by concatenating all text files and computing the CER on the combined text. This accounts for differences in file lengths and provides a more accurate overall assessment. If concatenation fails, the system falls back to averaging individual file CERs. The file-level average is the mean of individual file performance gaps.</em></p>
         <p><em>Positive gap indicates LLM is closer to perfect than Student. Negative gap indicates Student is closer to perfect than LLM.</em></p>
     </div>
     '''
