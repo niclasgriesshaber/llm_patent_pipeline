@@ -486,11 +486,11 @@ def create_three_table_comparison(perfect_df: pd.DataFrame, llm_df: pd.DataFrame
     
     # Create HTML tables with color coding
     perfect_table_html = make_three_table_html(perfect_df, [True] * len(perfect_df), ['—'] * len(perfect_df), 
-                                              'Perfect Transcriptions (Reference)', 'perfect')
+                                              'Perfect Transcription', 'perfect')
     llm_table_html = make_three_table_html(llm_df, llm_matches, llm_match_ids, 
-                                          'LLM-Generated Transcriptions', 'llm')
+                                          'LLM-Generated Transcription', 'llm')
     student_table_html = make_three_table_html(student_df, student_matches, student_match_ids, 
-                                             'Student Transcriptions', 'student')
+                                             'Student Transcription', 'student')
     
     return {
         'filename': filename_stem,
@@ -553,6 +553,11 @@ def make_three_table_diff_html(perfect_text: str, llm_text: str, student_text: s
         f'<section class="three-diff-section">',
         f'<h2 class="diff-file-heading">{html_escape(filename)}</h2>',
         f'<div class="metrics-row">',
+        f'<div class="metric-box gap-metric">',
+        f'<h3>Performance Gap</h3>',
+        f'<p><strong>Gap:</strong> {performance_gap:+.2%}</p>',
+        f'<p><em>{"LLM better" if performance_gap > 0 else "Student better" if performance_gap < 0 else "Equal"}</em></p>',
+        f'</div>',
         f'<div class="metric-box llm-metric">',
         f'<h3>LLM vs Perfect</h3>',
         f'<p><strong>CER:</strong> {llm_cer:.2%}</p>',
@@ -561,15 +566,10 @@ def make_three_table_diff_html(perfect_text: str, llm_text: str, student_text: s
         f'<h3>Student vs Perfect</h3>',
         f'<p><strong>CER:</strong> {student_cer:.2%}</p>',
         f'</div>',
-        f'<div class="metric-box gap-metric">',
-        f'<h3>Performance Gap</h3>',
-        f'<p><strong>Gap:</strong> {performance_gap:+.2%}</p>',
-        f'<p><em>{"LLM better" if performance_gap > 0 else "Student better" if performance_gap < 0 else "Equal"}</em></p>',
-        f'</div>',
         f'</div>',
         f'<div class="three-text-comparison">',
         f'<div class="text-container">',
-        f'<div class="text-header perfect-header">Perfect Transcriptions (Reference)</div>',
+        f'<div class="text-header perfect-header">Perfect Transcription</div>',
         f'<div class="text-content">'
     ]
     
@@ -700,7 +700,7 @@ def run_unified_comparison(llm_csv_dir: Path, student_xlsx_dir: Path, perfect_xl
                 if llm_df.empty:
                     comparison_results.append({
                         'filename': stem,
-                        'perfect_table': make_empty_table_html('Perfect Transcriptions (Reference)', 'perfect'),
+                        'perfect_table': make_empty_table_html('Perfect Transcription', 'perfect'),
                         'llm_table': make_empty_table_html('LLM-Generated Transcriptions - File not available', 'llm'),
                         'student_table': make_three_table_html(student_df, [True] * len(student_df), ['—'] * len(student_df), 'Student Transcriptions', 'student') if not student_df.empty else make_empty_table_html('Student Transcriptions', 'student'),
                         'llm_cer': None,
@@ -710,7 +710,7 @@ def run_unified_comparison(llm_csv_dir: Path, student_xlsx_dir: Path, perfect_xl
                 if student_df.empty:
                     comparison_results.append({
                         'filename': stem,
-                        'perfect_table': make_empty_table_html('Perfect Transcriptions (Reference)', 'perfect'),
+                        'perfect_table': make_empty_table_html('Perfect Transcription', 'perfect'),
                         'llm_table': make_three_table_html(llm_df, [True] * len(llm_df), ['—'] * len(llm_df), 'LLM-Generated Transcriptions', 'llm') if not llm_df.empty else make_empty_table_html('LLM-Generated Transcriptions', 'llm'),
                         'student_table': make_empty_table_html('Student Transcriptions - File not available', 'student'),
                         'llm_cer': None,
@@ -719,7 +719,7 @@ def run_unified_comparison(llm_csv_dir: Path, student_xlsx_dir: Path, perfect_xl
                     })
     
     # Generate reports
-    generate_unified_reports(comparison_results, diff_sections, summary_rows, file_matrix, output_dir, fuzzy_threshold)
+    generate_unified_reports(comparison_results, diff_sections, summary_rows, file_matrix, output_dir, fuzzy_threshold, llm_csv_dir, student_xlsx_dir, perfect_xlsx_dir)
     
     return {
         'total_files': len(valid_files),
@@ -739,14 +739,15 @@ def make_empty_table_html(title: str, table_type: str) -> str:
     )
 
 def generate_unified_reports(comparison_results: List[Dict], diff_sections: List[str], 
-                           summary_rows: List[Dict], file_matrix: Dict, output_dir: Path, fuzzy_threshold: float):
+                           summary_rows: List[Dict], file_matrix: Dict, output_dir: Path, fuzzy_threshold: float,
+                           llm_csv_dir: Path, student_xlsx_dir: Path, perfect_xlsx_dir: Path):
     """Generate unified HTML reports with three-table format."""
     
     # Generate fuzzy report
     generate_fuzzy_report(comparison_results, file_matrix, output_dir, fuzzy_threshold)
     
     # Generate diff report
-    generate_diff_report(diff_sections, summary_rows, file_matrix, output_dir)
+    generate_diff_report(diff_sections, summary_rows, file_matrix, output_dir, llm_csv_dir, student_xlsx_dir, perfect_xlsx_dir)
 
 def generate_fuzzy_report(comparison_results: List[Dict], file_matrix: Dict, output_dir: Path, fuzzy_threshold: float):
     """Generate fuzzy matching report with three-table format."""
@@ -759,7 +760,7 @@ def generate_fuzzy_report(comparison_results: List[Dict], file_matrix: Dict, out
     for result in comparison_results:
         section_html = f'''
         <section class="three-comparison-section">
-            <h2>File: {html_escape(result['filename'])}</h2>
+            <h2>Patentamt_{html_escape(result['filename'].split('_')[1])}_sampled.pdf</h2>
             <div class="three-table-container">
                 {result['perfect_table']}
                 {result['llm_table']}
@@ -780,8 +781,12 @@ def generate_fuzzy_report(comparison_results: List[Dict], file_matrix: Dict, out
     fuzzy_report_path.write_text(full_html, encoding='utf-8')
     logging.info(f"Fuzzy report saved to {fuzzy_report_path}")
 
-def generate_diff_report(diff_sections: List[str], summary_rows: List[Dict], file_matrix: Dict, output_dir: Path):
+def generate_diff_report(diff_sections: List[str], summary_rows: List[Dict], file_matrix: Dict, output_dir: Path, 
+                         llm_csv_dir: Path, student_xlsx_dir: Path, perfect_xlsx_dir: Path):
     """Generate diff report with three-table text comparison."""
+    
+    # Create document outline
+    document_outline = create_document_outline()
     
     # Create file availability summary
     availability_summary = create_availability_summary(file_matrix)
@@ -792,14 +797,17 @@ def generate_diff_report(diff_sections: List[str], summary_rows: List[Dict], fil
     # Create summary table
     summary_table_html = create_summary_table_html(summary_rows)
     
+    # Create CER chart
+    cer_chart_html = create_cer_chart_html(summary_rows)
+    
     # Create performance gap analysis
-    gap_analysis_html = create_performance_gap_analysis(summary_rows)
+    gap_analysis_html = create_performance_gap_analysis(summary_rows, file_matrix, llm_csv_dir, student_xlsx_dir, perfect_xlsx_dir)
     
     # Generate full HTML
-    title = "Unified Text Comparison Report - Perfect, LLM, and Student Transcriptions"
+    title = "Character Error Rate - Perfect, LLM, and Student Transcriptions"
     full_html = make_unified_diff_html(
-        title, availability_summary, cer_definition, summary_table_html, 
-        gap_analysis_html, ''.join(diff_sections)
+        title, document_outline, availability_summary, cer_definition, summary_table_html, 
+        cer_chart_html, gap_analysis_html, ''.join(diff_sections)
     )
     
     diff_report_path = output_dir / "diff_report.html"
@@ -812,6 +820,8 @@ def create_availability_summary(file_matrix: Dict) -> str:
     perfect_available = sum(1 for data in file_matrix.values() if 'perfect' in data['available'])
     llm_available = sum(1 for data in file_matrix.values() if 'llm' in data['available'])
     student_available = sum(1 for data in file_matrix.values() if 'student' in data['available'])
+    all_three_available = sum(1 for data in file_matrix.values() if len(data['available']) == 3)
+    missing_files = total_files - all_three_available
     
     return f'''
     <div class="availability-summary">
@@ -820,7 +830,8 @@ def create_availability_summary(file_matrix: Dict) -> str:
         <p><strong>Perfect transcriptions available:</strong> {perfect_available}</p>
         <p><strong>LLM-generated transcriptions available:</strong> {llm_available}</p>
         <p><strong>Student transcriptions available:</strong> {student_available}</p>
-        <p><strong>Files with all three components:</strong> {sum(1 for data in file_matrix.values() if len(data['available']) == 3)}</p>
+        <p><strong>Files with all three components:</strong> {all_three_available}</p>
+        <p><strong>Files with missing components:</strong> {missing_files}</p>
     </div>
     '''
 
@@ -834,7 +845,6 @@ def create_cer_definition() -> str:
             $$\mathrm{CER} = \frac{\text{Levenshtein distance}}{\text{number of characters in ground truth}}$$
         </p>
         <p><strong>Academic Standard:</strong> Lower CER indicates higher similarity. Insertions, deletions, and substitutions are counted as edit operations.</p>
-        <p><strong>Normalized CER:</strong> Uses text normalized to ASCII letters (a-z), digits (0-9), lowercase, no linebreaks, and trimmed whitespace.</p>
     </div>
     '''
 
@@ -845,8 +855,8 @@ def create_summary_table_html(summary_rows: List[Dict]) -> str:
     
     table_html = [
         '<table class="summary-table">',
-        '<caption>File-level Performance Metrics</caption>',
-        '<tr><th>File</th><th>Year</th><th>LLM CER</th><th>Student CER</th><th>Performance Gap</th><th>LLM Matches</th><th>Student Matches</th><th>Perfect Entries</th></tr>'
+        '<caption style="font-weight: bold; font-size: 1.4em; margin-bottom: 25px;">File-level Performance Metrics</caption>',
+        '<tr><th>File</th><th>Year</th><th>LLM CER</th><th>Student CER</th><th>Performance Gap</th></tr>'
     ]
     
     for row in summary_rows:
@@ -860,17 +870,110 @@ def create_summary_table_html(summary_rows: List[Dict]) -> str:
             f'<td>{row["llm_cer"]:.2%}</td>'
             f'<td>{row["student_cer"]:.2%}</td>'
             f'<td style="{gap_color}">{gap_text}</td>'
-            f'<td>{row["llm_matches"]}</td>'
-            f'<td>{row["student_matches"]}</td>'
-            f'<td>{row["perfect_entries"]}</td>'
             f'</tr>'
         )
     
     table_html.append('</table>')
     return '\n'.join(table_html)
 
-def create_performance_gap_analysis(summary_rows: List[Dict]) -> str:
-    """Create performance gap analysis."""
+def create_document_outline() -> str:
+    """Create document outline at the beginning."""
+    return '''
+    <div class="document-outline">
+        <h2>Document Outline</h2>
+        <p>This report provides a comprehensive analysis of transcription accuracy comparing LLM-generated and Student transcriptions against Perfect ground truth. The analysis includes:</p>
+        <ol>
+            <li><strong>File Availability Summary</strong> - Overview of data availability across all transcription types</li>
+            <li><strong>Character Error Rate (CER) Definition</strong> - Academic methodology and formula</li>
+            <li><strong>File-level Performance Metrics Table</strong> - Detailed CER and performance gap for each file</li>
+            <li><strong>Character Error Rate by Year Chart</strong> - Interactive visualization of CER trends over time</li>
+            <li><strong>Performance Gap Analysis</strong> - Overall statistics and methodology explanation</li>
+            <li><strong>Side-by-Side Text Comparisons</strong> - Detailed three-table format showing differences between Perfect, LLM, and Student transcriptions</li>
+        </ol>
+        <p><em>Each section provides academic-grade analysis with transparent methodology and clear visual indicators for differences.</em></p>
+    </div>
+    '''
+
+def create_cer_chart_html(summary_rows: List[Dict]) -> str:
+    """Create interactive CER chart by year."""
+    if not summary_rows:
+        return '<p>No chart data available.</p>'
+    
+    # Sort by year for proper x-axis ordering
+    sorted_rows = sorted(summary_rows, key=lambda x: int(x['year']) if x['year'].isdigit() else 0)
+    
+    years = [int(row['year']) for row in sorted_rows if row['year'].isdigit()]
+    llm_cers = [row['llm_cer'] for row in sorted_rows if row['year'].isdigit()]
+    student_cers = [row['student_cer'] for row in sorted_rows if row['year'].isdigit()]
+    files = [row['file'] for row in sorted_rows if row['year'].isdigit()]
+    
+    return f'''
+    <div class="cer-chart-section">
+        <h2>Character Error Rate by Year</h2>
+        <p>This chart shows the CER for both LLM-generated and Student transcriptions compared to Perfect transcriptions across different years. Lower CER indicates better performance.</p>
+        <div id="cer-chart" style="height: 500px; margin: 20px 0;"></div>
+        <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+        <script>
+            var trace1 = {{
+                x: {years},
+                y: {llm_cers},
+                type: 'scatter',
+                mode: 'lines+markers',
+                name: 'LLM vs Perfect',
+                line: {{ color: '#2196f3', width: 3 }},
+                marker: {{ size: 8, color: '#2196f3' }},
+                hovertemplate: 'Year: %{{x}}<br>LLM CER: %{{y:.2%}}<br>File: {files}<extra></extra>'
+            }};
+            
+            var trace2 = {{
+                x: {years},
+                y: {student_cers},
+                type: 'scatter',
+                mode: 'lines+markers',
+                name: 'Student vs Perfect',
+                line: {{ color: '#f44336', width: 3 }},
+                marker: {{ size: 8, color: '#f44336' }},
+                hovertemplate: 'Year: %{{x}}<br>Student CER: %{{y:.2%}}<br>File: {files}<extra></extra>'
+            }};
+            
+            var data = [trace1, trace2];
+            
+            var layout = {{
+                title: {{
+                    text: 'Character Error Rate Comparison by Year',
+                    font: {{ size: 18, color: '#333' }}
+                }},
+                xaxis: {{
+                    title: 'Year',
+                    titlefont: {{ size: 14 }},
+                    tickfont: {{ size: 12 }},
+                    dtick: 1
+                }},
+                yaxis: {{
+                    title: 'Character Error Rate (CER)',
+                    titlefont: {{ size: 14 }},
+                    tickfont: {{ size: 12 }},
+                    tickformat: ',.1%'
+                }},
+                legend: {{
+                    x: 0.02,
+                    y: 0.98,
+                    bgcolor: 'rgba(255,255,255,0.8)',
+                    bordercolor: '#ccc',
+                    borderwidth: 1
+                }},
+                margin: {{ t: 60, b: 60, l: 80, r: 40 }},
+                plot_bgcolor: 'rgba(248,248,248,0.5)',
+                paper_bgcolor: 'white'
+            }};
+            
+            Plotly.newPlot('cer-chart', data, layout);
+        </script>
+    </div>
+    '''
+
+def create_performance_gap_analysis(summary_rows: List[Dict], file_matrix: Dict, llm_csv_dir: Path, student_xlsx_dir: Path, perfect_xlsx_dir: Path) -> str:
+    """Create performance gap analysis with concatenated approach."""
     if not summary_rows:
         return '<p>No performance data available.</p>'
     
@@ -878,6 +981,29 @@ def create_performance_gap_analysis(summary_rows: List[Dict]) -> str:
     if not valid_gaps:
         return '<p>No performance gap data available.</p>'
     
+    # Calculate concatenated CER for overall performance gap
+    all_perfect_text = ""
+    all_llm_text = ""
+    all_student_text = ""
+    
+    for stem, file_data in file_matrix.items():
+        if len(file_data['available']) == 3:  # Only files with all three components
+            # Load data
+            perfect_df = load_gt_file(file_data['perfect'])
+            llm_df = load_llm_file(llm_csv_dir / f"{stem}.csv")
+            student_df = load_gt_file(file_data['student'])
+            
+            if not perfect_df.empty and not llm_df.empty and not student_df.empty:
+                all_perfect_text += create_clean_text_for_cer(perfect_df) + " "
+                all_llm_text += create_clean_text_for_cer(llm_df) + " "
+                all_student_text += create_clean_text_for_cer(student_df) + " "
+    
+    # Calculate overall CER using concatenated approach
+    overall_llm_cer = Levenshtein.normalized_distance(all_perfect_text, all_llm_text) if all_perfect_text and all_llm_text else 0
+    overall_student_cer = Levenshtein.normalized_distance(all_perfect_text, all_student_text) if all_perfect_text and all_student_text else 0
+    overall_gap = overall_student_cer - overall_llm_cer
+    
+    # File-level statistics
     avg_gap = sum(valid_gaps) / len(valid_gaps)
     llm_better_count = sum(1 for gap in valid_gaps if gap > 0)
     student_better_count = sum(1 for gap in valid_gaps if gap < 0)
@@ -886,10 +1012,14 @@ def create_performance_gap_analysis(summary_rows: List[Dict]) -> str:
     return f'''
     <div class="performance-analysis">
         <h2>Performance Gap Analysis</h2>
-        <p><strong>Average Performance Gap:</strong> {avg_gap:+.2%}</p>
+        <p><strong>Overall Performance Gap (Concatenated):</strong> {overall_gap:+.2%}</p>
+        <p><strong>Overall LLM CER (Concatenated):</strong> {overall_llm_cer:.2%}</p>
+        <p><strong>Overall Student CER (Concatenated):</strong> {overall_student_cer:.2%}</p>
+        <p><strong>Average File-level Performance Gap:</strong> {avg_gap:+.2%}</p>
         <p><strong>Files where LLM performs better:</strong> {llm_better_count}</p>
         <p><strong>Files where Student performs better:</strong> {student_better_count}</p>
         <p><strong>Files with equal performance:</strong> {equal_count}</p>
+        <p><em><strong>Methodology:</strong> The overall performance gap is calculated by concatenating all text files and computing the CER on the combined text. This accounts for differences in file lengths and provides a more accurate overall assessment. The file-level average is the mean of individual file performance gaps.</em></p>
         <p><em>Positive gap indicates LLM is closer to perfect than Student. Negative gap indicates Student is closer to perfect than LLM.</em></p>
     </div>
     '''
@@ -960,8 +1090,8 @@ def make_unified_html(title: str, summary_html: str, sections_html: str) -> str:
     </html>
     '''
 
-def make_unified_diff_html(title: str, availability_summary: str, cer_definition: str, 
-                          summary_table_html: str, gap_analysis_html: str, diff_sections: str) -> str:
+def make_unified_diff_html(title: str, document_outline: str, availability_summary: str, cer_definition: str, 
+                          summary_table_html: str, cer_chart_html: str, gap_analysis_html: str, diff_sections: str) -> str:
     """Create unified diff HTML with three-table text comparison."""
     css = '''
     <style>
@@ -989,6 +1119,10 @@ def make_unified_diff_html(title: str, availability_summary: str, cer_definition
         .diff-highlight-perfect { background-color: rgba(255, 193, 7, 0.3); padding: 1px 2px; border-radius: 2px; }
         .diff-highlight-llm { background-color: rgba(33, 150, 243, 0.3); padding: 1px 2px; border-radius: 2px; }
         .diff-highlight-student { background-color: rgba(244, 67, 54, 0.3); padding: 1px 2px; border-radius: 2px; }
+        .document-outline { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; padding: 20px; margin-bottom: 30px; }
+        .document-outline ol { margin: 15px 0; padding-left: 25px; }
+        .document-outline li { margin: 8px 0; line-height: 1.6; }
+        .cer-chart-section { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 20px; margin: 20px 0; }
     </style>
     '''
     
@@ -1006,9 +1140,11 @@ def make_unified_diff_html(title: str, availability_summary: str, cer_definition
     <body>
         <div class="container">
             <h1>{title}</h1>
+            {document_outline}
             {availability_summary}
             {cer_definition}
             {summary_table_html}
+            {cer_chart_html}
             {gap_analysis_html}
             {diff_sections}
         </div>
