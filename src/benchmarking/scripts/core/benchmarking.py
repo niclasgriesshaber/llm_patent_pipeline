@@ -546,26 +546,36 @@ def make_three_table_diff_html(perfect_text: str, llm_text: str, student_text: s
     """Create side-by-side text comparison for three tables with character-level highlighting."""
     
     def create_character_level_diff(text1: str, text2: str, highlight_class: str) -> str:
-        """Create true character-level diff highlighting between two texts."""
+        """Create precise diff highlighting between two texts."""
+        matcher = difflib.SequenceMatcher(None, text1, text2)
         html_parts = []
         
-        # Pad the shorter text to match the longer one
-        max_len = max(len(text1), len(text2))
-        text1_padded = text1.ljust(max_len)
-        text2_padded = text2.ljust(max_len)
-        
-        # Compare character by character
-        for i in range(max_len):
-            char1 = text1_padded[i] if i < len(text1) else ''
-            char2 = text2_padded[i] if i < len(text2) else ''
-            
-            if char1 == char2:
-                # Characters match - no highlighting
-                html_parts.append(html_escape(char1))
-            else:
-                # Characters differ - highlight only this character
-                if char1:  # Only highlight if there's actually a character
-                    html_parts.append(f'<span class="{highlight_class}">{html_escape(char1)}</span>')
+        for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+            if tag == 'equal':
+                # Same text - no highlighting
+                html_parts.append(html_escape(text1[i1:i2]))
+            elif tag == 'replace':
+                # Different text - highlight only the actual differing characters
+                # Find the minimum length to compare
+                min_len = min(i2 - i1, j2 - j1)
+                max_len = max(i2 - i1, j2 - j1)
+                
+                # Compare character by character for the overlapping part
+                for k in range(min_len):
+                    if text1[i1 + k] == text2[j1 + k]:
+                        html_parts.append(html_escape(text1[i1 + k]))
+                    else:
+                        html_parts.append(f'<span class="{highlight_class}">{html_escape(text1[i1 + k])}</span>')
+                
+                # Handle extra characters in text1
+                for k in range(min_len, i2 - i1):
+                    html_parts.append(f'<span class="{highlight_class}">{html_escape(text1[i1 + k])}</span>')
+            elif tag == 'delete':
+                # Text exists in text1 but not in text2 - highlight it
+                html_parts.append(f'<span class="{highlight_class}">{html_escape(text1[i1:i2])}</span>')
+            elif tag == 'insert':
+                # Text exists in text2 but not in text1 - don't highlight anything in text1
+                pass
         
         return ''.join(html_parts)
     
