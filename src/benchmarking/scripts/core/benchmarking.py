@@ -546,30 +546,37 @@ def make_three_table_diff_html(perfect_text: str, llm_text: str, student_text: s
     """Create side-by-side text comparison for three tables with character-level highlighting."""
     
     def create_character_level_diff(text1: str, text2: str, highlight_class: str) -> str:
-        """Create precise diff highlighting between two texts."""
-        matcher = difflib.SequenceMatcher(None, text1, text2)
+        """Create precise character-level diff highlighting between two texts."""
         html_parts = []
+        
+        # Use a more conservative approach: only highlight when we're very sure there's a difference
+        matcher = difflib.SequenceMatcher(None, text1, text2)
         
         for tag, i1, i2, j1, j2 in matcher.get_opcodes():
             if tag == 'equal':
                 # Same text - no highlighting
                 html_parts.append(html_escape(text1[i1:i2]))
             elif tag == 'replace':
-                # Different text - highlight only the actual differing characters
-                # Find the minimum length to compare
-                min_len = min(i2 - i1, j2 - j1)
-                max_len = max(i2 - i1, j2 - j1)
+                # For replace operations, be very conservative
+                # Only highlight if the segments are significantly different
+                segment1 = text1[i1:i2]
+                segment2 = text2[j1:j2]
                 
-                # Compare character by character for the overlapping part
-                for k in range(min_len):
-                    if text1[i1 + k] == text2[j1 + k]:
-                        html_parts.append(html_escape(text1[i1 + k]))
-                    else:
-                        html_parts.append(f'<span class="{highlight_class}">{html_escape(text1[i1 + k])}</span>')
-                
-                # Handle extra characters in text1
-                for k in range(min_len, i2 - i1):
-                    html_parts.append(f'<span class="{highlight_class}">{html_escape(text1[i1 + k])}</span>')
+                # If segments are very different in length, highlight the whole thing
+                if abs(len(segment1) - len(segment2)) > 2:
+                    html_parts.append(f'<span class="{highlight_class}">{html_escape(segment1)}</span>')
+                else:
+                    # For similar length segments, do character-by-character comparison
+                    min_len = min(len(segment1), len(segment2))
+                    for k in range(min_len):
+                        if segment1[k] == segment2[k]:
+                            html_parts.append(html_escape(segment1[k]))
+                        else:
+                            html_parts.append(f'<span class="{highlight_class}">{html_escape(segment1[k])}</span>')
+                    
+                    # Handle remaining characters in segment1
+                    for k in range(min_len, len(segment1)):
+                        html_parts.append(f'<span class="{highlight_class}">{html_escape(segment1[k])}</span>')
             elif tag == 'delete':
                 # Text exists in text1 but not in text2 - highlight it
                 html_parts.append(f'<span class="{highlight_class}">{html_escape(text1[i1:i2])}</span>')
@@ -1140,9 +1147,9 @@ def make_unified_diff_html(title: str, document_outline: str, availability_summa
         .llm-header { border-left: 4px solid #2196f3; }
         .student-header { border-left: 4px solid #f44336; }
         .text-content { padding: 15px; font-family: monospace; font-size: 0.9em; line-height: 1.5; white-space: pre-wrap; }
-        .diff-highlight-perfect { background-color: rgba(255, 193, 7, 0.3); padding: 1px 2px; border-radius: 2px; }
-        .diff-highlight-llm { background-color: rgba(33, 150, 243, 0.3); padding: 1px 2px; border-radius: 2px; }
-        .diff-highlight-student { background-color: rgba(244, 67, 54, 0.3); padding: 1px 2px; border-radius: 2px; }
+        .diff-highlight-perfect { background-color: rgba(255, 193, 7, 0.3); padding: 0; border-radius: 1px; display: inline; }
+        .diff-highlight-llm { background-color: rgba(33, 150, 243, 0.3); padding: 0; border-radius: 1px; display: inline; }
+        .diff-highlight-student { background-color: rgba(244, 67, 54, 0.3); padding: 0; border-radius: 1px; display: inline; }
         .document-outline { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; padding: 20px; margin-bottom: 30px; }
         .document-outline ol { margin: 15px 0; padding-left: 25px; }
         .document-outline li { margin: 8px 0; line-height: 1.6; }
