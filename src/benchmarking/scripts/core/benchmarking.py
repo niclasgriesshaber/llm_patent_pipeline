@@ -1430,6 +1430,112 @@ def run_after_cleaning_comparison(llm_csv_dir: Path, perfect_xlsx_dir: Path, out
         'files_with_results': [r['filename_stem'] for r in comparison_results]
     }
 
+def run_variable_extraction_comparison(llm_csv_dir: Path, perfect_xlsx_dir: Path, output_dir: Path, fuzzy_threshold: float = 0.85):
+    """
+    Runs the variable extraction comparison logic specifically for Perfect vs LLM-with-variables evaluation.
+    Generates only the variable extraction report comparing Perfect transcriptions vs LLM CSV files with extracted variables.
+    
+    Args:
+        llm_csv_dir: Directory containing LLM CSV files with extracted variables
+        perfect_xlsx_dir: Directory containing perfect transcription Excel files
+        output_dir: Directory to save comparison results
+        fuzzy_threshold: Threshold for fuzzy matching (default: 0.85)
+    """
+    logging.info(f"Starting variable extraction comparison for data in {llm_csv_dir.name}")
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Get file stems with proper handling for different suffixes
+    perfect_files = list(perfect_xlsx_dir.glob('*.xlsx'))
+    llm_files = list(llm_csv_dir.glob('*.csv'))
+    
+    # Extract base stems (remove _perfected and _cleaned_with_variables suffixes)
+    perfect_stems = set()
+    llm_stems = set()
+    
+    for perfect_file in perfect_files:
+        stem = perfect_file.stem
+        if stem.endswith('_perfected'):
+            base_stem = stem[:-10]  # Remove '_perfected'
+            perfect_stems.add(base_stem)
+        else:
+            perfect_stems.add(stem)
+    
+    for llm_file in llm_files:
+        stem = llm_file.stem
+        if stem.endswith('_cleaned_with_variables'):
+            base_stem = stem[:-23]  # Remove '_cleaned_with_variables'
+            llm_stems.add(base_stem)
+        else:
+            llm_stems.add(stem)
+    
+    common_stems = sorted(list(perfect_stems.intersection(llm_stems)))
+
+    if not common_stems:
+        logging.warning(f"No common files found between perfect ground truth and LLM-with-variables directories. Skipping comparison.")
+        return None
+
+    logging.info(f"Found {len(common_stems)} common files for variable extraction comparison")
+    
+    # For variable extraction, we need to call the existing variable comparison logic
+    # Import the run_variable_comparison function from the 03 script
+    import sys
+    import importlib.util
+    from pathlib import Path
+    
+    # Load the 03_variable_extraction_benchmarking module
+    script_path = Path(__file__).parent.parent / "03_variable_extraction_benchmarking.py"
+    spec = importlib.util.spec_from_file_location("variable_extraction_benchmarking", script_path)
+    variable_extraction_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(variable_extraction_module)
+    
+    # Create temporary directories with correctly named files for the comparison
+    temp_llm_dir = output_dir / 'temp_llm_for_comparison'
+    temp_gt_dir = output_dir / 'temp_gt_for_comparison'
+    temp_llm_dir.mkdir(exist_ok=True)
+    temp_gt_dir.mkdir(exist_ok=True)
+    
+    # Copy LLM files with variables to temp directory with names that the function expects
+    for llm_file in llm_files:
+        if llm_file.stem.endswith('_cleaned_with_variables'):
+            # The function expects files with _cleaned_with_variables suffix
+            expected_name = llm_file.stem + '.csv'  # Keep the original name
+            temp_csv = temp_llm_dir / expected_name
+            import shutil
+            shutil.copy2(llm_file, temp_csv)
+    
+    # Copy perfect files to temp directory with names that match the LLM base names
+    for perfect_file in perfect_files:
+        if perfect_file.stem.endswith('_perfected'):
+            # Remove _perfected suffix to match LLM base names
+            expected_name = perfect_file.stem.replace('_perfected', '') + '.xlsx'
+            temp_xlsx = temp_gt_dir / expected_name
+            import shutil
+            shutil.copy2(perfect_file, temp_xlsx)
+    
+    # Run the variable comparison (Perfect vs LLM-with-variables)
+    variable_results = variable_extraction_module.run_variable_comparison(
+        llm_csv_dir=temp_llm_dir,
+        gt_xlsx_dir=temp_gt_dir,
+        output_dir=output_dir,
+        fuzzy_threshold=fuzzy_threshold,
+        comparison_type="perfect"
+    )
+    
+    # Clean up temporary directories
+    import shutil
+    shutil.rmtree(temp_llm_dir, ignore_errors=True)
+    shutil.rmtree(temp_gt_dir, ignore_errors=True)
+    
+    # Rename the generated report from variable_fuzzy_report.html to variable_extraction_report.html
+    old_report_path = output_dir / "variable_fuzzy_report.html"
+    new_report_path = output_dir / "variable_extraction_report.html"
+    
+    if old_report_path.exists():
+        old_report_path.rename(new_report_path)
+        logging.info(f"Renamed variable_fuzzy_report.html to variable_extraction_report.html")
+    
+    return variable_results
+
 def run_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Path, fuzzy_threshold: float = 0.85, comparison_type: str = "perfect"):
     """
     Runs the full comparison logic: fuzzy matching and diffing.

@@ -17,7 +17,7 @@ from google.genai import types
 from rapidfuzz.distance import Levenshtein
 
 # Core modules are now in the same directory
-from core.benchmarking import run_comparison
+from core.benchmarking import run_variable_extraction_comparison
 from create_dashboard import create_dashboard
 
 # --- Configuration ---
@@ -805,13 +805,9 @@ def run_single_benchmark(dataset_cleaning_model: str, dataset_cleaning_prompt: s
     prompt_stem = Path(prompt).stem
     run_output_dir = BENCHMARKING_ROOT / 'results' / '03_variable_extraction' / model / prompt_stem
     llm_csv_output_dir = run_output_dir / 'llm_csv'
-    perfect_comparison_dir = run_output_dir / 'perfect_transcriptions_xlsx'
-    student_comparison_dir = run_output_dir / 'student_transcriptions_xlsx'
     
     run_output_dir.mkdir(parents=True, exist_ok=True)
     llm_csv_output_dir.mkdir(exist_ok=True)
-    perfect_comparison_dir.mkdir(exist_ok=True)
-    student_comparison_dir.mkdir(exist_ok=True)
     
     logging.info(f"Input directory: {input_dir}")
     logging.info(f"Output will be saved in: {run_output_dir}")
@@ -849,73 +845,23 @@ def run_single_benchmark(dataset_cleaning_model: str, dataset_cleaning_prompt: s
                 logging.error(f"Failed to process: {csv_path.name}")
     
     logging.info(f"CSV processing complete. Processed: {processed_count}, Skipped: {skipped_count}")
-    logging.info("--- Starting variable comparison phase. ---")
+    logging.info("--- Starting variable extraction comparison phase. ---")
 
-    # 2. Run variable comparisons against both ground truth types
-    all_results = {}
-    
-    # Perfect transcriptions comparison
+    # 2. Run variable extraction comparison (Perfect vs LLM-with-variables only)
     perfect_gt_dir = BENCHMARKING_ROOT / 'input_data' / 'transcriptions_xlsx' / 'perfect_transcriptions_xlsx'
     if perfect_gt_dir.exists():
-        logging.info("Running variable comparison against perfect transcriptions...")
-        perfect_results = run_variable_comparison(
+        logging.info("Running variable extraction comparison against perfect transcriptions...")
+        variable_extraction_results = run_variable_extraction_comparison(
             llm_csv_dir=llm_csv_output_dir,
-            gt_xlsx_dir=perfect_gt_dir,
-            output_dir=perfect_comparison_dir,
-            comparison_type="perfect"
+            perfect_xlsx_dir=perfect_gt_dir,
+            output_dir=run_output_dir
         )
-        if perfect_results:
-            all_results['perfect'] = perfect_results
-            logging.info("Perfect transcriptions variable comparison completed.")
+        if variable_extraction_results:
+            logging.info("Variable extraction comparison completed successfully.")
         else:
-            logging.warning("No perfect transcriptions variable comparison results generated.")
+            logging.warning("No variable extraction comparison results generated.")
     else:
         logging.warning(f"Perfect transcriptions directory not found: {perfect_gt_dir}")
-    
-    # Student transcriptions comparison
-    student_gt_dir = BENCHMARKING_ROOT / 'input_data' / 'transcriptions_xlsx' / 'student_transcriptions_xlsx'
-    if student_gt_dir.exists():
-        logging.info("Running variable comparison against student transcriptions...")
-        student_results = run_variable_comparison(
-            llm_csv_dir=llm_csv_output_dir,
-            gt_xlsx_dir=student_gt_dir,
-            output_dir=student_comparison_dir,
-            comparison_type="student"
-        )
-        if student_results:
-            all_results['student'] = student_results
-            logging.info("Student transcriptions variable comparison completed.")
-        else:
-            logging.warning("No student transcriptions variable comparison results generated.")
-    else:
-        logging.warning(f"Student transcriptions directory not found: {student_gt_dir}")
-    
-    # 3. Generate combined results.json at prompt level
-    if all_results:
-        combined_results = {
-            'model': model,
-            'prompt': prompt_stem,
-            'timestamp': pd.Timestamp.now().isoformat(),
-            'perfect': all_results.get('perfect', {}),
-            'student': all_results.get('student', {}),
-            'summary': {
-                'perfect_match_rate': all_results.get('perfect', {}).get('overall_match_rate', 0),
-                'student_match_rate': all_results.get('student', {}).get('overall_match_rate', 0),
-                'perfect_cells': all_results.get('perfect', {}).get('total_cells', 0),
-                'student_cells': all_results.get('student', {}).get('total_cells', 0),
-                'files_processed': (
-                    all_results.get('perfect', {}).get('files_processed', 0) +
-                    all_results.get('student', {}).get('files_processed', 0)
-                )
-            }
-        }
-        
-        results_path = run_output_dir / "results.json"
-        with results_path.open('w', encoding='utf-8') as f:
-            json.dump(combined_results, f, indent=4)
-        logging.info(f"Combined results saved to {results_path}")
-    else:
-        logging.warning("No comparison results generated. Check if ground truth files exist.")
     
     logging.info(f"--- Variable extraction benchmark finished ---")
 
