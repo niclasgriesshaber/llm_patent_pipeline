@@ -836,12 +836,12 @@ def create_availability_summary(file_matrix: Dict) -> str:
 
 def create_cer_definition() -> str:
     """Create CER definition with academic formula."""
-    return '''
+    return r'''
     <div class="cer-definition">
         <h2>Character Error Rate (CER) Definition</h2>
         <p>The Character Error Rate is calculated using the Levenshtein distance formula:</p>
         <p style="text-align: center; font-size: 1.2em; margin: 20px 0;">
-            $$\mathrm{CER} = \frac{\mathrm{Levenshtein\ distance}}{\mathrm{number\ of\ characters\ in\ ground\ truth}}$$
+            $$\text{CER} = \frac{\text{Levenshtein distance}}{\text{number of characters in ground truth}}$$
         </p>
         <p><strong>Academic Standard:</strong> Lower CER indicates higher similarity. Insertions, deletions, and substitutions are counted as edit operations.</p>
         <p><strong>Formula in plain text:</strong> CER = (Levenshtein distance) / (number of characters in ground truth)</p>
