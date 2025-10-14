@@ -546,25 +546,26 @@ def make_three_table_diff_html(perfect_text: str, llm_text: str, student_text: s
     """Create side-by-side text comparison for three tables with character-level highlighting."""
     
     def create_character_level_diff(text1: str, text2: str, highlight_class: str) -> str:
-        """Create character-level diff highlighting between two texts."""
-        matcher = difflib.SequenceMatcher(None, text1, text2)
+        """Create true character-level diff highlighting between two texts."""
         html_parts = []
         
-        for tag, i1, i2, j1, j2 in matcher.get_opcodes():
-            if tag == 'equal':
-                # Same text - no highlighting
-                html_parts.append(html_escape(text1[i1:i2]))
-            elif tag in ['replace', 'delete']:
-                # Different text - highlight only the differing characters
-                diff_text = text1[i1:i2]
-                if diff_text.strip():  # Only highlight non-empty differences
-                    html_parts.append(f'<span class="{highlight_class}">{html_escape(diff_text)}</span>')
-                else:
-                    html_parts.append(html_escape(diff_text))
-            elif tag == 'insert':
-                # Insertions in text2 - highlight the corresponding part in text1
-                if i1 < len(text1):
-                    html_parts.append(f'<span class="{highlight_class}">{html_escape(text1[i1:i2])}</span>')
+        # Pad the shorter text to match the longer one
+        max_len = max(len(text1), len(text2))
+        text1_padded = text1.ljust(max_len)
+        text2_padded = text2.ljust(max_len)
+        
+        # Compare character by character
+        for i in range(max_len):
+            char1 = text1_padded[i] if i < len(text1) else ''
+            char2 = text2_padded[i] if i < len(text2) else ''
+            
+            if char1 == char2:
+                # Characters match - no highlighting
+                html_parts.append(html_escape(char1))
+            else:
+                # Characters differ - highlight only this character
+                if char1:  # Only highlight if there's actually a character
+                    html_parts.append(f'<span class="{highlight_class}">{html_escape(char1)}</span>')
         
         return ''.join(html_parts)
     
