@@ -610,6 +610,16 @@ def make_three_table_diff_html(perfect_text: str, llm_text: str, student_text: s
     html_parts = [
         f'<section class="three-diff-section">',
         f'<h2 class="diff-file-heading">{html_escape(filename)}.pdf</h2>',
+        f'<div class="highlight-explanation">',
+        f'<p><strong>Note:</strong> The diff algorithm uses sequence alignment to find differences between texts. It may highlight text that appears identical due to:</p>',
+        f'<ul>',
+        f'<li><strong>Alignment limitations:</strong> The algorithm finds the "best" alignment between texts, but this may not match human perception of differences</li>',
+        f'<li><strong>Context sensitivity:</strong> A single character difference can cause the algorithm to mark entire surrounding segments as different</li>',
+        f'<li><strong>Insertion/deletion handling:</strong> When text is inserted or deleted, the algorithm may highlight adjacent text that is actually identical</li>',
+        f'<li><strong>Conservative threshold:</strong> The highlighting is intentionally conservative to reduce false positives, but may miss some actual differences</li>',
+        f'</ul>',
+        f'<p><em>Always verify highlighted differences manually for critical analysis.</em></p>',
+        f'</div>',
         f'<div class="metrics-row">',
         f'<div class="metric-box gap-metric">',
         f'<h3>Performance Gap</h3>',
@@ -628,21 +638,18 @@ def make_three_table_diff_html(perfect_text: str, llm_text: str, student_text: s
         f'<div class="three-text-comparison">',
         f'<div class="text-container">',
         f'<div class="text-header perfect-header">Perfect Transcription</div>',
-        f'<div class="highlight-note">Reference text - no highlighting applied</div>',
         f'<div class="text-content">',
         html_escape(perfect_text),  # No highlighting for perfect text
         f'</div>',
         f'</div>',
         f'<div class="text-container">',
         f'<div class="text-header llm-header">LLM-Generated Transcription</div>',
-        f'<div class="highlight-note">Highlighted text indicates potential differences from perfect transcription. Highlighting is conservative and may not capture all differences due to algorithmic limitations in text alignment.</div>',
         f'<div class="text-content">',
         create_character_level_diff(llm_text, perfect_text, 'diff-highlight-llm'),
         f'</div>',
         f'</div>',
         f'<div class="text-container">',
         f'<div class="text-header student-header">Student Transcription</div>',
-        f'<div class="highlight-note">Highlighted text indicates potential differences from perfect transcription. Highlighting is conservative and may not capture all differences due to algorithmic limitations in text alignment.</div>',
         f'<div class="text-content">',
         create_character_level_diff(student_text, perfect_text, 'diff-highlight-student'),
         f'</div>',
@@ -1174,7 +1181,10 @@ def make_unified_diff_html(title: str, document_outline: str, availability_summa
         .diff-highlight-perfect { background-color: rgba(255, 193, 7, 0.3); padding: 0; border-radius: 1px; display: inline; }
         .diff-highlight-llm { background-color: rgba(33, 150, 243, 0.3); padding: 0; border-radius: 1px; display: inline; }
         .diff-highlight-student { background-color: rgba(244, 67, 54, 0.3); padding: 0; border-radius: 1px; display: inline; }
-        .highlight-note { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; padding: 8px 12px; margin: 8px 0; font-size: 0.85em; color: #6c757d; font-style: italic; }
+        .highlight-explanation { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 15px; margin: 15px 0; font-size: 0.9em; color: #495057; }
+        .highlight-explanation ul { margin: 10px 0; padding-left: 20px; }
+        .highlight-explanation li { margin: 5px 0; line-height: 1.4; }
+        .highlight-explanation p { margin: 10px 0; }
         .document-outline { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; padding: 20px; margin-bottom: 30px; }
         .document-outline ol { margin: 15px 0; padding-left: 25px; }
         .document-outline li { margin: 8px 0; line-height: 1.6; }
