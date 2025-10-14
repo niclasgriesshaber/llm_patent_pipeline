@@ -824,7 +824,7 @@ def generate_unified_reports(comparison_results: List[Dict], diff_sections: List
     # Generate diff report (3-way)
     generate_diff_report(diff_sections, summary_rows, file_matrix, output_dir, llm_csv_dir, student_xlsx_dir, perfect_xlsx_dir)
 
-def generate_fuzzy_report(comparison_results: List[Dict], file_matrix: Dict, output_dir: Path, fuzzy_threshold: float):
+def generate_fuzzy_report(comparison_results: List[Dict], file_matrix: Dict, output_dir: Path, fuzzy_threshold: float, report_type: str = "before_cleaning"):
     """Generate fuzzy matching report with two-table format (Perfect vs LLM only)."""
     
     # Create file availability summary (Perfect and LLM only)
@@ -848,10 +848,14 @@ def generate_fuzzy_report(comparison_results: List[Dict], file_matrix: Dict, out
     summary_html = create_two_way_summary(comparison_results, fuzzy_threshold)
     
     # Generate full HTML
-    title = "Patent Entry Matching Before Cleaning - Perfect vs LLM Transcriptions"
-    full_html = make_two_way_html(title, availability_summary + summary_html, ''.join(sections_html))
+    if report_type == "after_cleaning":
+        title = "Patent Entry Matching After Cleaning - Perfect vs LLM Transcriptions"
+        fuzzy_report_path = output_dir / "patent_entry_matching_after_cleaning.html"
+    else:
+        title = "Patent Entry Matching Before Cleaning - Perfect vs LLM Transcriptions"
+        fuzzy_report_path = output_dir / "patent_entry_matching_before_cleaning.html"
     
-    fuzzy_report_path = output_dir / "patent_entry_matching_before_cleaning.html"
+    full_html = make_two_way_html(title, availability_summary + summary_html, ''.join(sections_html))
     fuzzy_report_path.write_text(full_html, encoding='utf-8')
     logging.info(f"Patent entry matching report saved to {fuzzy_report_path}")
 
@@ -1330,6 +1334,101 @@ def make_unified_diff_html(title: str, document_outline: str, availability_summa
     </body>
     </html>
     '''
+
+def run_after_cleaning_comparison(llm_csv_dir: Path, perfect_xlsx_dir: Path, output_dir: Path, fuzzy_threshold: float = 0.85):
+    """
+    Runs the comparison logic specifically for after-cleaning evaluation.
+    Generates only the 2-way patent entry matching report (Perfect vs LLM-cleaned).
+    
+    Args:
+        llm_csv_dir: Directory containing LLM-cleaned CSV files
+        perfect_xlsx_dir: Directory containing perfect transcription Excel files
+        output_dir: Directory to save comparison results
+        fuzzy_threshold: Threshold for fuzzy matching (default: 0.85)
+    """
+    logging.info(f"Starting after-cleaning comparison for data in {llm_csv_dir.name}")
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Get file stems with proper handling for different suffixes
+    perfect_files = list(perfect_xlsx_dir.glob('*.xlsx'))
+    llm_files = list(llm_csv_dir.glob('*.csv'))
+    
+    # Extract base stems (remove _perfected and _cleaned suffixes)
+    perfect_stems = set()
+    llm_stems = set()
+    
+    for perfect_file in perfect_files:
+        stem = perfect_file.stem
+        if stem.endswith('_perfected'):
+            base_stem = stem[:-10]  # Remove '_perfected'
+            perfect_stems.add(base_stem)
+        else:
+            perfect_stems.add(stem)
+    
+    for llm_file in llm_files:
+        stem = llm_file.stem
+        if stem.endswith('_cleaned'):
+            base_stem = stem[:-8]  # Remove '_cleaned'
+            llm_stems.add(base_stem)
+        else:
+            llm_stems.add(stem)
+    
+    common_stems = sorted(list(perfect_stems.intersection(llm_stems)))
+
+    if not common_stems:
+        logging.warning(f"No common files found between perfect ground truth and LLM-cleaned directories. Skipping comparison.")
+        return None
+
+    logging.info(f"Found {len(common_stems)} common files for after-cleaning comparison")
+    
+    # Create file matrix for availability summary (using original stems)
+    perfect_original_stems = {stem + '_perfected' for stem in perfect_stems}
+    llm_original_stems = {stem + '_cleaned' for stem in llm_stems}
+    common_original_stems = sorted([stem + '_perfected' for stem in common_stems])
+    
+    # Create simple file matrix for after-cleaning comparison
+    file_matrix = {}
+    for stem in common_original_stems:
+        file_matrix[stem] = {
+            'perfect': perfect_xlsx_dir / f"{stem}.xlsx",
+            'llm': llm_csv_dir / f"{stem.replace('_perfected', '_cleaned')}.csv",
+            'available': ['perfect', 'llm']
+        }
+    
+    # Run 2-way comparison (Perfect vs LLM-cleaned only)
+    comparison_results = []
+    
+    for base_stem in common_stems:
+        perfect_path = perfect_xlsx_dir / f"{base_stem}_perfected.xlsx"
+        llm_path = llm_csv_dir / f"{base_stem}_cleaned.csv"
+        
+        logging.info(f"Processing after-cleaning comparison: {base_stem}")
+        
+        try:
+            perfect_df = pd.read_excel(perfect_path)
+            llm_df = pd.read_csv(llm_path)
+            
+            # Create 2-way comparison result
+            result = create_two_table_comparison(perfect_df, llm_df, base_stem, fuzzy_threshold)
+            result['filename_stem'] = base_stem
+            comparison_results.append(result)
+            
+        except Exception as e:
+            logging.error(f"Error processing {base_stem}: {e}")
+            continue
+    
+    if not comparison_results:
+        logging.warning("No valid comparison results generated for after-cleaning evaluation")
+        return None
+    
+    # Generate the 2-way fuzzy report
+    generate_fuzzy_report(comparison_results, file_matrix, output_dir, fuzzy_threshold, "after_cleaning")
+    
+    return {
+        'total_files': len(common_stems),
+        'comparison_results': len(comparison_results),
+        'files_with_results': [r['filename_stem'] for r in comparison_results]
+    }
 
 def run_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Path, fuzzy_threshold: float = 0.85, comparison_type: str = "perfect"):
     """

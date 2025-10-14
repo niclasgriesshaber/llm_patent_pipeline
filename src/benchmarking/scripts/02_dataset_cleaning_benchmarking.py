@@ -12,7 +12,7 @@ import google.genai as genai
 from google.genai import types
 
 # Core modules are now in the same directory
-from core.benchmarking import run_comparison
+from core.benchmarking import run_after_cleaning_comparison
 from create_dashboard import create_dashboard
 
 # --- Configuration ---
@@ -326,13 +326,9 @@ def run_single_benchmark(dataset_construction_model: str, dataset_construction_p
     prompt_stem = Path(prompt).stem
     run_output_dir = BENCHMARKING_ROOT / 'results' / '02_dataset_cleaning' / model / prompt_stem
     llm_csv_output_dir = run_output_dir / 'llm_csv'
-    perfect_comparison_dir = run_output_dir / 'perfect_transcriptions_xlsx'
-    student_comparison_dir = run_output_dir / 'student_transcriptions_xlsx'
     
     run_output_dir.mkdir(parents=True, exist_ok=True)
     llm_csv_output_dir.mkdir(exist_ok=True)
-    perfect_comparison_dir.mkdir(exist_ok=True)
-    student_comparison_dir.mkdir(exist_ok=True)
     
     logging.info(f"Input directory: {input_dir}")
     logging.info(f"Output will be saved in: {run_output_dir}")
@@ -375,88 +371,23 @@ def run_single_benchmark(dataset_construction_model: str, dataset_construction_p
                 logging.error(f"Failed to process: {csv_path.name}")
     
     logging.info(f"CSV processing complete. Processed: {processed_count}, Skipped: {skipped_count}")
-    logging.info("--- Starting comparison phase. ---")
+    logging.info("--- Starting after-cleaning comparison phase. ---")
 
-    # 2. Run comparisons against both ground truth types
-    all_results = {}
-    
-    # Create temporary directory with correctly named LLM files for comparison
-    temp_llm_dir = run_output_dir / 'temp_llm_for_comparison'
-    temp_llm_dir.mkdir(exist_ok=True)
-    
-    # Copy cleaned CSV files to temp directory with original names (without _cleaned suffix)
-    for cleaned_csv in llm_csv_output_dir.glob('*_cleaned.csv'):
-        original_name = cleaned_csv.stem.replace('_cleaned', '') + '.csv'
-        temp_csv = temp_llm_dir / original_name
-        import shutil
-        shutil.copy2(cleaned_csv, temp_csv)
-    
-    # Perfect transcriptions comparison
+    # 2. Run after-cleaning comparison (Perfect vs LLM-cleaned only)
     perfect_gt_dir = BENCHMARKING_ROOT / 'input_data' / 'transcriptions_xlsx' / 'perfect_transcriptions_xlsx'
     if perfect_gt_dir.exists():
-        logging.info("Running comparison against perfect transcriptions...")
-        perfect_results = run_comparison(
-            llm_csv_dir=temp_llm_dir,
-            gt_xlsx_dir=perfect_gt_dir,
-            output_dir=perfect_comparison_dir,
-            comparison_type="perfect"
+        logging.info("Running after-cleaning comparison against perfect transcriptions...")
+        after_cleaning_results = run_after_cleaning_comparison(
+            llm_csv_dir=llm_csv_output_dir,
+            perfect_xlsx_dir=perfect_gt_dir,
+            output_dir=run_output_dir
         )
-        if perfect_results:
-            all_results['perfect'] = perfect_results
-            logging.info("Perfect transcriptions comparison completed.")
+        if after_cleaning_results:
+            logging.info("After-cleaning comparison completed successfully.")
         else:
-            logging.warning("No perfect transcriptions comparison results generated.")
+            logging.warning("No after-cleaning comparison results generated.")
     else:
         logging.warning(f"Perfect transcriptions directory not found: {perfect_gt_dir}")
-    
-    # Student transcriptions comparison
-    student_gt_dir = BENCHMARKING_ROOT / 'input_data' / 'transcriptions_xlsx' / 'student_transcriptions_xlsx'
-    if student_gt_dir.exists():
-        logging.info("Running comparison against student transcriptions...")
-        student_results = run_comparison(
-            llm_csv_dir=temp_llm_dir,
-            gt_xlsx_dir=student_gt_dir,
-            output_dir=student_comparison_dir,
-            comparison_type="student"
-        )
-        if student_results:
-            all_results['student'] = student_results
-            logging.info("Student transcriptions comparison completed.")
-        else:
-            logging.warning("No student transcriptions comparison results generated.")
-    else:
-        logging.warning(f"Student transcriptions directory not found: {student_gt_dir}")
-    
-    # Clean up temporary directory
-    import shutil
-    shutil.rmtree(temp_llm_dir, ignore_errors=True)
-    
-    # 3. Generate combined results.json at prompt level
-    if all_results:
-        combined_results = {
-            'model': model,
-            'prompt': prompt_stem,
-            'timestamp': pd.Timestamp.now().isoformat(),
-            'perfect': all_results.get('perfect', {}),
-            'student': all_results.get('student', {}),
-            'summary': {
-                'perfect_cer': all_results.get('perfect', {}).get('character_error_rate', 0),
-                'student_cer': all_results.get('student', {}).get('character_error_rate', 0),
-                'perfect_match_rate': all_results.get('perfect', {}).get('overall_match_rate', 0),
-                'student_match_rate': all_results.get('student', {}).get('overall_match_rate', 0),
-                'files_processed': len(set(
-                    all_results.get('perfect', {}).get('files_with_results', []) +
-                    all_results.get('student', {}).get('files_with_results', [])
-                ))
-            }
-        }
-        
-        results_path = run_output_dir / "results.json"
-        with results_path.open('w', encoding='utf-8') as f:
-            json.dump(combined_results, f, indent=4)
-        logging.info(f"Combined results saved to {results_path}")
-    else:
-        logging.warning("No comparison results generated. Check if ground truth files exist.")
     
     logging.info(f"--- Dataset cleaning benchmark finished ---")
 
