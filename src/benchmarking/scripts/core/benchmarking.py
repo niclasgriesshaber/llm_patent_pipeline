@@ -519,7 +519,8 @@ def create_two_table_comparison(perfect_df: pd.DataFrame, llm_df: pd.DataFrame,
     perfect_llm_matches, llm_matches, perfect_llm_ids, llm_match_ids = match_entries_fuzzy(perfect_df, llm_df, fuzzy_threshold)
     
     # Create HTML tables with color coding
-    perfect_table_html = make_three_table_html(perfect_df, [True] * len(perfect_df), ['—'] * len(perfect_df), 
+    # For perfect table: use the matches and match IDs from the fuzzy matching
+    perfect_table_html = make_three_table_html(perfect_df, perfect_llm_matches, perfect_llm_ids, 
                                               'Perfect Transcription', 'perfect')
     llm_table_html = make_three_table_html(llm_df, llm_matches, llm_match_ids, 
                                           'LLM-Generated Transcription', 'llm')
@@ -540,14 +541,14 @@ def make_three_table_html(df: pd.DataFrame, matches: List[bool], match_ids: List
     for i, row in df.iterrows():
         # Color coding based on table type
         if table_type == 'perfect':
-            # Perfect table: highlight any differences (yellow background)
-            color = '#fff3cd' if not matches[i] else '#d4edda'  # yellow for differences, green for matches
+            # Perfect table: red for unmatched, green for matches
+            color = '#f8d7da' if not matches[i] else '#d4edda'  # red for unmatched, green for matches
         elif table_type == 'llm':
-            # LLM table: highlight differences from perfect (blue background)
-            color = '#cce5ff' if not matches[i] else '#d4edda'  # blue for differences, green for matches
+            # LLM table: red for unmatched, green for matches
+            color = '#f8d7da' if not matches[i] else '#d4edda'  # red for unmatched, green for matches
         elif table_type == 'student':
-            # Student table: highlight differences from perfect (red background)
-            color = '#f8d7da' if not matches[i] else '#d4edda'  # red for differences, green for matches
+            # Student table: red for unmatched, green for matches
+            color = '#f8d7da' if not matches[i] else '#d4edda'  # red for unmatched, green for matches
         else:
             color = '#d4edda'  # default green
         
