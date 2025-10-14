@@ -543,11 +543,30 @@ def make_three_table_html(df: pd.DataFrame, matches: List[bool], match_ids: List
 
 def make_three_table_diff_html(perfect_text: str, llm_text: str, student_text: str, 
                               filename: str, llm_cer: float, student_cer: float, performance_gap: float) -> str:
-    """Create side-by-side text comparison for three tables."""
+    """Create side-by-side text comparison for three tables with character-level highlighting."""
     
-    # Create diffs for both comparisons
-    perfect_llm_matcher = difflib.SequenceMatcher(None, perfect_text, llm_text)
-    perfect_student_matcher = difflib.SequenceMatcher(None, perfect_text, student_text)
+    def create_character_level_diff(text1: str, text2: str, highlight_class: str) -> str:
+        """Create character-level diff highlighting between two texts."""
+        matcher = difflib.SequenceMatcher(None, text1, text2)
+        html_parts = []
+        
+        for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+            if tag == 'equal':
+                # Same text - no highlighting
+                html_parts.append(html_escape(text1[i1:i2]))
+            elif tag in ['replace', 'delete']:
+                # Different text - highlight only the differing characters
+                diff_text = text1[i1:i2]
+                if diff_text.strip():  # Only highlight non-empty differences
+                    html_parts.append(f'<span class="{highlight_class}">{html_escape(diff_text)}</span>')
+                else:
+                    html_parts.append(html_escape(diff_text))
+            elif tag == 'insert':
+                # Insertions in text2 - highlight the corresponding part in text1
+                if i1 < len(text1):
+                    html_parts.append(f'<span class="{highlight_class}">{html_escape(text1[i1:i2])}</span>')
+        
+        return ''.join(html_parts)
     
     html_parts = [
         f'<section class="three-diff-section">',
@@ -570,53 +589,25 @@ def make_three_table_diff_html(perfect_text: str, llm_text: str, student_text: s
         f'<div class="three-text-comparison">',
         f'<div class="text-container">',
         f'<div class="text-header perfect-header">Perfect Transcription</div>',
-        f'<div class="text-content">'
-    ]
-    
-    # Process perfect text with highlighting for both comparisons
-    for tag, i1, i2, j1, j2 in perfect_llm_matcher.get_opcodes():
-        if tag == 'equal':
-            html_parts.append(html_escape(perfect_text[i1:i2]))
-        else:
-            # Highlight differences with yellow (reference)
-            html_parts.append(f'<span class="diff-highlight-perfect">{html_escape(perfect_text[i1:i2])}</span>')
-    
-    html_parts.extend([
-        f'</div>',  # Close text-content
-        f'</div>',  # Close text-container
+        f'<div class="text-content">',
+        html_escape(perfect_text),  # No highlighting for perfect text
+        f'</div>',
+        f'</div>',
         f'<div class="text-container">',
-        f'<div class="text-header llm-header">LLM-Generated Transcriptions</div>',
-        f'<div class="text-content">'
-    ])
-    
-    # Process LLM text with blue highlighting
-    for tag, i1, i2, j1, j2 in perfect_llm_matcher.get_opcodes():
-        if tag == 'equal':
-            html_parts.append(html_escape(llm_text[j1:j2]))
-        else:
-            html_parts.append(f'<span class="diff-highlight-llm">{html_escape(llm_text[j1:j2])}</span>')
-    
-    html_parts.extend([
-        f'</div>',  # Close text-content
-        f'</div>',  # Close text-container
+        f'<div class="text-header llm-header">LLM-Generated Transcription</div>',
+        f'<div class="text-content">',
+        create_character_level_diff(llm_text, perfect_text, 'diff-highlight-llm'),
+        f'</div>',
+        f'</div>',
         f'<div class="text-container">',
-        f'<div class="text-header student-header">Student Transcriptions</div>',
-        f'<div class="text-content">'
-    ])
-    
-    # Process student text with red highlighting
-    for tag, i1, i2, j1, j2 in perfect_student_matcher.get_opcodes():
-        if tag == 'equal':
-            html_parts.append(html_escape(student_text[j1:j2]))
-        else:
-            html_parts.append(f'<span class="diff-highlight-student">{html_escape(student_text[j1:j2])}</span>')
-    
-    html_parts.extend([
-        f'</div>',  # Close text-content
-        f'</div>',  # Close text-container
+        f'<div class="text-header student-header">Student Transcription</div>',
+        f'<div class="text-content">',
+        create_character_level_diff(student_text, perfect_text, 'diff-highlight-student'),
+        f'</div>',
+        f'</div>',
         f'</div>',  # Close three-text-comparison
         f'</section>'
-    ])
+    ]
     
     return ''.join(html_parts)
 
@@ -880,7 +871,7 @@ def create_document_outline() -> str:
     return '''
     <div class="document-outline">
         <h2>Document Outline</h2>
-        <p><strong>Note:</strong> This entire document was AI-generated using advanced language models and automated analysis tools.</p>
+        <p><strong>Note:</strong> This entire document was AI-generated using Claude-4.5-Sonnet in the Cursor IDE.</p>
         <p>This report provides a comprehensive analysis of transcription accuracy comparing LLM-generated and student-generated transcriptions against Perfect ground truth. The analysis includes:</p>
         <ol>
             <li><strong>File Availability Summary</strong></li>
