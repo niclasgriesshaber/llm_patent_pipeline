@@ -291,7 +291,7 @@ def process_single_csv(csv_path: Path, output_dir: Path, prompt_template: str, m
 
 # --- Main Functions ---
 
-def run_single_benchmark(dataset_construction_model: str, dataset_construction_prompt: str, model: str, prompt: str):
+def run_single_benchmark(dataset_construction_model: str, dataset_construction_prompt: str, model: str, prompt: str, threshold: float = 0.85):
     """
     Executes the full benchmarking pipeline for dataset cleaning for a single model and prompt combination.
     """
@@ -380,7 +380,8 @@ def run_single_benchmark(dataset_construction_model: str, dataset_construction_p
         after_cleaning_results = run_after_cleaning_comparison(
             llm_csv_dir=llm_csv_output_dir,
             perfect_xlsx_dir=perfect_gt_dir,
-            output_dir=run_output_dir
+            output_dir=run_output_dir,
+            fuzzy_threshold=threshold
         )
         if after_cleaning_results:
             logging.info("After-cleaning comparison completed successfully.")
@@ -418,12 +419,23 @@ def main():
         type=str,
         help='The filename of the prompt to use for dataset cleaning (e.g., "cleaning_v0.0_prompt.txt").'
     )
+    parser.add_argument(
+        '--threshold',
+        type=float,
+        default=0.85,
+        help='Fuzzy matching threshold for patent entry matching (0.0-1.0). Default: 0.85'
+    )
 
     
     args = parser.parse_args()
+    
+    # Validate threshold parameter
+    if not (0.0 <= args.threshold <= 1.0):
+        logging.error(f"Threshold must be between 0.0 and 1.0, got: {args.threshold}")
+        sys.exit(1)
 
     if args.dataset_construction_model and args.dataset_construction_prompt and args.model and args.prompt:
-        run_single_benchmark(args.dataset_construction_model, args.dataset_construction_prompt, args.model, args.prompt)
+        run_single_benchmark(args.dataset_construction_model, args.dataset_construction_prompt, args.model, args.prompt, args.threshold)
         logging.info("--- Single dataset cleaning benchmark run complete. ---")
     else:
         parser.print_help()

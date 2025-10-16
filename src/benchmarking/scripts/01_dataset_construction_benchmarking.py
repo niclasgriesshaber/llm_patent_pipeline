@@ -25,7 +25,7 @@ MODELS = ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-2.5-pro']
 
 # --- Main Functions ---
 
-def run_single_benchmark(model_name: str, prompt_name: str, max_workers: int = 20):
+def run_single_benchmark(model_name: str, prompt_name: str, max_workers: int = 20, threshold: float = 0.85):
     """
     Executes the full benchmarking pipeline for a single model and prompt combination.
     """
@@ -125,7 +125,7 @@ def run_single_benchmark(model_name: str, prompt_name: str, max_workers: int = 2
             perfect_xlsx_dir=perfect_xlsx_dir,
             sampled_pdfs_dir=SAMPLED_PDFS_DIR,
             output_dir=run_output_dir,
-            fuzzy_threshold=0.85
+            fuzzy_threshold=threshold
         )
         
         if unified_results:
@@ -170,8 +170,19 @@ def main():
         default=20,
         help='Maximum number of worker threads for parallel PDF processing. Default: 20'
     )
+    parser.add_argument(
+        '--threshold',
+        type=float,
+        default=0.85,
+        help='Fuzzy matching threshold for patent entry matching (0.0-1.0). Default: 0.85'
+    )
     
     args = parser.parse_args()
+    
+    # Validate threshold parameter
+    if not (0.0 <= args.threshold <= 1.0):
+        logging.error(f"Threshold must be between 0.0 and 1.0, got: {args.threshold}")
+        sys.exit(1)
 
     if args.run_all:
         logging.info("--- Starting full benchmark run for all models and prompts. ---")
@@ -179,13 +190,13 @@ def main():
         
         for model_name in MODELS:
             for prompt_name in prompt_files:
-                run_single_benchmark(model_name, prompt_name, args.max_workers)
+                run_single_benchmark(model_name, prompt_name, args.max_workers, args.threshold)
         
         logging.info("--- All benchmark runs complete. Generating final dashboard. ---")
         create_dashboard(BENCHMARKING_ROOT)
 
     elif args.model and args.prompt:
-        run_single_benchmark(args.model, args.prompt, args.max_workers)
+        run_single_benchmark(args.model, args.prompt, args.max_workers, args.threshold)
         logging.info("--- Single benchmark run complete. ---")
         logging.info(f"To generate/update the main dashboard, run: python src/benchmarking/scripts/create_dashboard.py")
 

@@ -770,7 +770,7 @@ def make_full_html(title: str, global_threshold_html: str, sections_html: str, s
 
 # --- Main Benchmarking Function ---
 
-def run_single_benchmark(dataset_cleaning_model: str, dataset_cleaning_prompt: str, model: str, prompt: str):
+def run_single_benchmark(dataset_cleaning_model: str, dataset_cleaning_prompt: str, model: str, prompt: str, threshold: float = 0.85):
     """
     Executes the full benchmarking pipeline for variable extraction for a single model and prompt combination.
     """
@@ -854,7 +854,8 @@ def run_single_benchmark(dataset_cleaning_model: str, dataset_cleaning_prompt: s
         variable_extraction_results = run_variable_extraction_comparison(
             llm_csv_dir=llm_csv_output_dir,
             perfect_xlsx_dir=perfect_gt_dir,
-            output_dir=run_output_dir
+            output_dir=run_output_dir,
+            fuzzy_threshold=threshold
         )
         if variable_extraction_results:
             logging.info("Variable extraction comparison completed successfully.")
@@ -894,11 +895,22 @@ def main():
         type=str,
         help='The filename of the prompt to use for variable extraction (e.g., "variable_extraction_v0.0_prompt.txt").'
     )
+    parser.add_argument(
+        '--threshold',
+        type=float,
+        default=0.85,
+        help='Fuzzy matching threshold for patent entry matching (0.0-1.0). Default: 0.85'
+    )
     
     args = parser.parse_args()
+    
+    # Validate threshold parameter
+    if not (0.0 <= args.threshold <= 1.0):
+        logging.error(f"Threshold must be between 0.0 and 1.0, got: {args.threshold}")
+        sys.exit(1)
 
     if args.dataset_cleaning_model and args.dataset_cleaning_prompt and args.model and args.prompt:
-        run_single_benchmark(args.dataset_cleaning_model, args.dataset_cleaning_prompt, args.model, args.prompt)
+        run_single_benchmark(args.dataset_cleaning_model, args.dataset_cleaning_prompt, args.model, args.prompt, args.threshold)
         logging.info("--- Single benchmark run complete. ---")
         logging.info(f"To generate/update the main dashboard, run: python src/benchmarking/scripts/create_dashboard.py")
     else:
