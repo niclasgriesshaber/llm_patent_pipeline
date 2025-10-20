@@ -573,43 +573,83 @@ def make_three_table_diff_html(perfect_text: str, llm_text: str, student_text: s
     """Create side-by-side text comparison for three tables with character-level highlighting."""
     
     def create_character_level_diff(text1: str, text2: str, highlight_class: str) -> str:
-        """Create precise character-level diff highlighting between two texts."""
+        """Create ultra-precise character-level diff highlighting while preserving text formatting."""
         html_parts = []
         
-        # Use difflib for precise character-level differences
-        matcher = difflib.SequenceMatcher(None, text1, text2)
+        # Use dynamic programming for precise alignment
+        aligned_text1, aligned_text2 = align_texts_for_comparison(text1, text2)
         
-        for tag, i1, i2, j1, j2 in matcher.get_opcodes():
-            if tag == 'equal':
-                # Same text - no highlighting
-                html_parts.append(html_escape(text1[i1:i2]))
-            elif tag == 'replace':
-                # For replace operations, always do character-by-character comparison for maximum precision
-                segment1 = text1[i1:i2]
-                segment2 = text2[j1:j2]
-                
-                # Character-by-character comparison for maximum precision
-                min_len = min(len(segment1), len(segment2))
-                
-                # Compare each character individually
-                for k in range(min_len):
-                    if segment1[k] == segment2[k]:
-                        html_parts.append(html_escape(segment1[k]))
-                    else:
-                        html_parts.append(f'<span class="{highlight_class}">{html_escape(segment1[k])}</span>')
-                
-                # Handle remaining characters in segment1 (deletions)
-                for k in range(min_len, len(segment1)):
-                    html_parts.append(f'<span class="{highlight_class}">{html_escape(segment1[k])}</span>')
-                    
-            elif tag == 'delete':
-                # Text exists in text1 but not in text2 - highlight it
-                html_parts.append(f'<span class="{highlight_class}">{html_escape(text1[i1:i2])}</span>')
-            elif tag == 'insert':
-                # Text exists in text2 but not in text1 - don't highlight anything in text1
-                pass
+        # Create a mapping to track which characters in aligned_text1 correspond to original text1
+        # This will help us distinguish between original spaces and alignment spaces
+        original_positions = []
+        i = 0  # Index in original text1
+        
+        for j in range(len(aligned_text1)):
+            if aligned_text1[j] != ' ' or (i < len(text1) and text1[i] == ' '):
+                # This character corresponds to original text1 (either non-space or original space)
+                original_positions.append(i)
+                i += 1
+            else:
+                # This is an alignment space - mark as -1
+                original_positions.append(-1)
+        
+        # Now process the aligned texts with proper mapping
+        for j in range(len(aligned_text1)):
+            if original_positions[j] == -1:
+                # This is an alignment space - skip it
+                continue
+            elif aligned_text1[j] == aligned_text2[j]:
+                # Characters match - no highlighting
+                html_parts.append(html_escape(aligned_text1[j]))
+            else:
+                # Characters differ - highlight the character
+                html_parts.append(f'<span class="{highlight_class}">{html_escape(aligned_text1[j])}</span>')
         
         return ''.join(html_parts)
+    
+    def align_texts_for_comparison(text1: str, text2: str):
+        """Align two texts for character-by-character comparison using dynamic programming."""
+        # Use dynamic programming to find optimal alignment
+        m, n = len(text1), len(text2)
+        
+        # Create DP table
+        dp = [[0] * (n + 1) for _ in range(m + 1)]
+        
+        # Fill DP table
+        for i in range(m + 1):
+            for j in range(n + 1):
+                if i == 0:
+                    dp[i][j] = j
+                elif j == 0:
+                    dp[i][j] = i
+                elif text1[i-1] == text2[j-1]:
+                    dp[i][j] = dp[i-1][j-1]
+                else:
+                    dp[i][j] = 1 + min(dp[i-1][j], dp[i][j-1], dp[i-1][j-1])
+        
+        # Backtrack to find alignment
+        aligned1, aligned2 = [], []
+        i, j = m, n
+        
+        while i > 0 or j > 0:
+            if i > 0 and j > 0 and text1[i-1] == text2[j-1]:
+                # Characters match
+                aligned1.append(text1[i-1])
+                aligned2.append(text2[j-1])
+                i -= 1
+                j -= 1
+            elif i > 0 and (j == 0 or dp[i-1][j] <= dp[i][j-1]):
+                # Deletion in text1
+                aligned1.append(text1[i-1])
+                aligned2.append(' ')
+                i -= 1
+            else:
+                # Insertion in text2
+                aligned1.append(' ')
+                aligned2.append(text2[j-1])
+                j -= 1
+        
+        return ''.join(reversed(aligned1)), ''.join(reversed(aligned2))
     
     html_parts = [
         f'<section class="three-diff-section">',
