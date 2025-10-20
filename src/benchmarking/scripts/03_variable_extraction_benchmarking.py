@@ -18,7 +18,6 @@ from rapidfuzz.distance import Levenshtein
 
 # Core modules are now in the same directory
 from core.benchmarking import run_variable_extraction_comparison
-from create_dashboard import create_dashboard
 
 # --- Configuration ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')

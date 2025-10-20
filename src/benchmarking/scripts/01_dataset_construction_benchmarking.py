@@ -9,7 +9,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 # Core modules are now in the same directory
 from core.llm_processing import process_pdf
 from core.benchmarking import run_comparison, run_unified_comparison
-from create_dashboard import create_dashboard
 
 # --- Configuration ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -192,13 +191,11 @@ def main():
             for prompt_name in prompt_files:
                 run_single_benchmark(model_name, prompt_name, args.max_workers, args.threshold)
         
-        logging.info("--- All benchmark runs complete. Generating final dashboard. ---")
-        create_dashboard(BENCHMARKING_ROOT)
+        logging.info("--- All benchmark runs complete. ---")
 
     elif args.model and args.prompt:
         run_single_benchmark(args.model, args.prompt, args.max_workers, args.threshold)
         logging.info("--- Single benchmark run complete. ---")
-        logging.info(f"To generate/update the main dashboard, run: python src/benchmarking/scripts/create_dashboard.py")
 
     else:
         parser.print_help()
