@@ -1067,6 +1067,34 @@ def create_cer_chart_html(summary_rows: List[Dict]) -> str:
                     bordercolor: '#ccc',
                     borderwidth: 1
                 }},
+                shapes: [{{
+                    type: 'line',
+                    x0: 1894,
+                    x1: 1894,
+                    y0: 0,
+                    y1: 1,
+                    yref: 'paper',
+                    line: {{
+                        color: '#666',
+                        width: 2,
+                        dash: 'dot'
+                    }}
+                }}],
+                annotations: [{{
+                    x: 1894,
+                    y: 0.9,
+                    yref: 'paper',
+                    text: 'Printed to blackletter change',
+                    showarrow: true,
+                    arrowhead: 2,
+                    arrowcolor: '#666',
+                    ax: 0,
+                    ay: -40,
+                    font: {{
+                        size: 12,
+                        color: '#666'
+                    }}
+                }}],
                 margin: {{ t: 60, b: 60, l: 80, r: 40 }},
                 plot_bgcolor: 'rgba(248,248,248,0.5)',
                 paper_bgcolor: 'white'
