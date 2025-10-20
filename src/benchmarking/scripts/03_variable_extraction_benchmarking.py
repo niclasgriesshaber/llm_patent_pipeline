@@ -911,7 +911,6 @@ def main():
     if args.dataset_cleaning_model and args.dataset_cleaning_prompt and args.model and args.prompt:
         run_single_benchmark(args.dataset_cleaning_model, args.dataset_cleaning_prompt, args.model, args.prompt, args.threshold)
         logging.info("--- Single benchmark run complete. ---")
-        logging.info(f"To generate/update the main dashboard, run: python src/benchmarking/scripts/create_dashboard.py")
     else:
         parser.print_help()
         logging.warning("Please specify all required arguments: --dataset_cleaning_model, --dataset_cleaning_prompt, --model, and --prompt.")
