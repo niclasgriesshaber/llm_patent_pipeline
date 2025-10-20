@@ -573,10 +573,10 @@ def make_three_table_diff_html(perfect_text: str, llm_text: str, student_text: s
     """Create side-by-side text comparison for three tables with character-level highlighting."""
     
     def create_character_level_diff(text1: str, text2: str, highlight_class: str) -> str:
-        """Create very conservative character-level diff highlighting between two texts."""
+        """Create precise character-level diff highlighting between two texts."""
         html_parts = []
         
-        # Use a very conservative approach: only highlight when we're absolutely sure there's a difference
+        # Use difflib for precise character-level differences
         matcher = difflib.SequenceMatcher(None, text1, text2)
         
         for tag, i1, i2, j1, j2 in matcher.get_opcodes():
@@ -584,47 +584,24 @@ def make_three_table_diff_html(perfect_text: str, llm_text: str, student_text: s
                 # Same text - no highlighting
                 html_parts.append(html_escape(text1[i1:i2]))
             elif tag == 'replace':
-                # For replace operations, be extremely conservative
+                # For replace operations, always do character-by-character comparison for maximum precision
                 segment1 = text1[i1:i2]
                 segment2 = text2[j1:j2]
                 
-                # Only highlight if segments are very different in length (>5 characters) OR
-                # if they're short but completely different
-                if abs(len(segment1) - len(segment2)) > 5:
-                    html_parts.append(f'<span class="{highlight_class}">{html_escape(segment1)}</span>')
-                elif len(segment1) <= 3 and len(segment2) <= 3:
-                    # For very short segments, do character-by-character comparison
-                    min_len = min(len(segment1), len(segment2))
-                    for k in range(min_len):
-                        if segment1[k] == segment2[k]:
-                            html_parts.append(html_escape(segment1[k]))
-                        else:
-                            html_parts.append(f'<span class="{highlight_class}">{html_escape(segment1[k])}</span>')
-                    
-                    # Handle remaining characters in segment1
-                    for k in range(min_len, len(segment1)):
-                        html_parts.append(f'<span class="{highlight_class}">{html_escape(segment1[k])}</span>')
-                else:
-                    # For medium-length segments, be very conservative - only highlight if most characters differ
-                    min_len = min(len(segment1), len(segment2))
-                    if min_len > 0:
-                        diff_count = sum(1 for k in range(min_len) if segment1[k] != segment2[k])
-                        # Only highlight if more than 70% of characters differ
-                        if diff_count / min_len > 0.7:
-                            html_parts.append(f'<span class="{highlight_class}">{html_escape(segment1)}</span>')
-                        else:
-                            # Do character-by-character for high-confidence differences
-                            for k in range(min_len):
-                                if segment1[k] == segment2[k]:
-                                    html_parts.append(html_escape(segment1[k]))
-                                else:
-                                    html_parts.append(f'<span class="{highlight_class}">{html_escape(segment1[k])}</span>')
-                            
-                            # Handle remaining characters in segment1
-                            for k in range(min_len, len(segment1)):
-                                html_parts.append(f'<span class="{highlight_class}">{html_escape(segment1[k])}</span>')
+                # Character-by-character comparison for maximum precision
+                min_len = min(len(segment1), len(segment2))
+                
+                # Compare each character individually
+                for k in range(min_len):
+                    if segment1[k] == segment2[k]:
+                        html_parts.append(html_escape(segment1[k]))
                     else:
-                        html_parts.append(f'<span class="{highlight_class}">{html_escape(segment1)}</span>')
+                        html_parts.append(f'<span class="{highlight_class}">{html_escape(segment1[k])}</span>')
+                
+                # Handle remaining characters in segment1 (deletions)
+                for k in range(min_len, len(segment1)):
+                    html_parts.append(f'<span class="{highlight_class}">{html_escape(segment1[k])}</span>')
+                    
             elif tag == 'delete':
                 # Text exists in text1 but not in text2 - highlight it
                 html_parts.append(f'<span class="{highlight_class}">{html_escape(text1[i1:i2])}</span>')
