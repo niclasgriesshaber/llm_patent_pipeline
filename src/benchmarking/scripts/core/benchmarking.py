@@ -434,11 +434,17 @@ def find_matching_files(sampled_pdfs_dir: Path, student_xlsx_dir: Path, perfect_
             file_matrix[stem]['student'] = student_path
             file_matrix[stem]['available'].append('student')
         
-        # Check LLM CSV availability
-        llm_path = llm_csv_dir / f"{stem}.csv"
-        if llm_path.exists():
-            file_matrix[stem]['llm'] = llm_path
-            file_matrix[stem]['available'].append('llm')
+        # Check LLM CSV availability (handle both regular and _cleaned files)
+        llm_candidates = [
+            llm_csv_dir / f"{stem}.csv",
+            llm_csv_dir / f"{stem}_cleaned.csv"
+        ]
+        
+        for llm_path in llm_candidates:
+            if llm_path.exists():
+                file_matrix[stem]['llm'] = llm_path
+                file_matrix[stem]['available'].append('llm')
+                break
         
         # Check perfect transcription availability (handle naming variations)
         perfect_candidates = [
@@ -737,7 +743,7 @@ def run_unified_comparison(llm_csv_dir: Path, student_xlsx_dir: Path, perfect_xl
         if 'perfect' in file_data['available']:
             perfect_df = load_gt_file(file_data['perfect'])
         if 'llm' in file_data['available']:
-            llm_df = load_llm_file(llm_csv_dir / f"{stem}.csv")
+            llm_df = load_llm_file(file_data['llm'])
         if 'student' in file_data['available']:
             student_df = load_gt_file(file_data['student'])
         
@@ -796,7 +802,111 @@ def run_unified_comparison(llm_csv_dir: Path, student_xlsx_dir: Path, perfect_xl
                     })
     
     # Generate reports
-    generate_unified_reports(comparison_results, diff_sections, summary_rows, file_matrix, output_dir, fuzzy_threshold, llm_csv_dir, student_xlsx_dir, perfect_xlsx_dir)
+    generate_unified_reports(comparison_results, diff_sections, summary_rows, file_matrix, output_dir, fuzzy_threshold, llm_csv_dir, student_xlsx_dir, perfect_xlsx_dir, generate_fuzzy_report=True)
+    
+    return {
+        'total_files': len(valid_files),
+        'comparison_results': len(comparison_results),
+        'summary_rows': len(summary_rows)
+    }
+
+def run_unified_comparison_cer_only(llm_csv_dir: Path, student_xlsx_dir: Path, perfect_xlsx_dir: Path, 
+                                   sampled_pdfs_dir: Path, output_dir: Path, fuzzy_threshold: float = 0.85):
+    """
+    Run unified comparison with three-table format but only generate the character error rate report.
+    This is used by the 02 script to avoid generating unnecessary fuzzy matching reports.
+    """
+    logging.info("Starting unified three-table comparison (CER only)")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Find matching files
+    file_matrix = find_matching_files(sampled_pdfs_dir, student_xlsx_dir, perfect_xlsx_dir, llm_csv_dir)
+    
+    # Filter files that have at least two of the three components
+    valid_files = {stem: data for stem, data in file_matrix.items() 
+                   if len(data['available']) >= 2}
+    
+    if not valid_files:
+        logging.warning("No valid file combinations found. Cannot proceed with comparison.")
+        return None
+    
+    logging.info(f"Found {len(valid_files)} files with valid combinations")
+    
+    # Process each file
+    comparison_results = []
+    diff_sections = []
+    summary_rows = []
+    
+    for stem, file_data in valid_files.items():
+        logging.info(f"Processing {stem}")
+        
+        # Load available data
+        perfect_df = pd.DataFrame({'id': [], 'entry': []})
+        llm_df = pd.DataFrame({'id': [], 'entry': []})
+        student_df = pd.DataFrame({'id': [], 'entry': []})
+        
+        if 'perfect' in file_data['available']:
+            perfect_df = load_gt_file(file_data['perfect'])
+        if 'llm' in file_data['available']:
+            llm_df = load_llm_file(file_data['llm'])
+        if 'student' in file_data['available']:
+            student_df = load_gt_file(file_data['student'])
+        
+        # Create comparison if we have perfect + at least one other
+        if not perfect_df.empty and (not llm_df.empty or not student_df.empty):
+            if not llm_df.empty and not student_df.empty:
+                # Full three-way comparison
+                result = create_three_table_comparison(perfect_df, llm_df, student_df, stem, fuzzy_threshold)
+                comparison_results.append(result)
+                
+                # Create diff section
+                perfect_text = create_text_file_from_entries(perfect_df)
+                llm_text = create_text_file_from_entries(llm_df)
+                student_text = create_text_file_from_entries(student_df)
+                
+                diff_sections.append(make_three_table_diff_html(
+                    perfect_text, llm_text, student_text, stem, 
+                    result['llm_cer'], result['student_cer'], result['performance_gap']
+                ))
+                
+                # Add to summary
+                year = extract_year_from_filename(stem)
+                summary_rows.append({
+                    'file': stem,
+                    'year': year,
+                    'llm_cer': result['llm_cer'],
+                    'student_cer': result['student_cer'],
+                    'performance_gap': result['performance_gap'],
+                    'llm_matches': result['llm_matches'],
+                    'student_matches': result['student_matches'],
+                    'perfect_entries': result['perfect_entries']
+                })
+            else:
+                # Partial comparison - create empty table with "File not available"
+                if llm_df.empty:
+                    llm_table = make_empty_table_html("LLM Transcription", "llm")
+                else:
+                    llm_table = make_variable_table_html_simple(perfect_df, llm_df, [], [], [], [], stem)[0]
+                
+                if student_df.empty:
+                    student_table = make_empty_table_html("Student Transcription", "student")
+                else:
+                    student_table = make_variable_table_html_simple(perfect_df, student_df, [], [], [], [], stem)[0]
+                
+                perfect_table = make_variable_table_html_simple(perfect_df, perfect_df, [], [], [], [], stem)[0]
+                
+                comparison_results.append({
+                    'filename': stem,
+                    'perfect_table': perfect_table,
+                    'llm_table': llm_table,
+                    'student_table': student_table,
+                    'llm_cer': None,
+                    'student_cer': None,
+                    'performance_gap': None
+                })
+    
+    # Generate only the diff report (3-way character error rate)
+    generate_diff_report(diff_sections, summary_rows, file_matrix, output_dir, llm_csv_dir, student_xlsx_dir, perfect_xlsx_dir)
     
     return {
         'total_files': len(valid_files),
@@ -817,7 +927,8 @@ def make_empty_table_html(title: str, table_type: str) -> str:
 
 def generate_unified_reports(comparison_results: List[Dict], diff_sections: List[str], 
                            summary_rows: List[Dict], file_matrix: Dict, output_dir: Path, fuzzy_threshold: float,
-                           llm_csv_dir: Path, student_xlsx_dir: Path, perfect_xlsx_dir: Path):
+                           llm_csv_dir: Path, student_xlsx_dir: Path, perfect_xlsx_dir: Path, 
+                           generate_fuzzy_report: bool = True):
     """Generate unified HTML reports with separate two-way and three-way formats."""
     
     # Create 2-way comparison results for fuzzy report (Perfect vs LLM only)
@@ -835,8 +946,9 @@ def generate_unified_reports(comparison_results: List[Dict], diff_sections: List
                 logging.warning(f"Error creating 2-way comparison for {stem}: {e}")
                 continue
     
-    # Generate fuzzy report (2-way)
-    generate_fuzzy_report(two_way_comparison_results, file_matrix, output_dir, fuzzy_threshold)
+    # Generate fuzzy report (2-way) only if requested
+    if generate_fuzzy_report:
+        generate_fuzzy_report(two_way_comparison_results, file_matrix, output_dir, fuzzy_threshold)
     
     # Generate diff report (3-way)
     generate_diff_report(diff_sections, summary_rows, file_matrix, output_dir, llm_csv_dir, student_xlsx_dir, perfect_xlsx_dir)

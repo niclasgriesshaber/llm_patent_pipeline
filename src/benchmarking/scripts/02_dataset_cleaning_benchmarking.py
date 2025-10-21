@@ -12,7 +12,7 @@ import google.genai as genai
 from google.genai import types
 
 # Core modules are now in the same directory
-from core.benchmarking import run_after_cleaning_comparison
+from core.benchmarking import run_after_cleaning_comparison, run_unified_comparison
 
 # --- Configuration ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -388,6 +388,41 @@ def run_single_benchmark(dataset_construction_model: str, dataset_construction_p
             logging.warning("No after-cleaning comparison results generated.")
     else:
         logging.warning(f"Perfect transcriptions directory not found: {perfect_gt_dir}")
+    
+    # 3. Run 3-way character error rate comparison (Perfect vs LLM-cleaned vs Student)
+    student_xlsx_dir = BENCHMARKING_ROOT / 'input_data' / 'transcriptions_xlsx' / 'student_transcriptions_xlsx'
+    sampled_pdfs_dir = BENCHMARKING_ROOT / 'input_data' / 'sampled_pdfs'
+    
+    if student_xlsx_dir.exists() and perfect_gt_dir.exists() and sampled_pdfs_dir.exists():
+        logging.info("Running 3-way character error rate comparison with cleaned data...")
+        
+        # Use the cleaned LLM CSV files for the 3-way comparison
+        # Call a custom function that only generates the character error rate report
+        from core.benchmarking import run_unified_comparison_cer_only
+        
+        unified_results = run_unified_comparison_cer_only(
+            llm_csv_dir=llm_csv_output_dir,
+            student_xlsx_dir=student_xlsx_dir,
+            perfect_xlsx_dir=perfect_gt_dir,
+            sampled_pdfs_dir=sampled_pdfs_dir,
+            output_dir=run_output_dir,
+            fuzzy_threshold=threshold
+        )
+        
+        if unified_results:
+            logging.info("3-way character error rate comparison completed successfully.")
+            logging.info(f"Total files processed: {unified_results.get('total_files', 0)}")
+            logging.info(f"Comparison results generated: {unified_results.get('comparison_results', 0)}")
+        else:
+            logging.warning("No 3-way character error rate comparison results generated.")
+    else:
+        logging.warning(f"Required directories not found for 3-way comparison:")
+        if not student_xlsx_dir.exists():
+            logging.warning(f"  - Student transcriptions: {student_xlsx_dir}")
+        if not perfect_gt_dir.exists():
+            logging.warning(f"  - Perfect transcriptions: {perfect_gt_dir}")
+        if not sampled_pdfs_dir.exists():
+            logging.warning(f"  - Sampled PDFs: {sampled_pdfs_dir}")
     
     logging.info(f"--- Dataset cleaning benchmark finished ---")
 
