@@ -24,6 +24,28 @@ MODELS = ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-2.5-pro']
 
 # --- Main Functions ---
 
+def is_special_volume(pdf_path: Path) -> bool:
+    """Check if the PDF is from 1878 or 1879 special volumes."""
+    filename = pdf_path.name
+    return '1878' in filename or '1879' in filename
+
+def get_prompt_for_pdf(pdf_path: Path, prompt_name: str) -> str:
+    """Get the appropriate prompt text for a PDF file."""
+    if is_special_volume(pdf_path):
+        # Use special volumes prompt for 1878/1879
+        special_prompt_file = PROMPTS_DIR / 'special_volumes_prompt.txt'
+        if not special_prompt_file.exists():
+            logging.error(f"Special volumes prompt file not found: {special_prompt_file}. Aborting.")
+            raise FileNotFoundError(f"Special volumes prompt file not found: {special_prompt_file}")
+        return special_prompt_file.read_text(encoding='utf-8')
+    else:
+        # Use regular prompt for other years
+        prompt_file = PROMPTS_DIR / prompt_name
+        if not prompt_file.exists():
+            logging.error(f"Prompt file not found: {prompt_file}. Aborting.")
+            raise FileNotFoundError(f"Prompt file not found: {prompt_file}")
+        return prompt_file.read_text(encoding='utf-8')
+
 def run_single_benchmark(model_name: str, prompt_name: str, max_workers: int = 20, threshold: float = 0.85):
     """
     Executes the full benchmarking pipeline for a single model and prompt combination.
@@ -80,10 +102,13 @@ def run_single_benchmark(model_name: str, prompt_name: str, max_workers: int = 2
         def process_single_pdf(pdf_path):
             """Process a single PDF and return success status."""
             try:
-                logging.info(f"Processing PDF: {pdf_path.name}")
+                # Get the appropriate prompt for this PDF
+                pdf_prompt_text = get_prompt_for_pdf(pdf_path, prompt_name)
+                prompt_type = "special volumes" if is_special_volume(pdf_path) else "regular"
+                logging.info(f"Processing PDF: {pdf_path.name} with {prompt_type} prompt")
                 process_pdf(
                     model_name=model_name,
-                    prompt_text=prompt_text,
+                    prompt_text=pdf_prompt_text,
                     pdf_path=pdf_path,
                     output_dir=llm_csv_output_dir
                 )

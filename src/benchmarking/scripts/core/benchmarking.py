@@ -906,7 +906,7 @@ def run_unified_comparison_cer_only(llm_csv_dir: Path, student_xlsx_dir: Path, p
                 })
     
     # Generate only the diff report (3-way character error rate)
-    generate_diff_report(diff_sections, summary_rows, file_matrix, output_dir, llm_csv_dir, student_xlsx_dir, perfect_xlsx_dir)
+    #generate_diff_report(diff_sections, summary_rows, file_matrix, output_dir, llm_csv_dir, student_xlsx_dir, perfect_xlsx_dir)
     
     return {
         'total_files': len(valid_files),
@@ -948,12 +948,12 @@ def generate_unified_reports(comparison_results: List[Dict], diff_sections: List
     
     # Generate fuzzy report (2-way) only if requested
     if generate_fuzzy_report:
-        generate_fuzzy_report(two_way_comparison_results, file_matrix, output_dir, fuzzy_threshold)
+        generate_fuzzy_report_func(two_way_comparison_results, file_matrix, output_dir, fuzzy_threshold)
     
     # Generate diff report (3-way)
     generate_diff_report(diff_sections, summary_rows, file_matrix, output_dir, llm_csv_dir, student_xlsx_dir, perfect_xlsx_dir)
 
-def generate_fuzzy_report(comparison_results: List[Dict], file_matrix: Dict, output_dir: Path, fuzzy_threshold: float, report_type: str = "before_cleaning"):
+def generate_fuzzy_report_func(comparison_results: List[Dict], file_matrix: Dict, output_dir: Path, fuzzy_threshold: float, report_type: str = "before_cleaning"):
     """Generate fuzzy matching report with two-table format (Perfect vs LLM only)."""
     
     # Create file availability summary (Perfect and LLM only)
@@ -1579,7 +1579,7 @@ def run_after_cleaning_comparison(llm_csv_dir: Path, perfect_xlsx_dir: Path, out
         return None
     
     # Generate the 2-way fuzzy report
-    generate_fuzzy_report(comparison_results, file_matrix, output_dir, fuzzy_threshold, "after_cleaning")
+    generate_fuzzy_report_func(comparison_results, file_matrix, output_dir, fuzzy_threshold, "after_cleaning")
     
     return {
         'total_files': len(common_stems),

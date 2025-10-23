@@ -35,10 +35,32 @@ MODELS = ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-
 
 # --- LLM Processing Functions (adapted from complete_patent.py) ---
 
+def is_special_volume_csv(csv_path: Path) -> bool:
+    """Check if the CSV is from 1878 or 1879 special volumes."""
+    filename = csv_path.name
+    return '1878' in filename or '1879' in filename
+
 def load_prompt(prompt_name: str) -> str:
     """Load the dataset cleaning prompt."""
     prompt_path = PROMPTS_DIR / prompt_name
     return prompt_path.read_text(encoding="utf-8")
+
+def get_prompt_for_csv(csv_path: Path, prompt_name: str) -> str:
+    """Get the appropriate prompt text for a CSV file."""
+    if is_special_volume_csv(csv_path):
+        # Use special volumes prompt for 1878/1879
+        special_prompt_file = PROMPTS_DIR / 'special_volumes_prompt.txt'
+        if not special_prompt_file.exists():
+            logging.error(f"Special volumes prompt file not found: {special_prompt_file}. Aborting.")
+            raise FileNotFoundError(f"Special volumes prompt file not found: {special_prompt_file}")
+        return special_prompt_file.read_text(encoding='utf-8')
+    else:
+        # Use regular prompt for other years
+        prompt_file = PROMPTS_DIR / prompt_name
+        if not prompt_file.exists():
+            logging.error(f"Prompt file not found: {prompt_file}. Aborting.")
+            raise FileNotFoundError(f"Prompt file not found: {prompt_file}")
+        return prompt_file.read_text(encoding='utf-8')
 
 def call_llm(entry: str, prompt_template: str, model_name: str) -> str:
     """Call the LLM to classify an entry as complete (1) or truncated (0)."""
@@ -251,10 +273,13 @@ def postprocess_and_save(df, csv_path, summary_path, failed_rows):
 
     return df_clean
 
-def process_single_csv(csv_path: Path, output_dir: Path, prompt_template: str, model_name: str) -> bool:
+def process_single_csv(csv_path: Path, output_dir: Path, prompt_name: str, model_name: str) -> bool:
     """Process a single CSV file for dataset cleaning."""
     try:
-        logging.info(f"Processing CSV: {csv_path.name}")
+        # Get the appropriate prompt for this CSV
+        prompt_template = get_prompt_for_csv(csv_path, prompt_name)
+        prompt_type = "special volumes" if is_special_volume_csv(csv_path) else "regular"
+        logging.info(f"Processing CSV: {csv_path.name} with {prompt_type} prompt")
         
         # Load data
         df = pd.read_csv(csv_path)
@@ -363,7 +388,7 @@ def run_single_benchmark(dataset_construction_model: str, dataset_construction_p
         logging.info(f"Processing {len(csvs_to_process)} CSV files sequentially...")
         
         for csv_path in csvs_to_process:
-            success = process_single_csv(csv_path, llm_csv_output_dir, prompt_template, model)
+            success = process_single_csv(csv_path, llm_csv_output_dir, prompt, model)
             if success:
                 processed_count += 1
             else:
