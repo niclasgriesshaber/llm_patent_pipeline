@@ -906,7 +906,7 @@ def run_unified_comparison_cer_only(llm_csv_dir: Path, student_xlsx_dir: Path, p
                 })
     
     # Generate only the diff report (3-way character error rate)
-    #generate_diff_report(diff_sections, summary_rows, file_matrix, output_dir, llm_csv_dir, student_xlsx_dir, perfect_xlsx_dir)
+    generate_diff_report(diff_sections, summary_rows, file_matrix, output_dir, llm_csv_dir, student_xlsx_dir, perfect_xlsx_dir)
     
     return {
         'total_files': len(valid_files),
