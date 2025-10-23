@@ -27,7 +27,7 @@ You will be provided with a single text entry from Germany's Imperial Patent Off
 **3. `location` (String)**
 *   **Location:** This is the location of the patent holder, and it almost always follows the holder's `name` directly. It is often introduced by a preposition like `in` or `auf`.
 *   **Rule:** Extract the entire location phrase associated with the patent holder(s).
-    *   Include all details: city, state, country (e.g., `in Kladno, Böhmen`, `in Chicago, V. St. A.`).
+    *   Include all details: city, state, country (e.g., `Kladno, Böhmen`, `Chicago, V. St. A.`).
 *   **CRITICAL:** Do NOT extract the location of the representative (`Vertreter`). The correct location is the one directly linked to the `name` you extracted in the previous step.
 
 **4. `description` (String)**
@@ -50,7 +50,7 @@ KARLIK, JOH., in Kladno, Böhmen; Vertreter: C. FEHLERT & G. LOUBIER, in Firma: 
 {
   "patent_id": "6201",
   "name": "KARLIK, JOH.",
-  "location": "in Kladno, Böhmen",
+  "location": "Kladno, Böhmen",
   "description": "Wipper mit verschiedenen, sich während einer Umdrehung ändernden Umfangsgeschwindigkeiten.",
   "date": "5. November 1885."
 }
