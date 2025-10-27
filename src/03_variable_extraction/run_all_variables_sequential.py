@@ -70,13 +70,23 @@ def run_variable_extraction(csv_file: Path, prompt_file: str) -> Tuple[bool, str
     """Run variable_extraction.py for a single CSV file."""
     csv_name = csv_file.name
     
+    # Extract year from filename and determine prompt file
+    # For files like "Patentamt_1878_cleaned.csv", extract "1878"
+    year = csv_name.stem.split('_')[-2]  # Extract year from "_cleaned" pattern
+    if year in ["1878", "1879"]:
+        actual_prompt_file = "special_volumes_prompt.txt"
+        print(f"[INFO] Detected year {year}, using special volumes prompt")
+    else:
+        actual_prompt_file = prompt_file
+        print(f"[INFO] Detected year {year}, using default prompt")
+    
     cmd = [
         sys.executable,
         str(VARIABLE_EXTRACTION_SCRIPT),
         "--csv", csv_name,
         "--model", MODEL,
         "--max_workers", str(MAX_WORKERS),
-        "--prompt", prompt_file
+        "--prompt", actual_prompt_file
     ]
     
     print(f"[INFO] Running: {' '.join(cmd)}")

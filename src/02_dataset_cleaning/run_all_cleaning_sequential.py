@@ -69,13 +69,22 @@ def run_complete_patent(csv_file: Path, prompt_file: str) -> Tuple[bool, str]:
     """Run complete_patent.py for a single CSV file."""
     csv_name = csv_file.name
     
+    # Extract year from filename and determine prompt file
+    year = csv_name.stem.split('_')[-1]  # Extract year from filename like "Patentamt_1878.csv"
+    if year in ["1878", "1879"]:
+        actual_prompt_file = "special_volumes_prompt.txt"
+        print(f"[INFO] Detected year {year}, using special volumes prompt")
+    else:
+        actual_prompt_file = prompt_file
+        print(f"[INFO] Detected year {year}, using default prompt")
+    
     cmd = [
         sys.executable,
         str(COMPLETE_PATENT_SCRIPT),
         "--csv", csv_name,
         "--model", MODEL,
         "--max_workers", str(MAX_WORKERS),
-        "--prompt", prompt_file
+        "--prompt", actual_prompt_file
     ]
     
     print(f"[INFO] Running: {' '.join(cmd)}")
