@@ -60,8 +60,20 @@ FAIL=0
 
 for PDF in "${PDF_LIST[@]}"; do
     PDF_BASENAME=$(basename "$PDF")
-    echo "\n[INFO] Processing $PDF_BASENAME ..."
-    python "$SCRIPT_DIR/gemini-2.5-parallel.py" --pdf "$PDF_BASENAME" $MAX_WORKERS
+    
+    # Extract year from filename and determine prompt file
+    # For files like "Patentamt_1878.pdf", extract "1878"
+    YEAR=$(echo "$PDF_BASENAME" | sed 's/Patentamt_\([0-9]\{4\}\)\.pdf/\1/')
+    
+    if [ "$YEAR" = "1878" ] || [ "$YEAR" = "1879" ]; then
+        PROMPT_ARG="--prompt special_volumes_prompt.txt"
+        echo "\n[INFO] Processing $PDF_BASENAME (Year: $YEAR, using special volumes prompt)..."
+    else
+        PROMPT_ARG="--prompt prompt.txt"
+        echo "\n[INFO] Processing $PDF_BASENAME (Year: $YEAR, using default prompt)..."
+    fi
+    
+    python "$SCRIPT_DIR/gemini-2.5-parallel.py" --pdf "$PDF_BASENAME" $PROMPT_ARG $MAX_WORKERS
     if [ $? -eq 0 ]; then
         echo "[INFO] Successfully processed $PDF_BASENAME"
         SUCCESS=$((SUCCESS+1))
