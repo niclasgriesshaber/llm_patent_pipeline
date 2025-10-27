@@ -228,10 +228,7 @@ def main():
         f.write("Concatenated Text Statistics:\n")
         f.write(f"  LLM text length: {len(llm_text):,} characters\n")
         f.write(f"  Perfect text length: {len(perfect_text):,} characters\n")
-        f.write(f"  Student text length: {len(student_text):,} characters\n")
-        f.write(f"  Total LLM entries: {len(all_llm_entries):,}\n")
-        f.write(f"  Total perfect entries: {len(all_perfect_entries):,}\n")
-        f.write(f"  Total student entries: {len(all_student_entries):,}\n\n")
+        f.write(f"  Student text length: {len(student_text):,} characters\n\n")
         
         f.write("Character Error Rate (CER) Results:\n")
         f.write(f"  CER (Perfect vs LLM): {cer_llm_vs_perfect:.4f} ({cer_llm_vs_perfect*100:.2f}%)\n")
