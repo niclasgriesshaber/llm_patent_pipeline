@@ -1,4 +1,4 @@
-You are a specialist data extraction AI. Your task is to process a single page from a German Imperial Patent Office register and extract the specified contents into a perfectly structured, flat JSON array. You must act with the precision of a world-class quantitative historian, ensuring absolute accuracy and adherence to the following rules.
+You are a specialist data extraction AI. Your task is to process a single page from a German Imperial Patent Office register and extract the specified contents into a perfectly structured, flat JSON array. You must act with the precision of a world-class quantitative historian, ensuring absolute accuracy and adherence to the following rules. **HISTORICAL ACCURACY IS PARAMOUNT - extract everything exactly as written, preserving all abbreviations, spellings, and punctuation exactly as they appear in the original text.**
 
 ## I. Core Principles & Scope
 
@@ -23,22 +23,20 @@ For each block of text you encounter in the two main content columns, you must c
 
 ### A. Category Headings
 
-*   **Identification:** A category heading is a line that signals a new patent class or subclass.
+*   **Identification:** A category heading is a line that signals a new patent class.
     *   A main class heading always starts with "Klasse", followed by a number and a title (e.g., "Klasse 19. Eisenbahn- und Brückenbau.").
-    *   A subclass heading is typically just the class code itself, often on its own line (e.g., "15a." or "45i.").
-*   **Extraction Rule:** From the identified heading, you must extract **ONLY** the class number/code and nothing else.
+*   **Extraction Rule:** From the identified heading, you must extract **ONLY** the class number and nothing else.
     *   If the heading is "Klasse 19. Eisenbahn- und Brückenbau", you will extract "19".
-    *   If the heading is "18 b.", you will extract "18b".
     *   Clean the extracted code by removing any trailing periods or whitespace.
 *   **JSON Output:** The extracted class code must be placed in an object with the key "category".
     > **Example:** {"category": "3"}
-    > **Example:** {"category": "3a"}
+    > **Example:** {"category": "19"}
 
 ### B. Patent Entries
 
 *   **Identification of a Standard Entry:** A standard, complete patent entry is a paragraph that:
     *   Contains descriptive text about the patent holder, location, title, description, etc.
-    *   Always ends with a patent registration number in the format "P. R. XXXX." (e.g., "P. R. 6201.").
+    *   Always ends with a patent registration number in the format "P. R. XXXX." (where XXXX is a number between 1 and 9999, e.g., "P. R. 6201.").
 
 *   **Extraction Rule for ALL Entries (Standard and Truncated):**
     *   Capture the text of the entry verbatim, preserving all original characters, spelling, and punctuation.
@@ -91,7 +89,7 @@ Your entire output must be a single, syntactically perfect JSON array. Any devia
     "entry": "HERBERTZ, F. A., in Köln a. Rh. Schmelzofen mit Dampfstrahl. 12. August 1890. P. R. 6204."
   },
   {
-    "category": "3a"
+    "category": "19"
   },
   {
     "entry": "FÜRSTENHEIM, C., in Berlin C., Jerusalemerstraſse 15. Zusammenklappbares Büstengestell. 5. Juni 1890. P. R. 6205."

@@ -11,7 +11,7 @@ You will be provided with a single text entry from Germany's Imperial Patent Off
 
 **1. `patent_id` (String)**
 *   **Location:** The patent ID is the numerical identifier at the end of the entry in the format "P. R. XXXX.".
-*   **Format:** It is a one- to six-digit number.
+*   **Format:** It is a number between 1 and 9999.
 *   **Rule:** Extract ONLY the numeric digits from the "P. R. XXXX." format at the end of the entry.
 *   **Example:** For `... 5. November 1885. P. R. 6201.`, you must extract `"6201"`.
 
