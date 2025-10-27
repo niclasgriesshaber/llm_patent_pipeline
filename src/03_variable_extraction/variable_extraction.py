@@ -255,7 +255,7 @@ def parse_response(text: str) -> dict:
 # Prompt Builder
 ###############################################################################
 def load_prompt_template(prompt_filename: str = "prompt.txt") -> str:
-    prompt_path = PROJECT_ROOT / "src" / "03_variable_extraction" / prompt_filename
+    prompt_path = PROJECT_ROOT / "src" / "03_variable_extraction" / "prompts" / prompt_filename
     if not prompt_path.exists():
         # Log a warning instead of raising an error, as per user request
         logging.warning(f"Prompt file '{prompt_filename}' not found in src/03_variable_extraction/. Proceeding with empty prompt.")

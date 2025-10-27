@@ -74,10 +74,10 @@ def run_variable_extraction(csv_file: Path, prompt_file: str) -> Tuple[bool, str
     # For files like "Patentamt_1878_cleaned.csv", extract "1878"
     year = csv_name.stem.split('_')[-2]  # Extract year from "_cleaned" pattern
     if year in ["1878", "1879"]:
-        actual_prompt_file = "special_volumes_prompt.txt"
+        actual_prompt_file = f"prompts/special_volumes_prompt.txt"
         print(f"[INFO] Detected year {year}, using special volumes prompt")
     else:
-        actual_prompt_file = prompt_file
+        actual_prompt_file = f"prompts/{prompt_file}"
         print(f"[INFO] Detected year {year}, using default prompt")
     
     cmd = [
