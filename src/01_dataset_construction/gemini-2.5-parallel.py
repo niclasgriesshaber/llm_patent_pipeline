@@ -687,8 +687,9 @@ def main():
     parser.add_argument("--max_workers", type=int, default=20, help="Max concurrent workers for page processing (default=20)")
     parser.add_argument("--page", type=int, help="Process a single specific page number")
     parser.add_argument("--from_error_file", choices=["yes", "no"], default="no", help="Process only failed pages from error file (default=no)")
+    parser.add_argument("--prompt", type=str, default="prompt.txt", help="Prompt filename (default=prompt.txt)")
     args = parser.parse_args()
-    PROMPT_FILE_PATH = Path(__file__).parent / "prompt.txt"
+    PROMPT_FILE_PATH = Path(__file__).parent / args.prompt
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s | %(levelname)s | %(message)s",
                         datefmt="%Y-%m-%d %H:%M:%S",

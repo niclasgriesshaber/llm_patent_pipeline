@@ -10,6 +10,7 @@ import sys
 import subprocess
 import logging
 import time
+import argparse
 from pathlib import Path
 from typing import List, Tuple, Dict
 from multiprocessing import Pool, cpu_count
@@ -53,17 +54,17 @@ def find_pdfs_with_errors() -> List[Tuple[str, str]]:
     
     return pdfs_with_errors
 
-def process_single_pdf(args_tuple: Tuple[str, str, int, int]) -> Tuple[str, bool, str]:
+def process_single_pdf(args_tuple: Tuple[str, str, int, int, str]) -> Tuple[str, bool, str]:
     """
     Process a single PDF with failed pages.
     
     Args:
-        args_tuple: (pdf_filename, error_file_path, worker_id, total_workers)
+        args_tuple: (pdf_filename, error_file_path, worker_id, total_workers, prompt_file)
         
     Returns:
         Tuple of (pdf_filename, success, error_message)
     """
-    pdf_filename, error_file_path, worker_id, total_workers = args_tuple
+    pdf_filename, error_file_path, worker_id, total_workers, prompt_file = args_tuple
     
     try:
         # Set up logging for this worker
@@ -75,7 +76,8 @@ def process_single_pdf(args_tuple: Tuple[str, str, int, int]) -> Tuple[str, bool
             sys.executable,
             str(SCRIPT_PATH),
             "--pdf", pdf_filename,
-            "--from_error_file", "yes"
+            "--from_error_file", "yes",
+            "--prompt", prompt_file
         ]
         
         # Print worker start message
@@ -119,9 +121,14 @@ def process_single_pdf(args_tuple: Tuple[str, str, int, int]) -> Tuple[str, bool
 
 def main():
     """Main function to process all PDFs with error files in parallel."""
+    parser = argparse.ArgumentParser(description="Parallel script to rerun failed pages for all PDFs with error files")
+    parser.add_argument("--prompt", type=str, default="prompt.txt", help="Prompt filename (default=prompt.txt)")
+    args = parser.parse_args()
+    
     setup_logging()
     
     logging.info("Starting parallel rerun of failed pages for all PDFs with error files")
+    logging.info(f"Using prompt file: {args.prompt}")
     logging.info("=" * 80)
     
     # Check if the main script exists
@@ -146,7 +153,7 @@ def main():
     # Prepare arguments for each worker
     worker_args = []
     for i, (pdf_filename, error_file_path) in enumerate(pdfs_with_errors):
-        worker_args.append((pdf_filename, error_file_path, i + 1, len(pdfs_with_errors)))
+        worker_args.append((pdf_filename, error_file_path, i + 1, len(pdfs_with_errors), args.prompt))
     
     # Process PDFs in parallel
     successful = 0
