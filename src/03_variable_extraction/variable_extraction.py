@@ -254,11 +254,11 @@ def parse_response(text: str) -> dict:
 ###############################################################################
 # Prompt Builder
 ###############################################################################
-def load_prompt_template() -> str:
-    prompt_path = PROJECT_ROOT / "src" / "03_variable_extraction" / "prompt.txt"
+def load_prompt_template(prompt_filename: str = "prompt.txt") -> str:
+    prompt_path = PROJECT_ROOT / "src" / "03_variable_extraction" / prompt_filename
     if not prompt_path.exists():
         # Log a warning instead of raising an error, as per user request
-        logging.warning(f"Prompt file 'prompt.txt' not found in src/03_variable_extraction/. Proceeding with empty prompt.")
+        logging.warning(f"Prompt file '{prompt_filename}' not found in src/03_variable_extraction/. Proceeding with empty prompt.")
         return "" # Return empty string if not found
     return prompt_path.read_text(encoding="utf-8")
 
@@ -530,6 +530,7 @@ def main():
     parser.add_argument("--model", type=str, default="gemini-2.5-flash-lite", 
                        choices=["gemini-2.0-flash", "gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.5-flash-lite"],
                        help="Model to use for LLM processing (default: gemini-2.5-flash-lite)")
+    parser.add_argument("--prompt", type=str, default="prompt.txt", help="Prompt filename (default=prompt.txt)")
     args = parser.parse_args()
 
     # Update global model name and max workers based on command line arguments
@@ -565,7 +566,7 @@ def main():
         raise KeyError("Column 'id' not found in dataset. The input CSV must have an 'id' column.")
     has_page = "page" in df.columns
 
-    prompt_template = load_prompt_template()
+    prompt_template = load_prompt_template(args.prompt)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(message)s", handlers=[logging.StreamHandler(sys.stdout)])
 
     # Define output columns based on expected JSON keys
