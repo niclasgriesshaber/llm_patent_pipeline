@@ -13,6 +13,7 @@ import os
 import sys
 import subprocess
 import time
+import argparse
 from pathlib import Path
 from typing import List, Tuple
 
@@ -64,7 +65,7 @@ def is_already_processed(input_file: Path, processed_files: List[Path]) -> bool:
     
     return expected_output_path.exists() or check_merge_xlsx.exists()
 
-def run_complete_patent(csv_file: Path) -> Tuple[bool, str]:
+def run_complete_patent(csv_file: Path, prompt_file: str) -> Tuple[bool, str]:
     """Run complete_patent.py for a single CSV file."""
     csv_name = csv_file.name
     
@@ -73,7 +74,8 @@ def run_complete_patent(csv_file: Path) -> Tuple[bool, str]:
         str(COMPLETE_PATENT_SCRIPT),
         "--csv", csv_name,
         "--model", MODEL,
-        "--max_workers", str(MAX_WORKERS)
+        "--max_workers", str(MAX_WORKERS),
+        "--prompt", prompt_file
     ]
     
     print(f"[INFO] Running: {' '.join(cmd)}")
@@ -118,6 +120,10 @@ def run_complete_patent(csv_file: Path) -> Tuple[bool, str]:
 
 def main():
     """Main function to process all unprocessed CSV files."""
+    parser = argparse.ArgumentParser(description="Sequential Patent Cleaning Script")
+    parser.add_argument("--prompt", type=str, default="prompt.txt", help="Prompt filename (default=prompt.txt)")
+    args = parser.parse_args()
+    
     print("=" * 80)
     print("🚀 SEQUENTIAL PATENT CLEANING SCRIPT")
     print("=" * 80)
@@ -125,6 +131,7 @@ def main():
     print(f"📁 Output directory: {OUTPUT_DIR}")
     print(f"🤖 Model: {MODEL}")
     print(f"👥 Max workers: {MAX_WORKERS}")
+    print(f"📝 Prompt file: {args.prompt}")
     print()
     
     # Get all input files
@@ -164,7 +171,7 @@ def main():
         print(f"{'='*60}")
         
         file_start_time = time.time()
-        success, message = run_complete_patent(csv_file)
+        success, message = run_complete_patent(csv_file, args.prompt)
         file_time = time.time() - file_start_time
         
         if success:

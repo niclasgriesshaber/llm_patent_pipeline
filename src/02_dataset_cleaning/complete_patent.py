@@ -711,12 +711,17 @@ def main():
                        help="Model to use for LLM processing (default: gemini-2.5-flash-lite)")
     parser.add_argument("--max_workers", type=int, default=10, 
                        help="Max concurrent workers for API requests (default: 10, reduced from 20 for better rate limit handling)")
+    parser.add_argument("--prompt", type=str, default="prompt.txt", help="Prompt filename (default=prompt.txt)")
     args = parser.parse_args()
 
     # Update global model name and max workers based on command line arguments
     global FULL_MODEL_NAME, MAX_WORKERS
     FULL_MODEL_NAME = args.model
     MAX_WORKERS = args.max_workers
+
+    # Update prompt path based on CLI argument
+    global PROMPT_PATH
+    PROMPT_PATH = PROJECT_ROOT / "src" / "02_dataset_cleaning" / args.prompt
 
     input_csv = COMPLETE_CSVS / args.csv
     if not input_csv.exists():
