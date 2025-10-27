@@ -77,7 +77,7 @@ def process_single_pdf(args_tuple: Tuple[str, str, int, int, str]) -> Tuple[str,
             str(SCRIPT_PATH),
             "--pdf", pdf_filename,
             "--from_error_file", "yes",
-            "--prompt", prompt_file
+            "--prompt", f"prompts/{prompt_file}"
         ]
         
         # Print worker start message
