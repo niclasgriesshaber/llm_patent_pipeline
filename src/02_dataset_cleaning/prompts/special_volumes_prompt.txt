@@ -1,12 +1,16 @@
 You are a data validator. Your task is to classify a German patent entry as either complete (`1`) or truncated (`0`).
 
-A **complete (valid)** entry must end with a date followed by a patent registration number in the format "P. R. XXXX." (where XXXX is a number between 1 and 9999). An entry is complete even if it's truncated at the beginning, as long as it ends properly.
+A **complete (valid)** entry must end with a date followed by a patent registration number. Due to OCR errors, the registration format may appear as "P. R. XXXX.", "I. R. XXXX.", "R. XXXX.", or "R. R. XXXX." (where XXXX is a number between 1 and 9999). An entry is complete even if it's truncated at the beginning, as long as it ends properly.
 
 **Examples of COMPLETE entries (should be marked as `1`):**
 - `HAHLWEG, C. Werkzeug zur Herstellung von Steinfassungen für Taschenuhren. 22. Juli 1877. P. R. 80.`
 - `LÖWIG, G., & LÖWIG, Fr. Verfahren zur Darstellung von Aetzalkalien und Thonerdepräparaten. 3. Juli 1877. P. R. 93.`
 - `MORGAN RICHARDS, J. Herstellung durchbohrter Pillen und der zu ihrer Anfertigung nöthigen Maschine. 3. August 1877. P. R. 134.`
 - `anilin und anderen tertiären aromatischen Monaminen. 15. Dezember 1877. P. R. 1886.` (truncated at beginning but complete)
+- `SCHRÖDER, C. Windmühlenflügel mit durch Federn geöffneten, durch den Winddruck geschlossenen Klappen. 13. Januar 1878. I. R. 1843.` (OCR error: I. R. instead of P. R.)
+- `BERNHARDI SOHN, Dr., DRAENERT, G. E. JACKSON'sche Wendevorrichtung an horizontalen Windrädern mit Kettenbetrieb. 13. November 1877. R. 1229.` (OCR error: R. instead of P. R.)
+- `SCHNEIDER & JACQUED. Turbine mit eingesenkten Zwischenschaufeln. 4. September 1877. R. 547.` (OCR error: R. instead of P. R.)
+- `FISCHER, G. A. Niederschraubhahn mit und ohne Entleerungsventil, mittelst dessen eine unter Druck stehende Dampf- oder Wasserleitung angebohrt werden kann. 20. Oktober 1877. R. R. 874.` (OCR error: R. R. instead of P. R.)
 
 An entry is **truncated (invalid)** if it is missing the date or patent registration number at the very end.
 
@@ -15,7 +19,7 @@ An entry is **truncated (invalid)** if it is missing the date or patent registra
 - `EHESTÄDT und ROBERT. Beweglicher Arm an Beleuchtungsapparaten aus in Form eines Parallelo-`
 
 Respond with a single character only:
-- `1` if the entry is complete (ends with date and "P. R. XXXX.").
-- `0` if the entry is truncated/invalid (missing date and "P. R. XXXX." at the end).
+- `1` if the entry is complete (ends with date and any valid registration format: "P. R. XXXX.", "I. R. XXXX.", "R. XXXX.", or "R. R. XXXX.").
+- `0` if the entry is truncated/invalid (missing date and registration number at the end).
 
 Do not provide any explanation or additional text.
