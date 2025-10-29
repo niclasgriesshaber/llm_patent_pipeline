@@ -1,6 +1,18 @@
 You are a data validator. Your task is to classify a German patent entry as either complete (`1`) or truncated (`0`).
 
-A **complete (valid)** entry must end with a date followed by a patent registration number in the format "P. R. XXXX." (where XXXX is a number between 1 and 9999). An entry is **truncated (invalid)** if it is missing the date or patent registration number at the very end.
+A **complete (valid)** entry must end with a date followed by a patent registration number in the format "P. R. XXXX." (where XXXX is a number between 1 and 9999). An entry is complete even if it's truncated at the beginning, as long as it ends properly.
+
+**Examples of COMPLETE entries (should be marked as `1`):**
+- `HAHLWEG, C. Werkzeug zur Herstellung von Steinfassungen für Taschenuhren. 22. Juli 1877. P. R. 80.`
+- `LÖWIG, G., & LÖWIG, Fr. Verfahren zur Darstellung von Aetzalkalien und Thonerdepräparaten. 3. Juli 1877. P. R. 93.`
+- `MORGAN RICHARDS, J. Herstellung durchbohrter Pillen und der zu ihrer Anfertigung nöthigen Maschine. 3. August 1877. P. R. 134.`
+- `anilin und anderen tertiären aromatischen Monaminen. 15. Dezember 1877. P. R. 1886.` (truncated at beginning but complete)
+
+An entry is **truncated (invalid)** if it is missing the date or patent registration number at the very end.
+
+**Examples of TRUNCATED entries (should be marked as `0`):**
+- `BARDIN, G. Verfahren, die natürliche Feder zu verzwirnen und die Verwendung solcher Feder-Che`
+- `EHESTÄDT und ROBERT. Beweglicher Arm an Beleuchtungsapparaten aus in Form eines Parallelo-`
 
 Respond with a single character only:
 - `1` if the entry is complete (ends with date and "P. R. XXXX.").
