@@ -3,7 +3,7 @@ You will be provided with a single text entry from Germany's Imperial Patent Off
 **Core Principles:**
 *   **Exactness:** All extracted text must be an *exact, character-for-character copy* from the source text. Do not add, remove, or alter any characters, including historical German characters (e.g., ſ).
 *   **Structure:** The patent entries almost always follow a specific order: `patent_id` -> `name(s)` -> `location(es)` -> (optional `Vertreter` info) -> `description` -> (optional addendum note) -> `date` -> (optional addendum note) -> `P. R. XXXX.` (registration number). Use this predictable structure to guide your extraction.
-*   **Output Format:** The output MUST be a single JSON object with the keys: `patent_id`, `name`, `location`, `description`, and `date`. If a value cannot be reliably found for a field, use the string "NaN".
+*   **Output Format:** The output MUST be a single JSON object with the keys: `patent_id`, `name`, `location`, `description`, and `date`. If a value cannot be reliably found or identified for a field, use the string "NaN".
 
 ---
 
