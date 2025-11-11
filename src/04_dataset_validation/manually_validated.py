@@ -44,9 +44,13 @@ class ManualValidationApp:
         self.tasks = []
         self.current_task_idx = 0
         self.undo_stack = []
-        self.zoom_level = 1.0
+        self.zoom_level = 0.5  # Default to 50% zoom
         self.original_image = None
         self.photo_image = None
+        
+        # Session tracking
+        self.session_start_time = datetime.now()
+        self.current_task_category = None  # Track category changes
         
         # Load and prepare data
         self.load_data()
@@ -112,11 +116,12 @@ class ManualValidationApp:
         self.log("Parsing validation issues...")
         
         # Define patterns for the three issue types
-        duplicate_pattern = r'Duplicate patent_id \d+'
+        duplicate_pattern = r'Duplicate patent_id (\d+)'
         less_than_pattern = r'patent_id \d+ < start'
         greater_than_pattern = r'patent_id \d+ > end'
         
-        duplicates = []
+        # Group duplicates by patent_id number
+        duplicate_groups = {}
         less_than = []
         greater_than = []
         
@@ -127,33 +132,59 @@ class ManualValidationApp:
                 
             validation_notes = str(row['validation_notes']).strip()
             
-            if re.search(duplicate_pattern, validation_notes):
-                duplicates.append(idx)
+            # Check for duplicates and group by patent_id
+            dup_match = re.search(duplicate_pattern, validation_notes)
+            if dup_match:
+                patent_id = int(dup_match.group(1))
+                if patent_id not in duplicate_groups:
+                    duplicate_groups[patent_id] = []
+                duplicate_groups[patent_id].append(idx)
             elif re.search(less_than_pattern, validation_notes):
                 less_than.append(idx)
             elif re.search(greater_than_pattern, validation_notes):
                 greater_than.append(idx)
         
-        # Sort each category by row index for deterministic ordering
-        duplicates.sort()
+        # Sort duplicates by patent_id, then flatten
+        duplicates = []
+        for patent_id in sorted(duplicate_groups.keys()):
+            duplicates.extend(sorted(duplicate_groups[patent_id]))
+        
+        # Sort other categories by row index
         less_than.sort()
         greater_than.sort()
         
         # Combine in order: duplicates, < start, > end
         self.tasks = duplicates + less_than + greater_than
         
-        self.log(f"Found {len(duplicates)} duplicate issues to validate")
+        self.log(f"Found {len(duplicates)} duplicate issues to validate (grouped by patent_id)")
         self.log(f"Found {len(less_than)} '< start' issues to validate")
         self.log(f"Found {len(greater_than)} '> end' issues to validate")
     
     def setup_gui(self):
         """Build the tkinter interface."""
-        # Top frame - Progress bar
+        # Top frame - Progress info and progress bar
         top_frame = ttk.Frame(self.root, padding="10")
         top_frame.pack(fill=tk.X)
         
-        self.progress_label = ttk.Label(top_frame, text="", font=('Arial', 12, 'bold'))
-        self.progress_label.pack()
+        # Progress info (task, percentage, time)
+        progress_info_frame = ttk.Frame(top_frame)
+        progress_info_frame.pack(fill=tk.X, pady=(0, 5))
+        
+        self.progress_label = ttk.Label(progress_info_frame, text="", font=('Arial', 11))
+        self.progress_label.pack(side=tk.LEFT)
+        
+        self.session_timer_label = ttk.Label(progress_info_frame, text="Session: 00:00", font=('Arial', 11))
+        self.session_timer_label.pack(side=tk.RIGHT, padx=10)
+        
+        self.progress_percentage_label = ttk.Label(progress_info_frame, text="0%", font=('Arial', 11, 'bold'))
+        self.progress_percentage_label.pack(side=tk.RIGHT)
+        
+        # Progress bar
+        self.progress_bar = ttk.Progressbar(top_frame, mode='determinate', length=400)
+        self.progress_bar.pack(fill=tk.X, pady=(0, 10))
+        
+        # Start timer update
+        self.update_session_timer()
         
         # Image frame with zoom controls
         image_frame = ttk.Frame(self.root, padding="10")
@@ -185,20 +216,21 @@ class ManualValidationApp:
         h_scrollbar.pack(side=tk.BOTTOM, fill=tk.X)
         self.image_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         
+        # Bind mouse wheel for scrolling
+        self.image_canvas.bind("<MouseWheel>", self.on_mouse_wheel)  # Windows/MacOS
+        self.image_canvas.bind("<Button-4>", self.on_mouse_wheel)  # Linux scroll up
+        self.image_canvas.bind("<Button-5>", self.on_mouse_wheel)  # Linux scroll down
+        
         # Entry fields frame
         fields_frame = ttk.Frame(self.root, padding="10")
         fields_frame.pack(fill=tk.X)
         
-        # Entry text with position indicator
-        entry_label_frame = ttk.Frame(fields_frame)
-        entry_label_frame.pack(fill=tk.X, pady=5)
+        # Entry position on page (bold and prominent) - moved to left
+        position_frame = ttk.Frame(fields_frame)
+        position_frame.pack(fill=tk.X, pady=5)
         
-        self.entry_info_label = ttk.Label(entry_label_frame, text="Entry:", font=('Arial', 10, 'bold'))
-        self.entry_info_label.pack(side=tk.LEFT)
-        
-        # Entry position on page (bold and prominent)
         self.entry_position_label = tk.Label(
-            entry_label_frame, 
+            position_frame, 
             text="", 
             font=('Arial', 14, 'bold'),
             fg='#0066cc',  # Blue color for visibility
@@ -208,11 +240,13 @@ class ManualValidationApp:
             relief=tk.RAISED,
             borderwidth=2
         )
-        self.entry_position_label.pack(side=tk.RIGHT)
+        self.entry_position_label.pack(side=tk.LEFT)
         
+        # Entry text area
+        ttk.Label(fields_frame, text="Entry:", font=('Arial', 10, 'bold')).pack(anchor=tk.W, pady=(5, 2))
         self.entry_text = scrolledtext.ScrolledText(fields_frame, height=4, wrap=tk.WORD, font=('Arial', 10))
         self.entry_text.pack(fill=tk.X, pady=5)
-        self.entry_text.bind('<Return>', self.on_entry_return)
+        self.entry_text.bind('<Tab>', self.on_entry_tab)
         self.entry_text.bind('<KeyRelease>', self.on_field_change)
         
         # Patent ID
@@ -222,18 +256,8 @@ class ManualValidationApp:
         ttk.Label(patent_id_frame, text="Patent ID:", font=('Arial', 10, 'bold')).pack(side=tk.LEFT, padx=5)
         self.patent_id_entry = ttk.Entry(patent_id_frame, font=('Arial', 10), width=20)
         self.patent_id_entry.pack(side=tk.LEFT, padx=5)
-        self.patent_id_entry.bind('<Return>', self.on_patent_id_return)
+        self.patent_id_entry.bind('<Tab>', self.on_patent_id_tab)
         self.patent_id_entry.bind('<KeyRelease>', self.on_field_change)
-        
-        # Delete checkbox
-        self.delete_var = tk.BooleanVar()
-        self.delete_checkbox = ttk.Checkbutton(
-            patent_id_frame,
-            text="Mark for deletion",
-            variable=self.delete_var,
-            command=self.on_delete_toggle
-        )
-        self.delete_checkbox.pack(side=tk.LEFT, padx=20)
         
         # Bottom buttons
         button_frame = ttk.Frame(self.root, padding="10")
@@ -242,27 +266,18 @@ class ManualValidationApp:
         button_style_frame = ttk.Frame(button_frame)
         button_style_frame.pack()
         
-        ttk.Button(button_style_frame, text="Manual Save (S)", command=self.manual_save, width=15).pack(side=tk.LEFT, padx=5)
         ttk.Button(button_style_frame, text="Back (A)", command=self.go_back, width=15).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_style_frame, text="Next Task (D)", command=self.next_task, width=15).pack(side=tk.LEFT, padx=5)
-        
-        # Shortcuts help
-        help_frame = ttk.Frame(self.root, padding="5")
-        help_frame.pack(fill=tk.X)
-        help_text = "Shortcuts: A=Back | D=Next | S=Save | E=Toggle Delete | Space=Next | Enter=Next Field"
-        ttk.Label(help_frame, text=help_text, font=('Arial', 9), foreground='gray').pack()
+        ttk.Button(button_style_frame, text="Next (S)", command=self.next_task, width=15).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_style_frame, text="Delete (D)", command=self.toggle_delete, width=15).pack(side=tk.LEFT, padx=5)
     
     def setup_keyboard_shortcuts(self):
-        """Setup keyboard shortcuts."""
+        """Setup keyboard shortcuts: A=Back, S=Next, D=Delete."""
         self.root.bind('a', lambda e: self.go_back())
         self.root.bind('A', lambda e: self.go_back())
-        self.root.bind('d', lambda e: self.next_task())
-        self.root.bind('D', lambda e: self.next_task())
-        self.root.bind('s', lambda e: self.manual_save())
-        self.root.bind('S', lambda e: self.manual_save())
-        self.root.bind('e', lambda e: self.toggle_delete())
-        self.root.bind('E', lambda e: self.toggle_delete())
-        self.root.bind('<space>', lambda e: self.next_task())
+        self.root.bind('s', lambda e: self.next_task())
+        self.root.bind('S', lambda e: self.next_task())
+        self.root.bind('d', lambda e: self.toggle_delete())
+        self.root.bind('D', lambda e: self.toggle_delete())
     
     def display_task(self):
         """Display current task in GUI."""
@@ -275,7 +290,28 @@ class ManualValidationApp:
         row_idx = self.tasks[self.current_task_idx]
         row = self.df.iloc[row_idx]
         
-        # Update progress
+        # Check for task category change and show warning
+        current_category = self.get_task_category(row['validation_notes'])
+        if self.current_task_category is not None and self.current_task_category != current_category:
+            category_name = {
+                'duplicate': 'Duplicate patent IDs',
+                'less_than': 'Patent IDs below valid range (< start)',
+                'greater_than': 'Patent IDs above valid range (> end)'
+            }
+            messagebox.showinfo(
+                "Task Category Changed",
+                f"Now starting: {category_name.get(current_category, 'New category')}"
+            )
+            self.log(f"Task category changed from '{self.current_task_category}' to '{current_category}'")
+        self.current_task_category = current_category
+        
+        # Update progress bar and percentage
+        progress_percentage = int((self.current_task_idx / len(self.tasks)) * 100)
+        self.progress_bar['maximum'] = len(self.tasks)
+        self.progress_bar['value'] = self.current_task_idx
+        self.progress_percentage_label.config(text=f"{progress_percentage}%")
+        
+        # Update progress text
         progress_text = f"Task {self.current_task_idx + 1} / {len(self.tasks)} | {row['validation_notes']}"
         self.progress_label.config(text=progress_text)
         
@@ -287,9 +323,6 @@ class ManualValidationApp:
         
         # Update entry position label (bold and prominent)
         self.entry_position_label.config(text=f"{entry_position}/{total_on_page}")
-        
-        # Update entry info label
-        self.entry_info_label.config(text=f"Entry (from page_{row['page'].zfill(4)}.png):")
         
         # Load and display image
         page_num = str(row['page']).zfill(4)
@@ -311,13 +344,24 @@ class ManualValidationApp:
         self.patent_id_entry.delete(0, tk.END)
         self.patent_id_entry.insert(0, str(row['patent_id']))
         
-        self.delete_var.set(str(row['marked_for_deletion']) == '1')
+        # Update delete button appearance based on marked_for_deletion status
+        # (No checkbox anymore, just internal state)
         
         # Focus on entry text
         self.entry_text.focus_set()
     
+    def get_task_category(self, validation_notes):
+        """Determine task category from validation notes."""
+        if 'Duplicate patent_id' in validation_notes:
+            return 'duplicate'
+        elif '< start' in validation_notes:
+            return 'less_than'
+        elif '> end' in validation_notes:
+            return 'greater_than'
+        return 'other'
+    
     def update_image_display(self):
-        """Update image display with current zoom level."""
+        """Update image display with current zoom level and center it."""
         if self.original_image is None:
             return
         
@@ -329,10 +373,22 @@ class ManualValidationApp:
         resized_image = self.original_image.resize((new_width, new_height), Image.LANCZOS)
         self.photo_image = ImageTk.PhotoImage(resized_image)
         
+        # Get canvas dimensions
+        canvas_width = self.image_canvas.winfo_width()
+        canvas_height = self.image_canvas.winfo_height()
+        
+        # Calculate centered position
+        x_center = max(0, (canvas_width - new_width) // 2)
+        y_center = max(0, (canvas_height - new_height) // 2)
+        
         # Update canvas
         self.image_canvas.delete("all")
-        self.image_canvas.create_image(0, 0, anchor=tk.NW, image=self.photo_image)
-        self.image_canvas.config(scrollregion=(0, 0, new_width, new_height))
+        self.image_canvas.create_image(x_center, y_center, anchor=tk.NW, image=self.photo_image)
+        
+        # Set scroll region to include the entire image plus any centering offset
+        scroll_width = max(new_width, canvas_width)
+        scroll_height = max(new_height, canvas_height)
+        self.image_canvas.config(scrollregion=(0, 0, scroll_width, scroll_height))
         
         # Update zoom label
         self.zoom_label.config(text=f"{int(self.zoom_level * 100)}%")
@@ -347,16 +403,41 @@ class ManualValidationApp:
         self.zoom_level = max(self.zoom_level - 0.25, 0.25)
         self.update_image_display()
     
-    def on_entry_return(self, event):
-        """Handle Enter key in entry text."""
-        # Prevent default newline behavior
+    def on_entry_tab(self, event):
+        """Handle Tab key in entry text - move to patent_id field."""
         self.patent_id_entry.focus_set()
         return 'break'
     
-    def on_patent_id_return(self, event):
-        """Handle Enter key in patent_id field."""
+    def on_patent_id_tab(self, event):
+        """Handle Tab key in patent_id field - move to next task."""
         self.next_task()
         return 'break'
+    
+    def on_mouse_wheel(self, event):
+        """Handle mouse wheel scrolling."""
+        if event.num == 5 or event.delta < 0:
+            # Scroll down
+            self.image_canvas.yview_scroll(1, "units")
+        elif event.num == 4 or event.delta > 0:
+            # Scroll up
+            self.image_canvas.yview_scroll(-1, "units")
+        return 'break'
+    
+    def update_session_timer(self):
+        """Update the session timer display."""
+        elapsed = datetime.now() - self.session_start_time
+        hours, remainder = divmod(int(elapsed.total_seconds()), 3600)
+        minutes, seconds = divmod(remainder, 60)
+        
+        if hours > 0:
+            time_str = f"Session: {hours:02d}:{minutes:02d}:{seconds:02d}"
+        else:
+            time_str = f"Session: {minutes:02d}:{seconds:02d}"
+        
+        self.session_timer_label.config(text=time_str)
+        
+        # Schedule next update in 1 second
+        self.root.after(1000, self.update_session_timer)
     
     def on_field_change(self, event):
         """Auto-save when field changes."""
@@ -369,12 +450,6 @@ class ManualValidationApp:
         """Auto-save current changes."""
         self.save_current_entry()
         self.save_to_files()
-    
-    def manual_save(self):
-        """Manual save triggered by user."""
-        self.save_current_entry()
-        self.save_to_files()
-        messagebox.showinfo("Saved", "File saved successfully!")
     
     def save_current_entry(self):
         """Save current entry data to DataFrame."""
@@ -413,26 +488,26 @@ class ManualValidationApp:
             self.log(f"ERROR saving CSV: {e}")
             messagebox.showerror("Save Error", f"Could not save CSV: {e}")
     
-    def on_delete_toggle(self):
-        """Handle delete checkbox toggle."""
+    def toggle_delete(self):
+        """Toggle deletion marking via keyboard (D key)."""
         if self.current_task_idx >= len(self.tasks):
             return
         
         row_idx = self.tasks[self.current_task_idx]
-        is_marked = '1' if self.delete_var.get() else '0'
-        self.df.at[row_idx, 'marked_for_deletion'] = is_marked
+        current_status = str(self.df.at[row_idx, 'marked_for_deletion'])
         
-        if is_marked == '1':
+        # Toggle the deletion status
+        new_status = '0' if current_status == '1' else '1'
+        self.df.at[row_idx, 'marked_for_deletion'] = new_status
+        
+        if new_status == '1':
             self.log(f"Row {row_idx} (id={self.df.at[row_idx, 'id']}): marked for deletion")
+            messagebox.showinfo("Marked for Deletion", f"Row {self.df.at[row_idx, 'id']} marked for deletion")
         else:
             self.log(f"Row {row_idx} (id={self.df.at[row_idx, 'id']}): unmarked for deletion")
+            messagebox.showinfo("Unmarked", f"Row {self.df.at[row_idx, 'id']} unmarked for deletion")
         
         self.auto_save()
-    
-    def toggle_delete(self):
-        """Toggle delete checkbox via keyboard."""
-        self.delete_var.set(not self.delete_var.get())
-        self.on_delete_toggle()
     
     def next_task(self):
         """Move to next task."""
@@ -468,7 +543,14 @@ class ManualValidationApp:
     
     def complete_validation(self):
         """Complete validation: delete marked rows, reindex, save final CSV + XLSX, and exit."""
+        # Calculate session duration
+        elapsed = datetime.now() - self.session_start_time
+        hours, remainder = divmod(int(elapsed.total_seconds()), 3600)
+        minutes, seconds = divmod(remainder, 60)
+        session_duration = f"{hours:02d}:{minutes:02d}:{seconds:02d}" if hours > 0 else f"{minutes:02d}:{seconds:02d}"
+        
         self.log("All validation tasks completed!")
+        self.log(f"Session duration: {session_duration}")
         
         # Delete marked rows
         rows_to_delete = self.df[self.df['marked_for_deletion'] == '1'].index.tolist()
@@ -497,12 +579,13 @@ class ManualValidationApp:
             messagebox.showerror("Save Error", f"Could not save final files: {e}")
             return
         
-        self.log(f"SESSION END - {len(self.tasks)} tasks completed, {len(rows_to_delete)} rows deleted")
+        self.log(f"SESSION END - {len(self.tasks)} tasks completed, {len(rows_to_delete)} rows deleted, Duration: {session_duration}")
         
         # Show completion message
         completion_message = (
             f"✓ Validation Complete!\n\n"
             f"Total tasks processed: {len(self.tasks)}\n"
+            f"Session duration: {session_duration}\n"
             f"Rows deleted: {len(rows_to_delete)}\n"
             f"Final row count: {len(self.df)}\n\n"
             f"Files saved:\n"
