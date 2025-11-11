@@ -241,7 +241,7 @@ def main():
 
     # Define input and output directories
     input_dir = 'data/03_variable_extraction/manually_cleaned_with_variables/'
-    output_dir = 'data/04_dataset_validation'
+    output_dir = 'data/04_dataset_validation/validated'
 
     # Determine input files
     if args.csv:
@@ -293,9 +293,9 @@ def main():
         project_root = os.path.abspath(os.path.join(script_dir, '../../'))
         output_base_dir = os.path.join(project_root, output_base_dir)
     
-    os.makedirs(os.path.join(output_base_dir, 'validated_xlsx'), exist_ok=True)
+    os.makedirs(os.path.join(output_base_dir, 'xlsx'), exist_ok=True)
+    os.makedirs(os.path.join(output_base_dir, 'csv'), exist_ok=True)
     os.makedirs(os.path.join(output_base_dir, 'logs'), exist_ok=True)
-    os.makedirs(os.path.join(output_base_dir, 'validated_csv'), exist_ok=True)
 
     # Process each CSV file
     processed_count = 0
@@ -402,7 +402,7 @@ def main():
         filestem = os.path.splitext(os.path.basename(csv_file))[0]
         
         # Create XLSX file with validation results
-        xlsx_path = os.path.join(output_base_dir, 'validated_xlsx', f"{filestem}_validated.xlsx")
+        xlsx_path = os.path.join(output_base_dir, 'xlsx', f"{filestem}_validated.xlsx")
         
         # Create a new DataFrame for the XLSX with validation information
         xlsx_df = df.copy()
@@ -445,7 +445,7 @@ def main():
             xlsx_path = None
         
         # Save CSV file with validation notes
-        csv_validated_path = os.path.join(output_base_dir, 'validated_csv', f"{filestem}_validated.csv")
+        csv_validated_path = os.path.join(output_base_dir, 'csv', f"{filestem}_validated.csv")
         try:
             xlsx_df.to_csv(csv_validated_path, index=False)
             print(f"Created CSV file: {csv_validated_path}")
@@ -511,8 +511,8 @@ def main():
         processed_count += 1
 
     print(f"\nValidation complete. Processed {processed_count} files.")
-    print(f"XLSX files saved to: {os.path.join(output_base_dir, 'validated_xlsx')}")
-    print(f"CSV files saved to: {os.path.join(output_base_dir, 'validated_csv')}")
+    print(f"XLSX files saved to: {os.path.join(output_base_dir, 'xlsx')}")
+    print(f"CSV files saved to: {os.path.join(output_base_dir, 'csv')}")
     print(f"Log files saved to: {os.path.join(output_base_dir, 'logs')}")
 
 

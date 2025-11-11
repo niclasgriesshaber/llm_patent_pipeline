@@ -26,16 +26,18 @@ class ManualValidationApp:
             self.project_root,
             f'data/01_dataset_construction/csvs/Patentamt_{self.year}/page_by_page/PNG'
         )
-        self.output_csv_dir = os.path.join(self.project_root, 'data/04_dataset_validation/manually_validated_csv')
-        self.output_xlsx_dir = os.path.join(self.project_root, 'data/04_dataset_validation/manually_validated_xlsx')
+        self.output_csv_dir = os.path.join(self.project_root, 'data/04_dataset_validation/manually_validated/csv')
+        self.output_xlsx_dir = os.path.join(self.project_root, 'data/04_dataset_validation/manually_validated/xlsx')
+        self.output_log_dir = os.path.join(self.project_root, 'data/04_dataset_validation/manually_validated/logs')
         
         # Create output directories
         os.makedirs(self.output_csv_dir, exist_ok=True)
         os.makedirs(self.output_xlsx_dir, exist_ok=True)
+        os.makedirs(self.output_log_dir, exist_ok=True)
         
         # Setup logging
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        self.log_file = os.path.join(self.project_root, f'manually_validated_log_{self.year}_{timestamp}.txt')
+        self.log_file = os.path.join(self.output_log_dir, f'manually_validated_log_{self.year}_{timestamp}.txt')
         
         # Load data
         self.df = None
@@ -76,23 +78,37 @@ class ManualValidationApp:
         return match.group(1) if match else None
     
     def load_data(self):
-        """Load CSV and add manually_validated column."""
-        self.log("Loading data...")
-        self.df = pd.read_csv(self.csv_path, dtype=str)
+        """Load CSV and add manually_validated column. Check for existing work-in-progress file."""
+        # Check if manually_validated CSV already exists (resuming)
+        output_csv = os.path.join(self.output_csv_dir, f"Patentamt_{self.year}_manually_validated.csv")
         
-        # Add manually_validated column if it doesn't exist
-        if 'manually_validated' not in self.df.columns:
-            self.df['manually_validated'] = self.df['validation_notes'].apply(
-                lambda x: '1' if str(x).strip() == 'Valid' else '0'
-            )
-            self.log(f"Added manually_validated column: {(self.df['manually_validated'] == '1').sum()} valid entries")
+        if os.path.exists(output_csv):
+            self.log("Found existing manually_validated file - RESUMING previous session")
+            print(f"✓ Resuming from previous session: {output_csv}")
+            self.df = pd.read_csv(output_csv, dtype=str)
+            
+            # Count remaining tasks
+            remaining = (self.df['manually_validated'] == '0').sum()
+            self.log(f"Resuming: {remaining} tasks remaining")
+            print(f"✓ {remaining} validation tasks remaining")
+        else:
+            self.log("Starting fresh - loading from validated CSV")
+            print(f"✓ Starting new validation session")
+            self.df = pd.read_csv(self.csv_path, dtype=str)
+            
+            # Add manually_validated column if it doesn't exist
+            if 'manually_validated' not in self.df.columns:
+                self.df['manually_validated'] = self.df['validation_notes'].apply(
+                    lambda x: '1' if str(x).strip() == 'Valid' else '0'
+                )
+                self.log(f"Added manually_validated column: {(self.df['manually_validated'] == '1').sum()} valid entries")
         
-        # Add deletion flag column
+        # Add deletion flag column if it doesn't exist
         if 'marked_for_deletion' not in self.df.columns:
             self.df['marked_for_deletion'] = '0'
     
     def parse_tasks(self):
-        """Parse validation_notes to create task queue."""
+        """Parse validation_notes to create task queue. Only include unvalidated rows."""
         self.log("Parsing validation issues...")
         
         # Define patterns for the three issue types
@@ -105,6 +121,10 @@ class ManualValidationApp:
         greater_than = []
         
         for idx, row in self.df.iterrows():
+            # Only process rows that haven't been manually validated yet
+            if str(row['manually_validated']).strip() != '0':
+                continue
+                
             validation_notes = str(row['validation_notes']).strip()
             
             if re.search(duplicate_pattern, validation_notes):
@@ -114,12 +134,17 @@ class ManualValidationApp:
             elif re.search(greater_than_pattern, validation_notes):
                 greater_than.append(idx)
         
+        # Sort each category by row index for deterministic ordering
+        duplicates.sort()
+        less_than.sort()
+        greater_than.sort()
+        
         # Combine in order: duplicates, < start, > end
         self.tasks = duplicates + less_than + greater_than
         
-        self.log(f"Found {len(duplicates)} duplicate issues")
-        self.log(f"Found {len(less_than)} '< start' issues")
-        self.log(f"Found {len(greater_than)} '> end' issues")
+        self.log(f"Found {len(duplicates)} duplicate issues to validate")
+        self.log(f"Found {len(less_than)} '< start' issues to validate")
+        self.log(f"Found {len(greater_than)} '> end' issues to validate")
     
     def setup_gui(self):
         """Build the tkinter interface."""
@@ -164,12 +189,26 @@ class ManualValidationApp:
         fields_frame = ttk.Frame(self.root, padding="10")
         fields_frame.pack(fill=tk.X)
         
-        # Entry text
+        # Entry text with position indicator
         entry_label_frame = ttk.Frame(fields_frame)
         entry_label_frame.pack(fill=tk.X, pady=5)
         
         self.entry_info_label = ttk.Label(entry_label_frame, text="Entry:", font=('Arial', 10, 'bold'))
         self.entry_info_label.pack(side=tk.LEFT)
+        
+        # Entry position on page (bold and prominent)
+        self.entry_position_label = tk.Label(
+            entry_label_frame, 
+            text="", 
+            font=('Arial', 14, 'bold'),
+            fg='#0066cc',  # Blue color for visibility
+            bg='#f0f0f0',  # Light gray background
+            padx=10,
+            pady=2,
+            relief=tk.RAISED,
+            borderwidth=2
+        )
+        self.entry_position_label.pack(side=tk.RIGHT)
         
         self.entry_text = scrolledtext.ScrolledText(fields_frame, height=4, wrap=tk.WORD, font=('Arial', 10))
         self.entry_text.pack(fill=tk.X, pady=5)
@@ -206,12 +245,11 @@ class ManualValidationApp:
         ttk.Button(button_style_frame, text="Manual Save (S)", command=self.manual_save, width=15).pack(side=tk.LEFT, padx=5)
         ttk.Button(button_style_frame, text="Back (A)", command=self.go_back, width=15).pack(side=tk.LEFT, padx=5)
         ttk.Button(button_style_frame, text="Next Task (D)", command=self.next_task, width=15).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_style_frame, text="Finish & Exit (Q)", command=self.finish_and_exit, width=15).pack(side=tk.LEFT, padx=5)
         
         # Shortcuts help
         help_frame = ttk.Frame(self.root, padding="5")
         help_frame.pack(fill=tk.X)
-        help_text = "Shortcuts: A=Back | D=Next | S=Save | E=Toggle Delete | Q=Finish | Space=Next | Enter=Next Field"
+        help_text = "Shortcuts: A=Back | D=Next | S=Save | E=Toggle Delete | Space=Next | Enter=Next Field"
         ttk.Label(help_frame, text=help_text, font=('Arial', 9), foreground='gray').pack()
     
     def setup_keyboard_shortcuts(self):
@@ -224,15 +262,13 @@ class ManualValidationApp:
         self.root.bind('S', lambda e: self.manual_save())
         self.root.bind('e', lambda e: self.toggle_delete())
         self.root.bind('E', lambda e: self.toggle_delete())
-        self.root.bind('q', lambda e: self.finish_and_exit())
-        self.root.bind('Q', lambda e: self.finish_and_exit())
         self.root.bind('<space>', lambda e: self.next_task())
     
     def display_task(self):
         """Display current task in GUI."""
         if self.current_task_idx >= len(self.tasks):
-            messagebox.showinfo("Complete", "All tasks completed!")
-            self.finish_and_exit()
+            # All tasks completed - show message and save final files
+            self.complete_validation()
             return
         
         # Get current row
@@ -242,6 +278,15 @@ class ManualValidationApp:
         # Update progress
         progress_text = f"Task {self.current_task_idx + 1} / {len(self.tasks)} | {row['validation_notes']}"
         self.progress_label.config(text=progress_text)
+        
+        # Calculate entry position on this page
+        current_page = str(row['page'])
+        entries_on_page = self.df[self.df['page'] == current_page]
+        entry_position = (entries_on_page.index <= row_idx).sum()
+        total_on_page = len(entries_on_page)
+        
+        # Update entry position label (bold and prominent)
+        self.entry_position_label.config(text=f"{entry_position}/{total_on_page}")
         
         # Update entry info label
         self.entry_info_label.config(text=f"Entry (from page_{row['page'].zfill(4)}.png):")
@@ -358,19 +403,15 @@ class ManualValidationApp:
             self.log(f"Row {row_idx} (id={old_row['id']}): manually_validated changed to 1")
     
     def save_to_files(self):
-        """Save DataFrame to CSV and XLSX."""
+        """Save DataFrame to CSV only (XLSX created only at completion)."""
         output_csv = os.path.join(self.output_csv_dir, f"Patentamt_{self.year}_manually_validated.csv")
-        output_xlsx = os.path.join(self.output_xlsx_dir, f"Patentamt_{self.year}_manually_validated.xlsx")
         
-        # Remove marked_for_deletion column for output (internal use only)
-        output_df = self.df.copy()
-        
+        # Save with all columns including internal tracking columns
         try:
-            output_df.to_csv(output_csv, index=False)
-            output_df.to_excel(output_xlsx, index=False, engine='openpyxl')
+            self.df.to_csv(output_csv, index=False)
         except Exception as e:
-            self.log(f"ERROR saving files: {e}")
-            messagebox.showerror("Save Error", f"Could not save files: {e}")
+            self.log(f"ERROR saving CSV: {e}")
+            messagebox.showerror("Save Error", f"Could not save CSV: {e}")
     
     def on_delete_toggle(self):
         """Handle delete checkbox toggle."""
@@ -408,11 +449,8 @@ class ManualValidationApp:
         # Move to next
         self.current_task_idx += 1
         
-        if self.current_task_idx < len(self.tasks):
-            self.display_task()
-        else:
-            messagebox.showinfo("Complete", "All tasks completed!")
-            self.finish_and_exit()
+        # Display next task (or complete if done)
+        self.display_task()
     
     def go_back(self):
         """Go back to previous task (undo)."""
@@ -428,25 +466,9 @@ class ManualValidationApp:
         self.log(f"UNDO: Back to task {self.current_task_idx + 1}")
         self.display_task()
     
-    def finish_and_exit(self):
-        """Finish validation, delete marked rows, reindex, and exit."""
-        # Confirm with user
-        response = messagebox.askyesno(
-            "Finish & Exit",
-            f"Are you sure you want to finish?\n\n"
-            f"This will:\n"
-            f"- Delete {(self.df['marked_for_deletion'] == '1').sum()} marked rows\n"
-            f"- Reindex the 'id' column\n"
-            f"- Save final files\n"
-            f"- Exit the application"
-        )
-        
-        if not response:
-            return
-        
-        # Save current entry first
-        if self.current_task_idx < len(self.tasks):
-            self.save_current_entry()
+    def complete_validation(self):
+        """Complete validation: delete marked rows, reindex, save final CSV + XLSX, and exit."""
+        self.log("All validation tasks completed!")
         
         # Delete marked rows
         rows_to_delete = self.df[self.df['marked_for_deletion'] == '1'].index.tolist()
@@ -462,12 +484,34 @@ class ManualValidationApp:
         self.df['id'] = range(1, len(self.df) + 1)
         self.log(f"Reindexed 'id' column: 1 to {len(self.df)}")
         
-        # Final save
-        self.save_to_files()
+        # Save final CSV and XLSX
+        output_csv = os.path.join(self.output_csv_dir, f"Patentamt_{self.year}_manually_validated.csv")
+        output_xlsx = os.path.join(self.output_xlsx_dir, f"Patentamt_{self.year}_manually_validated.xlsx")
         
-        self.log(f"SESSION END - {self.current_task_idx} tasks completed, {len(rows_to_delete)} rows deleted")
+        try:
+            self.df.to_csv(output_csv, index=False)
+            self.df.to_excel(output_xlsx, index=False, engine='openpyxl')
+            self.log(f"Final files saved: CSV and XLSX")
+        except Exception as e:
+            self.log(f"ERROR saving final files: {e}")
+            messagebox.showerror("Save Error", f"Could not save final files: {e}")
+            return
         
-        messagebox.showinfo("Complete", f"Validation complete!\n\nFiles saved to:\n{self.output_csv_dir}")
+        self.log(f"SESSION END - {len(self.tasks)} tasks completed, {len(rows_to_delete)} rows deleted")
+        
+        # Show completion message
+        completion_message = (
+            f"✓ Validation Complete!\n\n"
+            f"Total tasks processed: {len(self.tasks)}\n"
+            f"Rows deleted: {len(rows_to_delete)}\n"
+            f"Final row count: {len(self.df)}\n\n"
+            f"Files saved:\n"
+            f"• CSV: {output_csv}\n"
+            f"• XLSX: {output_xlsx}\n\n"
+            f"Log file: {self.log_file}"
+        )
+        
+        messagebox.showinfo("🎉 Validation Complete", completion_message)
         self.root.destroy()
     
     def log(self, message):
@@ -483,7 +527,7 @@ class ManualValidationApp:
 
 def main():
     parser = argparse.ArgumentParser(description="Manual validation GUI for patent data")
-    parser.add_argument('--csv', required=True, help='CSV filename from validated_csv folder (e.g., Patentamt_1878_cleaned_with_variables_validated.csv)')
+    parser.add_argument('--csv', required=True, help='CSV filename from validated/csv folder (e.g., Patentamt_1878_cleaned_with_variables_validated.csv)')
     args = parser.parse_args()
     
     # Locate the CSV file
@@ -496,16 +540,21 @@ def main():
     if os.path.isabs(csv_file):
         csv_path = csv_file
     else:
-        # Try in validated_csv folder
-        csv_path = os.path.join(project_root, 'data/04_dataset_validation/validated_csv', csv_file)
+        # Try in validated/csv folder (new structure)
+        csv_path = os.path.join(project_root, 'data/04_dataset_validation/validated/csv', csv_file)
         
         if not os.path.exists(csv_path):
-            # Try in current directory
-            if os.path.exists(csv_file):
+            # Try in old validated_csv folder (backward compatibility)
+            csv_path_old = os.path.join(project_root, 'data/04_dataset_validation/validated_csv', csv_file)
+            if os.path.exists(csv_path_old):
+                csv_path = csv_path_old
+            elif os.path.exists(csv_file):
+                # Try in current directory
                 csv_path = csv_file
             else:
                 print(f"Error: Could not find CSV file: {csv_file}")
-                print(f"Looked in: {os.path.join(project_root, 'data/04_dataset_validation/validated_csv')}")
+                print(f"Looked in: {os.path.join(project_root, 'data/04_dataset_validation/validated/csv')}")
+                print(f"Also tried: {os.path.join(project_root, 'data/04_dataset_validation/validated_csv')}")
                 sys.exit(1)
     
     if not os.path.exists(csv_path):
