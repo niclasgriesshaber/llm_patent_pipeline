@@ -504,29 +504,33 @@ class ManualValidationApp:
         # Just save to DataFrame, don't write to file yet
         self.save_current_entry()
     
-    def save_current_entry(self):
-        """Save current entry data to DataFrame."""
+    def save_current_entry(self, force_read=False):
+        """Save current entry data to DataFrame (always reads from UI fields)."""
         if self.current_task_idx >= len(self.tasks):
             return
         
         row_idx = self.tasks[self.current_task_idx]
         old_row = self.df.iloc[row_idx].copy()
         
-        # Get new values
+        # Always get current values from UI fields (not from stored state)
+        # This ensures we capture whatever the user typed, even without pressing Enter
         new_entry = self.entry_text.get('1.0', tk.END).strip()
         new_patent_id = self.patent_id_entry.get().strip()
         
-        # Update DataFrame
-        if str(old_row['entry']) != new_entry:
+        # Only update if values actually changed (for efficiency)
+        entry_changed = str(old_row['entry']) != new_entry
+        patent_id_changed = str(old_row['patent_id']) != new_patent_id
+        
+        if entry_changed:
             self.log(f"Row {row_idx} (id={old_row['id']}): entry changed")
             self.df.at[row_idx, 'entry'] = new_entry
         
-        if str(old_row['patent_id']) != new_patent_id:
+        if patent_id_changed:
             self.log(f"Row {row_idx} (id={old_row['id']}): patent_id changed from {old_row['patent_id']} to {new_patent_id}")
             self.df.at[row_idx, 'patent_id'] = new_patent_id
         
-        # Mark as manually validated if it was changed
-        if str(old_row['manually_validated']) == '0':
+        # Mark as manually validated if any field was changed
+        if (entry_changed or patent_id_changed) and str(old_row['manually_validated']) == '0':
             self.df.at[row_idx, 'manually_validated'] = '1'
             self.log(f"Row {row_idx} (id={old_row['id']}): manually_validated changed to 1")
     
@@ -574,18 +578,19 @@ class ManualValidationApp:
             self.show_status(f"✓ Row {self.df.at[row_idx, 'id']} unmarked")
     
     def next_task(self):
-        """Move to next task (save to file every 10 tasks for smoother operation)."""
+        """Move to next task (always captures current field values, saves every 10 tasks)."""
+        # IMPORTANT: Always save current field values first (whatever is in the UI)
+        # This captures edits even if Enter wasn't pressed
+        self.save_current_entry()
+        
         # Show immediate feedback
         self.show_status("→ Moving to next task...", 1000)
         
-        # Save current state to undo stack
+        # Save current state to undo stack (after capturing field values)
         self.undo_stack.append({
             'df': self.df.copy(),
             'task_idx': self.current_task_idx
         })
-        
-        # Save current entry to DataFrame
-        self.save_current_entry()
         
         # Increment task counter
         self.tasks_since_last_save += 1
@@ -608,6 +613,10 @@ class ManualValidationApp:
         if not self.undo_stack:
             self.show_status("⚠ Already at the first task", 2000)
             return
+        
+        # Save current field values before going back (in case user made edits)
+        # This ensures we don't lose any work in progress
+        self.save_current_entry()
         
         # Show immediate feedback
         self.show_status("← Going back...", 1000)
