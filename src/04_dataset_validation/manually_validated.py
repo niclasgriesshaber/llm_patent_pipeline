@@ -203,18 +203,16 @@ class ManualValidationApp:
         self.page_label = ttk.Label(zoom_control_frame, text="", font=('Arial', 10))
         self.page_label.pack(side=tk.LEFT, padx=20)
         
-        # Scrollable canvas for image
+        # Scrollable canvas for image (vertical only)
         canvas_frame = ttk.Frame(image_frame)
         canvas_frame.pack(fill=tk.BOTH, expand=True, pady=10)
         
         self.image_canvas = tk.Canvas(canvas_frame, bg='gray')
         v_scrollbar = ttk.Scrollbar(canvas_frame, orient=tk.VERTICAL, command=self.image_canvas.yview)
-        h_scrollbar = ttk.Scrollbar(canvas_frame, orient=tk.HORIZONTAL, command=self.image_canvas.xview)
         
-        self.image_canvas.configure(yscrollcommand=v_scrollbar.set, xscrollcommand=h_scrollbar.set)
+        self.image_canvas.configure(yscrollcommand=v_scrollbar.set)
         
         v_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        h_scrollbar.pack(side=tk.BOTTOM, fill=tk.X)
         self.image_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         
         # Bind mouse wheel for scrolling
@@ -430,10 +428,9 @@ class ManualValidationApp:
         self.image_canvas.delete("all")
         self.image_canvas.create_image(x_center, y_center, anchor=tk.NW, image=self.photo_image)
         
-        # Set scroll region
-        scroll_width = max(new_width + x_center * 2, canvas_width)
+        # Set scroll region (vertical only, no horizontal scroll)
         scroll_height = max(new_height + y_center * 2, canvas_height)
-        self.image_canvas.config(scrollregion=(0, 0, scroll_width, scroll_height))
+        self.image_canvas.config(scrollregion=(0, 0, canvas_width, scroll_height))
         
         # Update zoom label
         self.zoom_label.config(text=f"{int(self.zoom_level * 100)}%")
