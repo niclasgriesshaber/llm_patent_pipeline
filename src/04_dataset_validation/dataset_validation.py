@@ -295,7 +295,7 @@ def main():
     
     os.makedirs(os.path.join(output_base_dir, 'validated_xlsx'), exist_ok=True)
     os.makedirs(os.path.join(output_base_dir, 'logs'), exist_ok=True)
-    os.makedirs(os.path.join(output_base_dir, 'validated_repaired_xlsx'), exist_ok=True)
+    os.makedirs(os.path.join(output_base_dir, 'validated_repaired_csv'), exist_ok=True)
 
     # Process each CSV file
     processed_count = 0
@@ -443,6 +443,14 @@ def main():
         except Exception as e:
             print(f"Error creating XLSX file {xlsx_path}: {e}")
             xlsx_path = None
+        
+        # Save CSV file with validation notes
+        csv_validated_path = os.path.join(output_base_dir, 'validated_repaired_csv', f"{filestem}_validated.csv")
+        try:
+            xlsx_df.to_csv(csv_validated_path, index=False)
+            print(f"Created CSV file: {csv_validated_path}")
+        except Exception as e:
+            print(f"Error creating CSV file {csv_validated_path}: {e}")
 
         # Create log file
         log_path = os.path.join(output_base_dir, 'logs', f"{filestem}_validation.txt")
@@ -504,8 +512,8 @@ def main():
 
     print(f"\nValidation complete. Processed {processed_count} files.")
     print(f"XLSX files saved to: {os.path.join(output_base_dir, 'validated_xlsx')}")
+    print(f"CSV files saved to: {os.path.join(output_base_dir, 'validated_repaired_csv')}")
     print(f"Log files saved to: {os.path.join(output_base_dir, 'logs')}")
-    print(f"Repaired XLSX files can be saved to: {os.path.join(output_base_dir, 'validated_repaired_xlsx')}")
 
 
 if __name__ == "__main__":
