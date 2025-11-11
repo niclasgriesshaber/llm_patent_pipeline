@@ -203,16 +203,18 @@ class ManualValidationApp:
         self.page_label = ttk.Label(zoom_control_frame, text="", font=('Arial', 10))
         self.page_label.pack(side=tk.LEFT, padx=20)
         
-        # Scrollable canvas for image (vertical only)
+        # Scrollable canvas for image (with both scrollbars)
         canvas_frame = ttk.Frame(image_frame)
         canvas_frame.pack(fill=tk.BOTH, expand=True, pady=10)
         
         self.image_canvas = tk.Canvas(canvas_frame, bg='gray')
         v_scrollbar = ttk.Scrollbar(canvas_frame, orient=tk.VERTICAL, command=self.image_canvas.yview)
+        h_scrollbar = ttk.Scrollbar(canvas_frame, orient=tk.HORIZONTAL, command=self.image_canvas.xview)
         
-        self.image_canvas.configure(yscrollcommand=v_scrollbar.set)
+        self.image_canvas.configure(yscrollcommand=v_scrollbar.set, xscrollcommand=h_scrollbar.set)
         
         v_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        h_scrollbar.pack(side=tk.BOTTOM, fill=tk.X)
         self.image_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         
         # Bind mouse wheel for scrolling
@@ -282,6 +284,13 @@ class ManualValidationApp:
         ttk.Button(button_style_frame, text="Back (A)", command=self.go_back, width=15).pack(side=tk.LEFT, padx=5)
         ttk.Button(button_style_frame, text="Next (S)", command=self.next_task, width=15).pack(side=tk.LEFT, padx=5)
         ttk.Button(button_style_frame, text="Delete (D)", command=self.toggle_delete, width=15).pack(side=tk.LEFT, padx=5)
+        
+        # Status bar for subtle feedback
+        status_frame = ttk.Frame(self.root, relief=tk.SUNKEN, padding="2")
+        status_frame.pack(fill=tk.X, side=tk.BOTTOM)
+        
+        self.status_label = ttk.Label(status_frame, text="Ready", font=('Arial', 9))
+        self.status_label.pack(side=tk.LEFT)
     
     def setup_keyboard_shortcuts(self):
         """Setup keyboard shortcuts: A=Back, S=Next, D=Delete."""
@@ -293,11 +302,14 @@ class ManualValidationApp:
         self.root.bind('D', lambda e: self.toggle_delete())
     
     def display_task(self):
-        """Display current task in GUI."""
+        """Display current task in GUI (optimized for smooth loading)."""
         if self.current_task_idx >= len(self.tasks):
             # All tasks completed - show message and save final files
             self.complete_validation()
             return
+        
+        # Update UI asynchronously for smoother feel
+        self.root.update_idletasks()
         
         # Get current row
         row_idx = self.tasks[self.current_task_idx]
@@ -343,13 +355,15 @@ class ManualValidationApp:
         image_path = os.path.join(self.png_dir, f"page_{page_num}.png")
         
         if os.path.exists(image_path):
+            # Show loading feedback
+            self.show_status("📄 Loading image...", 500)
             self.original_image = Image.open(image_path)
             # Calculate zoom to fit screen width
             self.calculate_fit_zoom()
             self.update_image_display()
         else:
             self.log(f"WARNING: Image not found: {image_path}")
-            messagebox.showwarning("Image Not Found", f"Could not find image: page_{page_num}.png")
+            self.show_status(f"⚠ Image not found: page_{page_num}.png", 3000)
         
         # Populate fields
         self.entry_text.delete('1.0', tk.END)
@@ -428,9 +442,10 @@ class ManualValidationApp:
         self.image_canvas.delete("all")
         self.image_canvas.create_image(x_center, y_center, anchor=tk.NW, image=self.photo_image)
         
-        # Set scroll region (vertical only, no horizontal scroll)
+        # Set scroll region (both horizontal and vertical)
+        scroll_width = max(new_width + x_center * 2, canvas_width)
         scroll_height = max(new_height + y_center * 2, canvas_height)
-        self.image_canvas.config(scrollregion=(0, 0, canvas_width, scroll_height))
+        self.image_canvas.config(scrollregion=(0, 0, scroll_width, scroll_height))
         
         # Update zoom label
         self.zoom_label.config(text=f"{int(self.zoom_level * 100)}%")
@@ -530,8 +545,14 @@ class ManualValidationApp:
                 self._save_error_shown = True
                 messagebox.showerror("Save Error", f"Could not save CSV: {e}")
     
+    def show_status(self, message, duration=2000):
+        """Show a status message briefly in the status bar."""
+        self.status_label.config(text=message)
+        # Clear after duration
+        self.root.after(duration, lambda: self.status_label.config(text="Ready"))
+    
     def toggle_delete(self):
-        """Toggle deletion marking via keyboard (D key) with visual indicator."""
+        """Toggle deletion marking via keyboard (D key) with visual indicator only."""
         if self.current_task_idx >= len(self.tasks):
             return
         
@@ -542,18 +563,21 @@ class ManualValidationApp:
         new_status = '0' if current_status == '1' else '1'
         self.df.at[row_idx, 'marked_for_deletion'] = new_status
         
-        # Update visual indicator
+        # Update visual indicator and status bar (no popup)
         if new_status == '1':
             self.deletion_indicator.pack(side=tk.LEFT, padx=10)
             self.log(f"Row {row_idx} (id={self.df.at[row_idx, 'id']}): marked for deletion")
-            messagebox.showinfo("Marked for Deletion", f"Row {self.df.at[row_idx, 'id']} marked for deletion")
+            self.show_status(f"✓ Row {self.df.at[row_idx, 'id']} marked for deletion")
         else:
             self.deletion_indicator.pack_forget()
             self.log(f"Row {row_idx} (id={self.df.at[row_idx, 'id']}): unmarked for deletion")
-            messagebox.showinfo("Unmarked", f"Row {self.df.at[row_idx, 'id']} unmarked for deletion")
+            self.show_status(f"✓ Row {self.df.at[row_idx, 'id']} unmarked")
     
     def next_task(self):
         """Move to next task (save to file every 10 tasks for smoother operation)."""
+        # Show immediate feedback
+        self.show_status("→ Moving to next task...", 1000)
+        
         # Save current state to undo stack
         self.undo_stack.append({
             'df': self.df.copy(),
@@ -571,6 +595,7 @@ class ManualValidationApp:
             self.save_to_files()
             self.tasks_since_last_save = 0
             self.log(f"Auto-saved at task {self.current_task_idx + 1}")
+            self.show_status("💾 Saved to disk", 2000)
         
         # Move to next
         self.current_task_idx += 1
@@ -579,10 +604,13 @@ class ManualValidationApp:
         self.display_task()
     
     def go_back(self):
-        """Go back to previous task (undo)."""
+        """Go back to previous task (undo) with status feedback."""
         if not self.undo_stack:
-            messagebox.showinfo("Info", "Already at the first task!")
+            self.show_status("⚠ Already at the first task", 2000)
             return
+        
+        # Show immediate feedback
+        self.show_status("← Going back...", 1000)
         
         # Restore previous state
         prev_state = self.undo_stack.pop()
