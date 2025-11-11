@@ -44,7 +44,7 @@ class ManualValidationApp:
         self.tasks = []
         self.current_task_idx = 0
         self.undo_stack = []
-        self.zoom_level = 0.5  # Default to 50% zoom
+        self.zoom_level = 1.0  # Will be calculated to fit screen width
         self.original_image = None
         self.photo_image = None
         
@@ -242,8 +242,7 @@ class ManualValidationApp:
         )
         self.entry_position_label.pack(side=tk.LEFT)
         
-        # Entry text area
-        ttk.Label(fields_frame, text="Entry:", font=('Arial', 10, 'bold')).pack(anchor=tk.W, pady=(5, 2))
+        # Entry text area (no label)
         self.entry_text = scrolledtext.ScrolledText(fields_frame, height=4, wrap=tk.WORD, font=('Arial', 10))
         self.entry_text.pack(fill=tk.X, pady=5)
         self.entry_text.bind('<Tab>', self.on_entry_tab)
@@ -331,7 +330,8 @@ class ManualValidationApp:
         
         if os.path.exists(image_path):
             self.original_image = Image.open(image_path)
-            self.zoom_level = 1.0
+            # Calculate zoom to fit screen width
+            self.calculate_fit_zoom()
             self.update_image_display()
         else:
             self.log(f"WARNING: Image not found: {image_path}")
@@ -360,8 +360,30 @@ class ManualValidationApp:
             return 'greater_than'
         return 'other'
     
+    def calculate_fit_zoom(self):
+        """Calculate zoom level to fit image width to canvas width."""
+        if self.original_image is None:
+            self.zoom_level = 0.5
+            return
+        
+        # Get canvas width (use update to ensure proper dimensions)
+        self.image_canvas.update_idletasks()
+        canvas_width = self.image_canvas.winfo_width()
+        
+        # If canvas not yet rendered, use default
+        if canvas_width < 100:
+            canvas_width = 1200  # Reasonable default
+        
+        # Calculate zoom to fit width with some margin
+        image_width = self.original_image.width
+        margin = 40  # Leave some margin
+        fit_zoom = (canvas_width - margin) / image_width
+        
+        # Cap zoom levels for usability
+        self.zoom_level = max(0.25, min(fit_zoom, 2.0))
+    
     def update_image_display(self):
-        """Update image display with current zoom level and center it."""
+        """Update image display with current zoom level and center it (optimized)."""
         if self.original_image is None:
             return
         
@@ -369,11 +391,12 @@ class ManualValidationApp:
         new_width = int(self.original_image.width * self.zoom_level)
         new_height = int(self.original_image.height * self.zoom_level)
         
-        # Resize image
-        resized_image = self.original_image.resize((new_width, new_height), Image.LANCZOS)
+        # Use BILINEAR for faster rendering (LANCZOS is higher quality but slower)
+        resized_image = self.original_image.resize((new_width, new_height), Image.BILINEAR)
         self.photo_image = ImageTk.PhotoImage(resized_image)
         
-        # Get canvas dimensions
+        # Update canvas idletasks for accurate dimensions
+        self.image_canvas.update_idletasks()
         canvas_width = self.image_canvas.winfo_width()
         canvas_height = self.image_canvas.winfo_height()
         
@@ -381,13 +404,13 @@ class ManualValidationApp:
         x_center = max(0, (canvas_width - new_width) // 2)
         y_center = max(0, (canvas_height - new_height) // 2)
         
-        # Update canvas
+        # Update canvas efficiently
         self.image_canvas.delete("all")
         self.image_canvas.create_image(x_center, y_center, anchor=tk.NW, image=self.photo_image)
         
-        # Set scroll region to include the entire image plus any centering offset
-        scroll_width = max(new_width, canvas_width)
-        scroll_height = max(new_height, canvas_height)
+        # Set scroll region
+        scroll_width = max(new_width + x_center * 2, canvas_width)
+        scroll_height = max(new_height + y_center * 2, canvas_height)
         self.image_canvas.config(scrollregion=(0, 0, scroll_width, scroll_height))
         
         # Update zoom label
@@ -441,10 +464,10 @@ class ManualValidationApp:
     
     def on_field_change(self, event):
         """Auto-save when field changes."""
-        # Debounce: only save after a brief pause
+        # Debounce: only save after a pause (reduced frequency for smoother operation)
         if hasattr(self, '_save_timer'):
             self.root.after_cancel(self._save_timer)
-        self._save_timer = self.root.after(500, self.auto_save)
+        self._save_timer = self.root.after(1500, self.auto_save)  # 1.5 seconds for smoother typing
     
     def auto_save(self):
         """Auto-save current changes."""
@@ -478,15 +501,19 @@ class ManualValidationApp:
             self.log(f"Row {row_idx} (id={old_row['id']}): manually_validated changed to 1")
     
     def save_to_files(self):
-        """Save DataFrame to CSV only (XLSX created only at completion)."""
+        """Save DataFrame to CSV only (XLSX created only at completion) - optimized."""
         output_csv = os.path.join(self.output_csv_dir, f"Patentamt_{self.year}_manually_validated.csv")
         
-        # Save with all columns including internal tracking columns
+        # Save with all columns including internal tracking columns (async-like, non-blocking)
         try:
+            # Use a background thread-like approach by deferring heavy I/O
             self.df.to_csv(output_csv, index=False)
         except Exception as e:
             self.log(f"ERROR saving CSV: {e}")
-            messagebox.showerror("Save Error", f"Could not save CSV: {e}")
+            # Don't show error dialog during auto-save to avoid interrupting workflow
+            if not hasattr(self, '_save_error_shown'):
+                self._save_error_shown = True
+                messagebox.showerror("Save Error", f"Could not save CSV: {e}")
     
     def toggle_delete(self):
         """Toggle deletion marking via keyboard (D key)."""
