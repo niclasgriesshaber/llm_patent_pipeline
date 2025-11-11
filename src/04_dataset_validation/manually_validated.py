@@ -51,6 +51,7 @@ class ManualValidationApp:
         # Session tracking
         self.session_start_time = datetime.now()
         self.current_task_category = None  # Track category changes
+        self.tasks_since_last_save = 0  # Track tasks for batch saving
         
         # Load and prepare data
         self.load_data()
@@ -166,17 +167,17 @@ class ManualValidationApp:
         top_frame = ttk.Frame(self.root, padding="10")
         top_frame.pack(fill=tk.X)
         
-        # Progress info (task, percentage, time)
+        # Progress info (task, percentage, time) - bigger and bolder
         progress_info_frame = ttk.Frame(top_frame)
         progress_info_frame.pack(fill=tk.X, pady=(0, 5))
         
-        self.progress_label = ttk.Label(progress_info_frame, text="", font=('Arial', 11))
+        self.progress_label = ttk.Label(progress_info_frame, text="", font=('Arial', 13, 'bold'))
         self.progress_label.pack(side=tk.LEFT)
         
-        self.session_timer_label = ttk.Label(progress_info_frame, text="Session: 00:00", font=('Arial', 11))
+        self.session_timer_label = ttk.Label(progress_info_frame, text="Session: 00:00", font=('Arial', 13, 'bold'))
         self.session_timer_label.pack(side=tk.RIGHT, padx=10)
         
-        self.progress_percentage_label = ttk.Label(progress_info_frame, text="0%", font=('Arial', 11, 'bold'))
+        self.progress_percentage_label = ttk.Label(progress_info_frame, text="0%", font=('Arial', 13, 'bold'))
         self.progress_percentage_label.pack(side=tk.RIGHT)
         
         # Progress bar
@@ -248,7 +249,7 @@ class ManualValidationApp:
         self.entry_text.bind('<Tab>', self.on_entry_tab)
         self.entry_text.bind('<KeyRelease>', self.on_field_change)
         
-        # Patent ID
+        # Patent ID with deletion indicator
         patent_id_frame = ttk.Frame(fields_frame)
         patent_id_frame.pack(fill=tk.X, pady=5)
         
@@ -257,6 +258,21 @@ class ManualValidationApp:
         self.patent_id_entry.pack(side=tk.LEFT, padx=5)
         self.patent_id_entry.bind('<Tab>', self.on_patent_id_tab)
         self.patent_id_entry.bind('<KeyRelease>', self.on_field_change)
+        
+        # Deletion indicator (shown when row marked for deletion)
+        self.deletion_indicator = tk.Label(
+            patent_id_frame,
+            text="🗑️ MARKED FOR DELETION",
+            font=('Arial', 10, 'bold'),
+            fg='red',
+            bg='#ffe6e6',
+            padx=10,
+            pady=3,
+            relief=tk.RAISED,
+            borderwidth=2
+        )
+        # Initially hidden
+        # self.deletion_indicator.pack(side=tk.LEFT, padx=10)
         
         # Bottom buttons
         button_frame = ttk.Frame(self.root, padding="10")
@@ -344,8 +360,11 @@ class ManualValidationApp:
         self.patent_id_entry.delete(0, tk.END)
         self.patent_id_entry.insert(0, str(row['patent_id']))
         
-        # Update delete button appearance based on marked_for_deletion status
-        # (No checkbox anymore, just internal state)
+        # Show/hide deletion indicator based on marked_for_deletion status
+        if str(row['marked_for_deletion']) == '1':
+            self.deletion_indicator.pack(side=tk.LEFT, padx=10)
+        else:
+            self.deletion_indicator.pack_forget()
         
         # Focus on entry text
         self.entry_text.focus_set()
@@ -361,7 +380,7 @@ class ManualValidationApp:
         return 'other'
     
     def calculate_fit_zoom(self):
-        """Calculate zoom level to fit image width to canvas width."""
+        """Calculate zoom level to fit image width to canvas width (reduced size)."""
         if self.original_image is None:
             self.zoom_level = 0.5
             return
@@ -374,13 +393,16 @@ class ManualValidationApp:
         if canvas_width < 100:
             canvas_width = 1200  # Reasonable default
         
-        # Calculate zoom to fit width with some margin
+        # Calculate zoom to fit width with some margin (reduced by 30%)
         image_width = self.original_image.width
         margin = 40  # Leave some margin
         fit_zoom = (canvas_width - margin) / image_width
         
+        # Reduce the fit zoom by 30% to make images narrower
+        fit_zoom = fit_zoom * 0.7
+        
         # Cap zoom levels for usability
-        self.zoom_level = max(0.25, min(fit_zoom, 2.0))
+        self.zoom_level = max(0.25, min(fit_zoom, 1.5))
     
     def update_image_display(self):
         """Update image display with current zoom level and center it (optimized)."""
@@ -437,13 +459,16 @@ class ManualValidationApp:
         return 'break'
     
     def on_mouse_wheel(self, event):
-        """Handle mouse wheel scrolling."""
+        """Handle mouse wheel scrolling with smoother increments."""
+        # Use smaller scroll units for smoother scrolling
+        scroll_amount = 3  # Increased from 1 for smoother feel
+        
         if event.num == 5 or event.delta < 0:
             # Scroll down
-            self.image_canvas.yview_scroll(1, "units")
+            self.image_canvas.yview_scroll(scroll_amount, "units")
         elif event.num == 4 or event.delta > 0:
             # Scroll up
-            self.image_canvas.yview_scroll(-1, "units")
+            self.image_canvas.yview_scroll(-scroll_amount, "units")
         return 'break'
     
     def update_session_timer(self):
@@ -463,16 +488,9 @@ class ManualValidationApp:
         self.root.after(1000, self.update_session_timer)
     
     def on_field_change(self, event):
-        """Auto-save when field changes."""
-        # Debounce: only save after a pause (reduced frequency for smoother operation)
-        if hasattr(self, '_save_timer'):
-            self.root.after_cancel(self._save_timer)
-        self._save_timer = self.root.after(1500, self.auto_save)  # 1.5 seconds for smoother typing
-    
-    def auto_save(self):
-        """Auto-save current changes."""
+        """Mark entry as modified (save happens every 10 tasks now)."""
+        # Just save to DataFrame, don't write to file yet
         self.save_current_entry()
-        self.save_to_files()
     
     def save_current_entry(self):
         """Save current entry data to DataFrame."""
@@ -516,7 +534,7 @@ class ManualValidationApp:
                 messagebox.showerror("Save Error", f"Could not save CSV: {e}")
     
     def toggle_delete(self):
-        """Toggle deletion marking via keyboard (D key)."""
+        """Toggle deletion marking via keyboard (D key) with visual indicator."""
         if self.current_task_idx >= len(self.tasks):
             return
         
@@ -527,26 +545,35 @@ class ManualValidationApp:
         new_status = '0' if current_status == '1' else '1'
         self.df.at[row_idx, 'marked_for_deletion'] = new_status
         
+        # Update visual indicator
         if new_status == '1':
+            self.deletion_indicator.pack(side=tk.LEFT, padx=10)
             self.log(f"Row {row_idx} (id={self.df.at[row_idx, 'id']}): marked for deletion")
             messagebox.showinfo("Marked for Deletion", f"Row {self.df.at[row_idx, 'id']} marked for deletion")
         else:
+            self.deletion_indicator.pack_forget()
             self.log(f"Row {row_idx} (id={self.df.at[row_idx, 'id']}): unmarked for deletion")
             messagebox.showinfo("Unmarked", f"Row {self.df.at[row_idx, 'id']} unmarked for deletion")
-        
-        self.auto_save()
     
     def next_task(self):
-        """Move to next task."""
+        """Move to next task (save to file every 10 tasks for smoother operation)."""
         # Save current state to undo stack
         self.undo_stack.append({
             'df': self.df.copy(),
             'task_idx': self.current_task_idx
         })
         
-        # Save current entry
+        # Save current entry to DataFrame
         self.save_current_entry()
-        self.save_to_files()
+        
+        # Increment task counter
+        self.tasks_since_last_save += 1
+        
+        # Save to file every 10 tasks or at completion
+        if self.tasks_since_last_save >= 10 or self.current_task_idx + 1 >= len(self.tasks):
+            self.save_to_files()
+            self.tasks_since_last_save = 0
+            self.log(f"Auto-saved at task {self.current_task_idx + 1}")
         
         # Move to next
         self.current_task_idx += 1
@@ -564,6 +591,10 @@ class ManualValidationApp:
         prev_state = self.undo_stack.pop()
         self.df = prev_state['df']
         self.current_task_idx = prev_state['task_idx']
+        
+        # Reset task counter when going back
+        if self.tasks_since_last_save > 0:
+            self.tasks_since_last_save -= 1
         
         self.log(f"UNDO: Back to task {self.current_task_idx + 1}")
         self.display_task()
