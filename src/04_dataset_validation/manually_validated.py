@@ -281,9 +281,9 @@ class ManualValidationApp:
         button_style_frame = ttk.Frame(button_frame)
         button_style_frame.pack()
         
-        ttk.Button(button_style_frame, text="Back (A)", command=self.go_back, width=15).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_style_frame, text="Next (S)", command=self.next_task, width=15).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_style_frame, text="Delete (D)", command=self.toggle_delete, width=15).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_style_frame, text="Back (⌘A)", command=self.go_back, width=15).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_style_frame, text="Next (⌘S)", command=self.next_task, width=15).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_style_frame, text="Delete (⌘D)", command=self.toggle_delete, width=15).pack(side=tk.LEFT, padx=5)
         
         # Status bar for subtle feedback
         status_frame = ttk.Frame(self.root, relief=tk.SUNKEN, padding="2")
@@ -293,13 +293,13 @@ class ManualValidationApp:
         self.status_label.pack(side=tk.LEFT)
     
     def setup_keyboard_shortcuts(self):
-        """Setup keyboard shortcuts: A=Back, S=Next, D=Delete."""
-        self.root.bind('a', lambda e: self.go_back())
-        self.root.bind('A', lambda e: self.go_back())
-        self.root.bind('s', lambda e: self.next_task())
-        self.root.bind('S', lambda e: self.next_task())
-        self.root.bind('d', lambda e: self.toggle_delete())
-        self.root.bind('D', lambda e: self.toggle_delete())
+        """Setup keyboard shortcuts: Cmd+A=Back, Cmd+S=Next, Cmd+D=Delete."""
+        self.root.bind('<Command-a>', lambda e: self.go_back())
+        self.root.bind('<Command-A>', lambda e: self.go_back())
+        self.root.bind('<Command-s>', lambda e: self.next_task())
+        self.root.bind('<Command-S>', lambda e: self.next_task())
+        self.root.bind('<Command-d>', lambda e: self.toggle_delete())
+        self.root.bind('<Command-D>', lambda e: self.toggle_delete())
     
     def display_task(self):
         """Display current task in GUI (optimized for smooth loading)."""
