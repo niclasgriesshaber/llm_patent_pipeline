@@ -111,6 +111,11 @@ class ManualValidationApp:
         # Add deletion flag column if it doesn't exist
         if 'marked_for_deletion' not in self.df.columns:
             self.df['marked_for_deletion'] = '0'
+        
+        # Add manually_edited column if it doesn't exist (tracks actual changes)
+        if 'manually_edited' not in self.df.columns:
+            self.df['manually_edited'] = '0'
+            self.log("Added manually_edited column (initialized to 0)")
     
     def parse_tasks(self):
         """Parse validation_notes to create task queue. Only include unvalidated rows."""
@@ -533,6 +538,11 @@ class ManualValidationApp:
         if (entry_changed or patent_id_changed) and str(old_row['manually_validated']) == '0':
             self.df.at[row_idx, 'manually_validated'] = '1'
             self.log(f"Row {row_idx} (id={old_row['id']}): manually_validated changed to 1")
+        
+        # Mark as manually edited if any field was changed (tracks actual edits)
+        if entry_changed or patent_id_changed:
+            self.df.at[row_idx, 'manually_edited'] = '1'
+            self.log(f"Row {row_idx} (id={old_row['id']}): manually_edited set to 1")
     
     def save_to_files(self):
         """Save DataFrame to CSV only (XLSX created only at completion) - optimized."""
