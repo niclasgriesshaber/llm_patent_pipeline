@@ -455,8 +455,27 @@ def main():
         # Create log file
         log_path = os.path.join(output_base_dir, 'logs', f"{filestem}_validation.txt")
         
+        # Calculate summary counts
+        num_duplicates = duplicate_groups.ngroups
+        num_smaller_than_start = len(smaller_than_start)
+        num_greater_than_end = len(greater_than_end)
+        num_missing_ids = len(missing_ids)
+        
         with open(log_path, 'w', encoding='utf-8') as f:
             f.write(f"=== Validation Report for {os.path.basename(csv_file)} ===\n\n")
+            
+            # Summary Table at the top
+            f.write("=" * 60 + "\n")
+            f.write("VALIDATION SUMMARY\n")
+            f.write("=" * 60 + "\n")
+            f.write(f"{'Issue Type':<40} {'Count':>15}\n")
+            f.write("-" * 60 + "\n")
+            f.write(f"{'NaN patent_id values':<40} {nan_patent_id_count:>15}\n")
+            f.write(f"{'Duplicate patent_id entries':<40} {num_duplicates:>15}\n")
+            f.write(f"{'Patent IDs < start ({})'.format(check_start_id if check_start_id is not None else 'N/A'):<40} {num_smaller_than_start:>15}\n")
+            f.write(f"{'Patent IDs > end ({})'.format(check_end_id if check_end_id is not None else 'N/A'):<40} {num_greater_than_end:>15}\n")
+            f.write(f"{'Missing patent IDs (gaps)':<40} {num_missing_ids:>15}\n")
+            f.write("=" * 60 + "\n\n")
             
             # Category validation section
             f.write("=== Category Sequence Validation ===\n")
