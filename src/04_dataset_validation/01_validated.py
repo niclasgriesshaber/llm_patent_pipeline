@@ -102,86 +102,81 @@ def parse_category(category_str):
     return None, None
 
 
-def validate_category_sequence(df, csv_path):
+def validate_category_sequence(df, csv_path, year):
     """
     Validate that categories follow ascending order and report violations.
-    Supports both numbered categories (1, 2, 3) and lettered subcategories (1a, 1b, 2a, 2b, 3, 4a, etc.)
+    
+    For years < 1900: All integers 1-89 must be present, monotonically ascending
+    For years >= 1900: Flexible main classes with optional subclasses (e.g., 1, 1a, 1b, 2, 2a, 3)
     
     Args:
         df: DataFrame to validate
         csv_path: Path to CSV file for error reporting
+        year: The year being processed (string)
     
     Returns:
         dict: Dictionary with validation results and violations
     """
     violations = []
-    current_main_num = None
-    current_sub_letter = None
-    first_violation_id = None
+    year_int = int(year)
+    prev_category = None
+    prev_main_num = None
+    prev_sub_letter = None
+    
+    # Collect all categories for completeness check (years < 1900)
+    all_main_categories = set()
     
     for idx, row in df.iterrows():
         category = str(row['category']).strip()
-        entry_id = row['id'] # Changed from global_id to id
+        entry_id = row['id']
         
         # Parse the category
         main_num, sub_letter = parse_category(category)
         
         if main_num is None:
-            if first_violation_id is None:
-                violations.append({
-                    'id': entry_id,
-                    'category': category,
-                    'type': 'invalid_category',
-                    'message': f"Invalid category format '{category}' at id {entry_id}"
-                })
-                first_violation_id = entry_id
+            violations.append(f"Invalid category format '{category}' at row id {entry_id}")
+            prev_category = category
             continue
         
-        # Check ascending order
-        if current_main_num is not None:
-            # First check main number
-            if main_num < current_main_num:
-                if first_violation_id is None:
-                    violations.append({
-                        'id': entry_id,
-                        'category': category,
-                        'type': 'sequence_violation',
-                        'message': f"Category '{category}' (main={main_num}) appears before '{current_main_num}' at id {entry_id}"
-                    })
-                    first_violation_id = entry_id
-                continue
-            elif main_num == current_main_num:
-                # Same main number, check subcategory letter
-                if current_sub_letter is not None and sub_letter is not None:
-                    if sub_letter < current_sub_letter:
-                        if first_violation_id is None:
-                            violations.append({
-                                'id': entry_id,
-                                'category': category,
-                                'type': 'sequence_violation',
-                                'message': f"Category '{category}' appears before '{current_main_num}{current_sub_letter}' at id {entry_id}"
-                            })
-                            first_violation_id = entry_id
-                        continue
-                elif current_sub_letter is None and sub_letter is not None:
-                    # Main number without subcategory should come before subcategories
-                    if first_violation_id is None:
-                        violations.append({
-                            'id': entry_id,
-                            'category': category,
-                            'type': 'sequence_violation',
-                            'message': f"Category '{category}' (subcategory) appears after '{current_main_num}' (main category) at id {entry_id}"
-                        })
-                        first_violation_id = entry_id
-                    continue
+        # Track all main categories for completeness check
+        all_main_categories.add(main_num)
         
-        current_main_num = main_num
-        current_sub_letter = sub_letter
+        # Check monotonic ascending order
+        if prev_main_num is not None:
+            violation = False
+            
+            if main_num < prev_main_num:
+                # Main number decreased
+                violations.append(f"Category '{category}' follows '{prev_category}' at row id {entry_id}")
+                violation = True
+            elif main_num == prev_main_num:
+                # Same main number, check subclass order
+                if prev_sub_letter is not None and sub_letter is not None:
+                    if sub_letter < prev_sub_letter:
+                        # Subclass decreased (not ascending)
+                        violations.append(f"Category '{category}' follows '{prev_category}' at row id {entry_id}")
+                        violation = True
+                elif prev_sub_letter is not None and sub_letter is None:
+                    # Going from subclass back to main class (invalid)
+                    violations.append(f"Category '{category}' follows '{prev_category}' at row id {entry_id}")
+                    violation = True
+        
+        # Update previous category tracking
+        prev_category = category
+        prev_main_num = main_num
+        prev_sub_letter = sub_letter
+    
+    # For years < 1900, check that all categories 1-89 are present
+    if year_int < 1900:
+        expected_categories = set(range(1, 90))
+        missing_categories = expected_categories - all_main_categories
+        if missing_categories:
+            missing_str = ', '.join(str(x) for x in sorted(missing_categories))
+            violations.append(f"Missing categories (expected 1-89): {missing_str}")
     
     return {
         'valid': len(violations) == 0,
-        'violations': violations,
-        'first_violation_ids': [v['id'] for v in violations]
+        'violations': violations
     }
 
 
@@ -362,7 +357,7 @@ def main():
                 df['id'] = range(1, len(df) + 1)
         
         # Validate category sequence
-        category_validation = validate_category_sequence(df, csv_file)
+        category_validation = validate_category_sequence(df, csv_file, year)
         
         # Continue with the rest of validation...
         nan_patent_id_count = df['patent_id'].isna().sum()
@@ -437,11 +432,11 @@ def main():
         for idx, row in xlsx_df.iterrows():
             notes = []
             
-            # Category validation notes
-            category = str(row['category']).strip()
+            # Category validation notes - check if this row is mentioned in violations
+            row_id = str(row['id'])
             for violation in category_validation['violations']:
-                if violation['category'] == category and violation['id'] == row['id']:
-                    notes.append(violation['message'])
+                if f"row id {row_id}" in violation or f"at row id {row_id}" in violation:
+                    notes.append(f"Category violation: {violation}")
             
             # Patent ID validation notes
             if pd.isna(row['patent_id']):
@@ -514,11 +509,12 @@ def main():
             # Category validation section
             f.write("=== Category Sequence Validation ===\n")
             if category_validation['valid']:
-                f.write("Category sequence is valid.\n")
+                f.write("Valid\n")
             else:
-                f.write("Category sequence violations found:\n")
+                f.write("Invalid\n")
+                f.write("\nViolations:\n")
                 for violation in category_validation['violations']:
-                    f.write(f"  {violation['message']}\n")
+                    f.write(f"  - {violation}\n")
             f.write("\n")
             
             f.write("=== NaN patent_id values ===\n")
