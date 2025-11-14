@@ -364,12 +364,29 @@ def main():
         
         # Clean and convert patent_id for validation (keep original for display)
         def clean_patent_id_for_validation(val):
+            """
+            Clean and convert patent_id to integer.
+            - Handles NaN values (returns None)
+            - Strips whitespace
+            - Removes .0 suffix if present (e.g., "6729.0" -> 6729)
+            - Returns integer (not float)
+            """
             if pd.isna(val):
                 return None
-            val = str(val).strip()
-            if not val.isdigit():
+            
+            # Convert to string and strip whitespace
+            val_str = str(val).strip()
+            
+            # Remove .0 suffix if present (pandas sometimes converts ints to floats)
+            if val_str.endswith('.0'):
+                val_str = val_str[:-2]
+            
+            # Check if the cleaned value is a valid integer
+            if not val_str.isdigit():
                 raise ValueError(f"patent_id '{val}' is not convertible to integer.")
-            return int(val)
+            
+            # Return as integer (not float)
+            return int(val_str)
 
         try:
             df['patent_id_cleaned'] = df['patent_id'].apply(clean_patent_id_for_validation)
