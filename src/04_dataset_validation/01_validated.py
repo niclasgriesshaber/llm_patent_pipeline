@@ -336,6 +336,31 @@ def main():
         # Clean patent_id column
         df = clean_patent_id_column(df)
         
+        # Special preprocessing for 1879 and 1888: Remove rows with patent_id < start
+        rows_removed = 0
+        if year in ['1879', '1888']:
+            # Create temporary cleaned column for filtering
+            def get_patent_id_int(val):
+                if pd.isna(val):
+                    return None
+                val_str = str(val).strip()
+                if val_str.isdigit():
+                    return int(val_str)
+                return None
+            
+            df['_temp_patent_id'] = df['patent_id'].apply(get_patent_id_int)
+            initial_row_count = len(df)
+            
+            # Remove rows where patent_id < start_id
+            df = df[~((df['_temp_patent_id'].notna()) & (df['_temp_patent_id'] < start_id))].copy()
+            df = df.drop(columns=['_temp_patent_id'])
+            
+            rows_removed = initial_row_count - len(df)
+            if rows_removed > 0:
+                print(f"  Removed {rows_removed} rows with patent_id < {start_id} (special preprocessing for {year})")
+                # Reindex the id column
+                df['id'] = range(1, len(df) + 1)
+        
         # Validate category sequence
         category_validation = validate_category_sequence(df, csv_file)
         
@@ -460,9 +485,15 @@ def main():
         num_smaller_than_start = len(smaller_than_start)
         num_greater_than_end = len(greater_than_end)
         num_missing_ids = len(missing_ids)
+        total_issues_excl_missing = nan_patent_id_count + num_duplicates + num_smaller_than_start + num_greater_than_end
+        difference = abs(num_missing_ids - total_issues_excl_missing)
         
         with open(log_path, 'w', encoding='utf-8') as f:
             f.write(f"=== Validation Report for {os.path.basename(csv_file)} ===\n\n")
+            
+            # Log preprocessing if rows were removed
+            if rows_removed > 0:
+                f.write(f"NOTE: {rows_removed} rows with patent_id < {start_id} were removed during preprocessing (year {year})\n\n")
             
             # Summary Table at the top
             f.write("=" * 60 + "\n")
@@ -475,6 +506,9 @@ def main():
             f.write(f"{'Patent IDs < start ({})'.format(check_start_id if check_start_id is not None else 'N/A'):<40} {num_smaller_than_start:>15}\n")
             f.write(f"{'Patent IDs > end ({})'.format(check_end_id if check_end_id is not None else 'N/A'):<40} {num_greater_than_end:>15}\n")
             f.write(f"{'Missing patent IDs (gaps)':<40} {num_missing_ids:>15}\n")
+            f.write("-" * 60 + "\n")
+            f.write(f"{'Total issues (excl. missing)':<40} {total_issues_excl_missing:>15}\n")
+            f.write(f"{'Difference (|Missing - Total|)':<40} {difference:>15}\n")
             f.write("=" * 60 + "\n\n")
             
             # Category validation section
