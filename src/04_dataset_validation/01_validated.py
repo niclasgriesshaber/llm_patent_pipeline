@@ -211,7 +211,7 @@ def load_patent_ranges(ranges_csv_path):
 
 def extract_year_from_filename(filename):
     """
-    Extract year from filename like 'Patentamt_1886_cleaned_with_variables.csv'
+    Extract year from filename like 'Patentamt_1886_RA_row_cleaned.csv'
     
     Args:
         filename: The filename to extract year from
@@ -219,7 +219,7 @@ def extract_year_from_filename(filename):
     Returns:
         str: The year (e.g., '1886') or None if not found
     """
-    match = re.search(r'Patentamt_(\d{4})_cleaned_with_variables\.csv', filename)
+    match = re.search(r'Patentamt_(\d{4})_RA_row_cleaned\.csv', filename)
     return match.group(1) if match else None
 
 
@@ -240,8 +240,8 @@ def main():
     print(f"Loaded patent ranges for {len(patent_ranges)} years: {list(patent_ranges.keys())}")
 
     # Define input and output directories
-    input_dir = 'data/03_variable_extraction/manually_cleaned_with_variables/'
-    output_dir = 'data/04_dataset_validation/validated'
+    input_dir = 'data/04_dataset_validation/RA_input/'
+    output_dir = 'data/04_dataset_validation/01_validated'
 
     # Determine input files
     if args.csv:
@@ -399,7 +399,7 @@ def main():
         duplicate_groups = duplicates.groupby('patent_id_cleaned')
 
         # Prepare output file paths
-        filestem = os.path.splitext(os.path.basename(csv_file))[0]
+        filestem = f"Patentamt_{year}"
         
         # Create XLSX file with validation results
         xlsx_path = os.path.join(output_base_dir, 'xlsx', f"{filestem}_validated.xlsx")

@@ -26,9 +26,9 @@ class ManualValidationApp:
             self.project_root,
             f'data/01_dataset_construction/csvs/Patentamt_{self.year}/page_by_page/PNG'
         )
-        self.output_csv_dir = os.path.join(self.project_root, 'data/04_dataset_validation/manually_validated/csv')
-        self.output_xlsx_dir = os.path.join(self.project_root, 'data/04_dataset_validation/manually_validated/xlsx')
-        self.output_log_dir = os.path.join(self.project_root, 'data/04_dataset_validation/manually_validated/logs')
+        self.output_csv_dir = os.path.join(self.project_root, 'data/04_dataset_validation/02_manually_validated/csv')
+        self.output_xlsx_dir = os.path.join(self.project_root, 'data/04_dataset_validation/02_manually_validated/xlsx')
+        self.output_log_dir = os.path.join(self.project_root, 'data/04_dataset_validation/02_manually_validated/logs')
         
         # Create output directories
         os.makedirs(self.output_csv_dir, exist_ok=True)
@@ -712,7 +712,7 @@ class ManualValidationApp:
 
 def main():
     parser = argparse.ArgumentParser(description="Manual validation GUI for patent data")
-    parser.add_argument('--csv', required=True, help='CSV filename from validated/csv folder (e.g., Patentamt_1878_cleaned_with_variables_validated.csv)')
+    parser.add_argument('--csv', required=True, help='CSV filename from 01_validated/csv folder (e.g., Patentamt_1878_validated.csv)')
     args = parser.parse_args()
     
     # Locate the CSV file
@@ -725,21 +725,16 @@ def main():
     if os.path.isabs(csv_file):
         csv_path = csv_file
     else:
-        # Try in validated/csv folder (new structure)
-        csv_path = os.path.join(project_root, 'data/04_dataset_validation/validated/csv', csv_file)
+        # Try in 01_validated/csv folder
+        csv_path = os.path.join(project_root, 'data/04_dataset_validation/01_validated/csv', csv_file)
         
         if not os.path.exists(csv_path):
-            # Try in old validated_csv folder (backward compatibility)
-            csv_path_old = os.path.join(project_root, 'data/04_dataset_validation/validated_csv', csv_file)
-            if os.path.exists(csv_path_old):
-                csv_path = csv_path_old
-            elif os.path.exists(csv_file):
-                # Try in current directory
+            # Try in current directory
+            if os.path.exists(csv_file):
                 csv_path = csv_file
             else:
                 print(f"Error: Could not find CSV file: {csv_file}")
-                print(f"Looked in: {os.path.join(project_root, 'data/04_dataset_validation/validated/csv')}")
-                print(f"Also tried: {os.path.join(project_root, 'data/04_dataset_validation/validated_csv')}")
+                print(f"Looked in: {os.path.join(project_root, 'data/04_dataset_validation/01_validated/csv')}")
                 sys.exit(1)
     
     if not os.path.exists(csv_path):
