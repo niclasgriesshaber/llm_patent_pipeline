@@ -206,7 +206,7 @@ def load_patent_ranges(ranges_csv_path):
 
 def extract_year_from_filename(filename):
     """
-    Extract year from filename like 'Patentamt_1886_RA_row_cleaned.csv'
+    Extract year from filename like 'Patentamt_1886_RA_row_cleaned.xlsx'
     
     Args:
         filename: The filename to extract year from
@@ -214,7 +214,7 @@ def extract_year_from_filename(filename):
     Returns:
         str: The year (e.g., '1886') or None if not found
     """
-    match = re.search(r'Patentamt_(\d{4})_RA_row_cleaned\.csv', filename)
+    match = re.search(r'Patentamt_(\d{4})_RA_row_cleaned\.xlsx', filename)
     return match.group(1) if match else None
 
 
@@ -276,9 +276,9 @@ def main():
                 print(f"Error: Input directory '{input_dir}' does not exist.")
                 sys.exit(1)
         
-        csv_files = glob.glob(os.path.join(input_dir, "*.csv"))
+        csv_files = glob.glob(os.path.join(input_dir, "*.xlsx"))
         if not csv_files:
-            print(f"No CSV files found in {input_dir}")
+            print(f"No XLSX files found in {input_dir}")
             sys.exit(1)
 
     # Create output directories
@@ -314,11 +314,11 @@ def main():
         start_id, end_id = patent_ranges[file_prefix]
         print(f"Using patent range for {year}: {start_id} - {end_id}")
         
-        # Read the CSV file
+        # Read the XLSX file
         try:
-            df = pd.read_csv(csv_file, dtype=str)
+            df = pd.read_excel(csv_file, dtype=str)
         except Exception as e:
-            print(f"Error reading CSV {csv_file}: {e}")
+            print(f"Error reading XLSX {csv_file}: {e}")
             continue
         
         # Validate required columns
