@@ -331,10 +331,10 @@ def main():
         # Clean patent_id column
         df = clean_patent_id_column(df)
         
-        # Special preprocessing for 1879 and 1888: Remove rows with patent_id < start
-        rows_removed = 0
+        # Special preprocessing for 1879 and 1888: Keep rows with patent_id < start but flag them
+        rows_flagged = 0
         if year in ['1879', '1888']:
-            # Create temporary cleaned column for filtering
+            # Create temporary cleaned column for identification
             def get_patent_id_int(val):
                 if pd.isna(val):
                     return None
@@ -344,17 +344,14 @@ def main():
                 return None
             
             df['_temp_patent_id'] = df['patent_id'].apply(get_patent_id_int)
-            initial_row_count = len(df)
             
-            # Remove rows where patent_id < start_id
-            df = df[~((df['_temp_patent_id'].notna()) & (df['_temp_patent_id'] < start_id))].copy()
+            # Count rows that will be flagged (patent_id < start_id)
+            rows_flagged = ((df['_temp_patent_id'].notna()) & (df['_temp_patent_id'] < start_id)).sum()
+            
+            if rows_flagged > 0:
+                print(f"  Flagged {rows_flagged} rows with patent_id < {start_id} for auto-deletion (special handling for {year})")
+            
             df = df.drop(columns=['_temp_patent_id'])
-            
-            rows_removed = initial_row_count - len(df)
-            if rows_removed > 0:
-                print(f"  Removed {rows_removed} rows with patent_id < {start_id} (special preprocessing for {year})")
-                # Reindex the id column
-                df['id'] = range(1, len(df) + 1)
         
         # Validate category sequence
         category_validation = validate_category_sequence(df, csv_file, year)
@@ -416,9 +413,11 @@ def main():
         greater_than_end = []
         if check_start_id is not None:
             smaller_df = valid_patent_ids_df[valid_patent_ids_df['patent_id_cleaned'] < check_start_id]
-            for pid, group in smaller_df.groupby('patent_id_cleaned'):
-                entries = [(row['id'], row['page']) for _, row in group.iterrows()]
-                smaller_than_start.append((pid, entries))
+            # For 1879 and 1888, don't include these in the validation report (they're auto-flagged)
+            if year not in ['1879', '1888']:
+                for pid, group in smaller_df.groupby('patent_id_cleaned'):
+                    entries = [(row['id'], row['page']) for _, row in group.iterrows()]
+                    smaller_than_start.append((pid, entries))
         if check_end_id is not None:
             greater_df = valid_patent_ids_df[valid_patent_ids_df['patent_id_cleaned'] > check_end_id]
             for pid, group in greater_df.groupby('patent_id_cleaned'):
@@ -464,12 +463,20 @@ def main():
                 try:
                     # Use the already-cleaned patent_id_cleaned value
                     pid_clean = int(row['patent_id_cleaned'])
-                    if check_start_id is not None and pid_clean < check_start_id:
-                        notes.append(f"patent_id {pid_clean} < start ({check_start_id})")
-                    if check_end_id is not None and pid_clean > check_end_id:
-                        notes.append(f"patent_id {pid_clean} > end ({check_end_id})")
+                    
+                    # Check for duplicates FIRST (applies to all years)
                     if pid_clean in [dup_pid for dup_pid, _ in duplicate_groups]:
                         notes.append(f"Duplicate patent_id {pid_clean}")
+                    
+                    # Special handling for 1879 and 1888: Mark rows with patent_id < start for auto-deletion
+                    if year in ['1879', '1888'] and check_start_id is not None and pid_clean < check_start_id:
+                        notes.append(f"Auto-flagged for deletion: patent_id {pid_clean} < start ({check_start_id})")
+                    else:
+                        # Normal validation for other years or other issues
+                        if check_start_id is not None and pid_clean < check_start_id:
+                            notes.append(f"patent_id {pid_clean} < start ({check_start_id})")
+                        if check_end_id is not None and pid_clean > check_end_id:
+                            notes.append(f"patent_id {pid_clean} > end ({check_end_id})")
                 except:
                     notes.append("Invalid patent_id format")
             
@@ -505,9 +512,10 @@ def main():
         with open(log_path, 'w', encoding='utf-8') as f:
             f.write(f"=== Validation Report for {os.path.basename(csv_file)} ===\n\n")
             
-            # Log preprocessing if rows were removed
-            if rows_removed > 0:
-                f.write(f"NOTE: {rows_removed} rows with patent_id < {start_id} were removed during preprocessing (year {year})\n\n")
+            # Log auto-flagged rows for 1879 and 1888
+            if rows_flagged > 0:
+                f.write(f"NOTE: {rows_flagged} rows with patent_id < {start_id} were auto-flagged for deletion (year {year})\n")
+                f.write(f"These rows are kept in the dataset but marked for automatic deletion during manual validation.\n\n")
             
             # Summary Table at the top
             f.write("=" * 60 + "\n")
