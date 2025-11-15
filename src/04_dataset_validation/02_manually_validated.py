@@ -357,7 +357,9 @@ class ManualValidationApp:
         # Calculate entry position on this page
         current_page = str(row['page'])
         entries_on_page = self.df[self.df['page'] == current_page]
-        entry_position = (entries_on_page.index <= row_idx).sum()
+        # Get sorted indices of entries on this page to find position
+        sorted_indices = sorted(entries_on_page.index.tolist())
+        entry_position = sorted_indices.index(row_idx) + 1  # +1 for 1-based indexing
         total_on_page = len(entries_on_page)
         
         # Update entry position label (bold and prominent)
