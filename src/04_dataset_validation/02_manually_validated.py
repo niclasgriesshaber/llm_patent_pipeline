@@ -125,6 +125,16 @@ class ManualValidationApp:
         if 'old_patent_id' not in self.df.columns:
             self.df['old_patent_id'] = self.df['patent_id'].copy()
             self.log("Added old_patent_id column (copied from patent_id)")
+        
+        # Special handling for 1879 and 1888: Auto-mark rows flagged for deletion
+        if self.year in ['1879', '1888']:
+            auto_flagged_mask = self.df['validation_notes'].str.contains('Auto-flagged for deletion', na=False)
+            auto_flagged_count = auto_flagged_mask.sum()
+            if auto_flagged_count > 0:
+                self.df.loc[auto_flagged_mask, 'marked_for_deletion'] = '1'
+                self.df.loc[auto_flagged_mask, 'manually_validated'] = '1'  # Mark as validated to exclude from tasks
+                self.log(f"Auto-marked {auto_flagged_count} rows for deletion (year {self.year})")
+                print(f"✓ Auto-marked {auto_flagged_count} rows for deletion (patent_id < start)")
     
     def parse_tasks(self):
         """Parse validation_notes to create task queue. Only include unvalidated rows."""
@@ -134,6 +144,7 @@ class ManualValidationApp:
         duplicate_pattern = r'Duplicate patent_id (\d+)'
         less_than_pattern = r'patent_id \d+ < start'
         greater_than_pattern = r'patent_id \d+ > end'
+        auto_flagged_pattern = r'Auto-flagged for deletion'
         
         # Group duplicates by patent_id number
         duplicate_groups = {}
@@ -147,9 +158,16 @@ class ManualValidationApp:
                 
             validation_notes = str(row['validation_notes']).strip()
             
+            # Special handling for 1879 and 1888: Skip duplicates that are also auto-flagged
+            is_auto_flagged = re.search(auto_flagged_pattern, validation_notes)
+            
             # Check for duplicates and group by patent_id
             dup_match = re.search(duplicate_pattern, validation_notes)
             if dup_match:
+                # For 1879 and 1888, skip duplicates that are also auto-flagged for deletion
+                if self.year in ['1879', '1888'] and is_auto_flagged:
+                    continue  # Skip this duplicate - it's already marked for deletion
+                
                 patent_id = int(dup_match.group(1))
                 if patent_id not in duplicate_groups:
                     duplicate_groups[patent_id] = []
@@ -172,6 +190,8 @@ class ManualValidationApp:
         self.tasks = duplicates + less_than + greater_than
         
         self.log(f"Found {len(duplicates)} duplicate issues to validate (grouped by patent_id)")
+        if self.year in ['1879', '1888']:
+            self.log(f"Note: Duplicates with patent_id < start were excluded (auto-flagged for deletion)")
         self.log(f"Found {len(less_than)} '< start' issues to validate")
         self.log(f"Found {len(greater_than)} '> end' issues to validate")
     
