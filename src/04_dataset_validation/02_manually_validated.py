@@ -355,12 +355,16 @@ class ManualValidationApp:
         self.progress_label.config(text=progress_text)
         
         # Calculate entry position on this page
-        current_page = str(row['page'])
-        entries_on_page = self.df[self.df['page'] == current_page]
+        current_page = str(row['page']).strip()
+        # Ensure page column is string type for comparison
+        entries_on_page = self.df[self.df['page'].astype(str).str.strip() == current_page]
         # Get indices in their actual DataFrame order (top to bottom) - DO NOT SORT
         indices_in_order = entries_on_page.index.tolist()
         entry_position = indices_in_order.index(row_idx) + 1  # +1 for 1-based indexing
         total_on_page = len(entries_on_page)
+        
+        # Debug logging
+        self.log(f"Page {current_page}: Found {total_on_page} entries, current entry position {entry_position}")
         
         # Update entry position label (bold and prominent)
         self.entry_position_label.config(text=f"{entry_position}/{total_on_page}")
