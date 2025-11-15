@@ -389,14 +389,16 @@ def main():
             return int(val_str)
 
         try:
+            # Use Int64 (nullable integer) to avoid .0 suffix when mixing integers and NaN
             df['patent_id_cleaned'] = df['patent_id'].apply(clean_patent_id_for_validation)
+            df['patent_id_cleaned'] = df['patent_id_cleaned'].astype('Int64')
         except Exception as e:
             print(f"Error in {csv_file}: {e}")
             continue
 
         # Only use valid integer patent_ids for further checks
         valid_patent_ids_df = df[df['patent_id_cleaned'].notna()].copy()
-        valid_patent_ids_df['patent_id_cleaned'] = valid_patent_ids_df['patent_id_cleaned'].astype(int)
+        # Already Int64, no need to convert again
         all_patent_ids = valid_patent_ids_df['patent_id_cleaned'].tolist()
 
         # Determine start and end for gap checking
@@ -456,18 +458,18 @@ def main():
                     notes.append(f"Category violation: {violation}")
             
             # Patent ID validation notes
-            if pd.isna(row['patent_id']):
+            if pd.isna(row['patent_id_cleaned']):
                 notes.append("NaN patent_id")
             else:
                 try:
-                    pid_clean = clean_patent_id_for_validation(row['patent_id'])
-                    if pid_clean is not None:
-                        if check_start_id is not None and pid_clean < check_start_id:
-                            notes.append(f"patent_id {pid_clean} < start ({check_start_id})")
-                        if check_end_id is not None and pid_clean > check_end_id:
-                            notes.append(f"patent_id {pid_clean} > end ({check_end_id})")
-                        if pid_clean in [dup_pid for dup_pid, _ in duplicate_groups]:
-                            notes.append(f"Duplicate patent_id {pid_clean}")
+                    # Use the already-cleaned patent_id_cleaned value
+                    pid_clean = int(row['patent_id_cleaned'])
+                    if check_start_id is not None and pid_clean < check_start_id:
+                        notes.append(f"patent_id {pid_clean} < start ({check_start_id})")
+                    if check_end_id is not None and pid_clean > check_end_id:
+                        notes.append(f"patent_id {pid_clean} > end ({check_end_id})")
+                    if pid_clean in [dup_pid for dup_pid, _ in duplicate_groups]:
+                        notes.append(f"Duplicate patent_id {pid_clean}")
                 except:
                     notes.append("Invalid patent_id format")
             
