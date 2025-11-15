@@ -434,7 +434,15 @@ def main():
 
         # Find duplicates
         duplicates = valid_patent_ids_df[valid_patent_ids_df.duplicated('patent_id_cleaned', keep=False)]
-        duplicate_groups = duplicates.groupby('patent_id_cleaned')
+        all_duplicate_ids = set(duplicates['patent_id_cleaned'].unique())  # For validation_notes
+        
+        # For 1879 and 1888, filter out duplicates with patent_id < start for the log file
+        if year in ['1879', '1888'] and check_start_id is not None:
+            duplicates_for_log = duplicates[duplicates['patent_id_cleaned'] >= check_start_id]
+        else:
+            duplicates_for_log = duplicates
+        
+        duplicate_groups = duplicates_for_log.groupby('patent_id_cleaned')
 
         # Prepare output file paths
         filestem = f"Patentamt_{year}"
@@ -464,8 +472,8 @@ def main():
                     # Use the already-cleaned patent_id_cleaned value
                     pid_clean = int(row['patent_id_cleaned'])
                     
-                    # Check for duplicates FIRST (applies to all years)
-                    if pid_clean in [dup_pid for dup_pid, _ in duplicate_groups]:
+                    # Check for duplicates FIRST (applies to all years, checks against ALL duplicates)
+                    if pid_clean in all_duplicate_ids:
                         notes.append(f"Duplicate patent_id {pid_clean}")
                     
                     # Special handling for 1879 and 1888: Mark rows with patent_id < start for auto-deletion
@@ -551,6 +559,9 @@ def main():
                 f.write(f"Number of NaN patent_id values: {nan_patent_id_count}\n")
             f.write("\n")
             f.write("=== Duplicate patent_id entries ===\n")
+            if year in ['1879', '1888'] and check_start_id is not None:
+                f.write(f"Note: Only showing duplicates with patent_id >= {check_start_id}\n")
+                f.write(f"(Duplicates with patent_id < {check_start_id} are auto-flagged for deletion)\n\n")
             if duplicate_groups.ngroups == 0:
                 f.write("No duplicate patent_id values found.\n")
             else:
