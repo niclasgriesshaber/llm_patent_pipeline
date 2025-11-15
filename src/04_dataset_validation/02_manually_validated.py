@@ -53,6 +53,10 @@ class ManualValidationApp:
         self.current_task_category = None  # Track category changes
         self.tasks_since_last_save = 0  # Track tasks for batch saving
         
+        # Track original values for logging (to avoid keystroke-by-keystroke logs)
+        self.original_entry = None
+        self.original_patent_id = None
+        
         # Load and prepare data
         self.load_data()
         self.parse_tasks()
@@ -116,6 +120,11 @@ class ManualValidationApp:
         if 'manually_edited' not in self.df.columns:
             self.df['manually_edited'] = '0'
             self.log("Added manually_edited column (initialized to 0)")
+        
+        # Add old_patent_id column if it doesn't exist (stores original patent_id for tracking)
+        if 'old_patent_id' not in self.df.columns:
+            self.df['old_patent_id'] = self.df['patent_id'].copy()
+            self.log("Added old_patent_id column (copied from patent_id)")
     
     def parse_tasks(self):
         """Parse validation_notes to create task queue. Only include unvalidated rows."""
@@ -377,6 +386,10 @@ class ManualValidationApp:
         self.patent_id_entry.delete(0, tk.END)
         self.patent_id_entry.insert(0, str(row['patent_id']))
         
+        # Store original values for change tracking (to avoid logging every keystroke)
+        self.original_entry = str(row['entry'])
+        self.original_patent_id = str(row['patent_id'])
+        
         # Show/hide deletion indicator based on marked_for_deletion status
         if str(row['marked_for_deletion']) == '1':
             self.deletion_indicator.pack(side=tk.LEFT, padx=10)
@@ -509,8 +522,12 @@ class ManualValidationApp:
         # Just save to DataFrame, don't write to file yet
         self.save_current_entry()
     
-    def save_current_entry(self, force_read=False):
-        """Save current entry data to DataFrame (always reads from UI fields)."""
+    def save_current_entry(self, log_changes=False):
+        """Save current entry data to DataFrame (always reads from UI fields).
+        
+        Args:
+            log_changes: If True, log changes to the log file (only when moving to next/back task)
+        """
         if self.current_task_idx >= len(self.tasks):
             return
         
@@ -522,27 +539,39 @@ class ManualValidationApp:
         new_entry = self.entry_text.get('1.0', tk.END).strip()
         new_patent_id = self.patent_id_entry.get().strip()
         
-        # Only update if values actually changed (for efficiency)
-        entry_changed = str(old_row['entry']) != new_entry
-        patent_id_changed = str(old_row['patent_id']) != new_patent_id
+        # Check if values changed compared to ORIGINAL values (not intermediate states)
+        entry_changed = self.original_entry != new_entry
+        patent_id_changed = self.original_patent_id != new_patent_id
         
-        if entry_changed:
-            self.log(f"Row {row_idx} (id={old_row['id']}): entry changed")
+        # Update entry if changed
+        if new_entry != str(old_row['entry']):
             self.df.at[row_idx, 'entry'] = new_entry
         
-        if patent_id_changed:
-            self.log(f"Row {row_idx} (id={old_row['id']}): patent_id changed from {old_row['patent_id']} to {new_patent_id}")
+        # Update patent_id AND patent_id_cleaned if changed
+        if new_patent_id != str(old_row['patent_id']):
             self.df.at[row_idx, 'patent_id'] = new_patent_id
+            # Also update patent_id_cleaned to match
+            self.df.at[row_idx, 'patent_id_cleaned'] = new_patent_id
+        
+        # Log changes only when requested (e.g., when moving to next task)
+        if log_changes:
+            if entry_changed:
+                self.log(f"Row {row_idx} (id={old_row['id']}): entry changed from '{self.original_entry}' to '{new_entry}'")
+            
+            if patent_id_changed:
+                self.log(f"Row {row_idx} (id={old_row['id']}): patent_id changed from '{self.original_patent_id}' to '{new_patent_id}'")
         
         # Mark as manually validated if any field was changed
         if (entry_changed or patent_id_changed) and str(old_row['manually_validated']) == '0':
             self.df.at[row_idx, 'manually_validated'] = '1'
-            self.log(f"Row {row_idx} (id={old_row['id']}): manually_validated changed to 1")
+            if log_changes:
+                self.log(f"Row {row_idx} (id={old_row['id']}): manually_validated set to 1")
         
         # Mark as manually edited if any field was changed (tracks actual edits)
         if entry_changed or patent_id_changed:
             self.df.at[row_idx, 'manually_edited'] = '1'
-            self.log(f"Row {row_idx} (id={old_row['id']}): manually_edited set to 1")
+            if log_changes:
+                self.log(f"Row {row_idx} (id={old_row['id']}): manually_edited set to 1")
     
     def save_to_files(self):
         """Save DataFrame to CSV only (XLSX created only at completion) - optimized."""
@@ -591,7 +620,8 @@ class ManualValidationApp:
         """Move to next task (always captures current field values, saves every 10 tasks)."""
         # IMPORTANT: Always save current field values first (whatever is in the UI)
         # This captures edits even if Enter wasn't pressed
-        self.save_current_entry()
+        # Pass log_changes=True to log the final changes
+        self.save_current_entry(log_changes=True)
         
         # Show immediate feedback
         self.show_status("→ Moving to next task...", 1000)
@@ -626,7 +656,8 @@ class ManualValidationApp:
         
         # Save current field values before going back (in case user made edits)
         # This ensures we don't lose any work in progress
-        self.save_current_entry()
+        # Pass log_changes=True to log the final changes
+        self.save_current_entry(log_changes=True)
         
         # Show immediate feedback
         self.show_status("← Going back...", 1000)
@@ -644,7 +675,7 @@ class ManualValidationApp:
         self.display_task()
     
     def complete_validation(self):
-        """Complete validation: delete marked rows, reindex, save final CSV + XLSX, and exit."""
+        """Complete validation: keep marked rows (don't delete), save final CSV + XLSX, and exit."""
         # Calculate session duration
         elapsed = datetime.now() - self.session_start_time
         hours, remainder = divmod(int(elapsed.total_seconds()), 3600)
@@ -654,19 +685,14 @@ class ManualValidationApp:
         self.log("All validation tasks completed!")
         self.log(f"Session duration: {session_duration}")
         
-        # Delete marked rows
-        rows_to_delete = self.df[self.df['marked_for_deletion'] == '1'].index.tolist()
-        if rows_to_delete:
-            self.log(f"Deleting {len(rows_to_delete)} marked rows: {rows_to_delete}")
-            self.df = self.df[self.df['marked_for_deletion'] != '1'].reset_index(drop=True)
+        # Count rows marked for deletion (but don't delete them)
+        rows_marked_for_deletion = (self.df['marked_for_deletion'] == '1').sum()
+        if rows_marked_for_deletion > 0:
+            marked_ids = self.df[self.df['marked_for_deletion'] == '1']['id'].tolist()
+            self.log(f"Rows marked for deletion (kept in dataset): {rows_marked_for_deletion} rows (IDs: {marked_ids})")
         
-        # Remove marked_for_deletion column
-        if 'marked_for_deletion' in self.df.columns:
-            self.df = self.df.drop(columns=['marked_for_deletion'])
-        
-        # Reindex id column from 1 to N
-        self.df['id'] = range(1, len(self.df) + 1)
-        self.log(f"Reindexed 'id' column: 1 to {len(self.df)}")
+        # Keep marked_for_deletion column in the final output (don't remove it)
+        # No deletion, no reindexing - keep everything as is
         
         # Save final CSV and XLSX
         output_csv = os.path.join(self.output_csv_dir, f"Patentamt_{self.year}_manually_validated.csv")
@@ -681,15 +707,15 @@ class ManualValidationApp:
             messagebox.showerror("Save Error", f"Could not save final files: {e}")
             return
         
-        self.log(f"SESSION END - {len(self.tasks)} tasks completed, {len(rows_to_delete)} rows deleted, Duration: {session_duration}")
+        self.log(f"SESSION END - {len(self.tasks)} tasks completed, {rows_marked_for_deletion} rows marked for deletion (kept in dataset), Duration: {session_duration}")
         
         # Show completion message
         completion_message = (
             f"✓ Validation Complete!\n\n"
             f"Total tasks processed: {len(self.tasks)}\n"
             f"Session duration: {session_duration}\n"
-            f"Rows deleted: {len(rows_to_delete)}\n"
-            f"Final row count: {len(self.df)}\n\n"
+            f"Rows marked for deletion (kept): {rows_marked_for_deletion}\n"
+            f"Total row count: {len(self.df)}\n\n"
             f"Files saved:\n"
             f"• CSV: {output_csv}\n"
             f"• XLSX: {output_xlsx}\n\n"
