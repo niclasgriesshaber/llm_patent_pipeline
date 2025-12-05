@@ -1139,7 +1139,7 @@ def create_cer_chart_html(summary_rows: List[Dict]) -> str:
     return f'''
     <div class="cer-chart-section">
         <h2>Character Error Rate by Year</h2>
-        <p>This chart shows the CER for both LLM-generated and Student transcriptions compared to Perfect transcriptions across different years. Lower CER indicates better performance.</p>
+        <p>This chart shows the CER for both LLM-generated and Research Assistant transcriptions compared to Perfect transcriptions across different years. Lower CER indicates better performance.</p>
         <div id="cer-chart" style="height: 500px; margin: 20px 0;"></div>
         <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
         <script>
@@ -1164,10 +1164,10 @@ def create_cer_chart_html(summary_rows: List[Dict]) -> str:
                 y: studentCers,
                 type: 'scatter',
                 mode: 'lines+markers',
-                name: 'Student vs Perfect',
+                name: 'Research Assistants vs Perfect',
                 line: {{ color: '#f44336', width: 3 }},
                 marker: {{ size: 8, color: '#f44336' }},
-                hovertemplate: 'Year: %{{x}}<br>Student CER: %{{y:.2%}}<extra></extra>'
+                hovertemplate: 'Year: %{{x}}<br>Research Assistants CER: %{{y:.2%}}<extra></extra>'
             }};
             
             var data = [trace1, trace2];
@@ -1208,23 +1208,54 @@ def create_cer_chart_html(summary_rows: List[Dict]) -> str:
                         width: 2,
                         dash: 'dot'
                     }}
-                }}],
-                annotations: [{{
-                    x: 1894,
-                    y: 0.9,
+                }}, {{
+                    type: 'line',
+                    x0: 1912,
+                    x1: 1912,
+                    y0: 0,
+                    y1: 1,
                     yref: 'paper',
-                    text: 'Printed to blackletter change',
-                    showarrow: true,
-                    arrowhead: 2,
-                    arrowcolor: '#666',
-                    ax: 0,
-                    ay: -40,
-                    font: {{
-                        size: 12,
-                        color: '#666'
+                    line: {{
+                        color: '#666',
+                        width: 2,
+                        dash: 'dot'
                     }}
                 }}],
-                margin: {{ t: 60, b: 60, l: 80, r: 40 }},
+                annotations: [{{
+                    x: 1886,
+                    y: 1.02,
+                    yref: 'paper',
+                    xanchor: 'center',
+                    text: '<i>Roman Font</i>',
+                    showarrow: false,
+                    font: {{
+                        size: 11,
+                        color: '#444'
+                    }}
+                }}, {{
+                    x: 1903,
+                    y: 1.02,
+                    yref: 'paper',
+                    xanchor: 'center',
+                    text: '<i>Unger Gothic</i>',
+                    showarrow: false,
+                    font: {{
+                        size: 11,
+                        color: '#444'
+                    }}
+                }}, {{
+                    x: 1915,
+                    y: 1.02,
+                    yref: 'paper',
+                    xanchor: 'center',
+                    text: '<i>Breitkopf Gothic</i>',
+                    showarrow: false,
+                    font: {{
+                        size: 11,
+                        color: '#444'
+                    }}
+                }}],
+                margin: {{ t: 80, b: 60, l: 80, r: 40 }},
                 plot_bgcolor: 'rgba(248,248,248,0.5)',
                 paper_bgcolor: 'white'
             }};
