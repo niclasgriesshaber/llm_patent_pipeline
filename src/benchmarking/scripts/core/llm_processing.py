@@ -70,7 +70,7 @@ def gemini_api_call(model_name: str, prompt: str, pil_image: Image.Image) -> dic
         raise
 
     # Set max_output_tokens based on model version
-    if "2.5" in model_name:
+    if "2.5" in model_name or "gemini-3" in model_name:
         max_output_tokens = 65536
     else:
         max_output_tokens = 8192
@@ -81,13 +81,13 @@ def gemini_api_call(model_name: str, prompt: str, pil_image: Image.Image) -> dic
         "response_mime_type": "application/json",
     }
 
-    # For gemini-2.5 models, set thinking_config with model-specific budgets
-    if "2.5" in model_name:
-        if "pro" in model_name:
-            thinking_budget = 32768  # For gemini-2.5-pro
+    # For gemini-2.5 and gemini-3 models, set thinking_config with model-specific budgets
+    if "2.5" in model_name or "gemini-3" in model_name:
+        if "gemini-3" in model_name or ("pro" in model_name and "2.5" in model_name):
+            thinking_budget = 32768  # For gemini-2.5-pro and gemini-3-pro-preview
         else:
             thinking_budget = 24576  # For gemini-2.5-flash
-        logging.info(f"Using Gemini 2.5-specific config with thinking budget {thinking_budget} and max_output_tokens={max_output_tokens}.")
+        logging.info(f"Using thinking config with thinking budget {thinking_budget} and max_output_tokens={max_output_tokens}.")
         config_args["thinking_config"] = types.ThinkingConfig(
             thinking_budget=thinking_budget,
             include_thoughts=True
