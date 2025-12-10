@@ -6,48 +6,49 @@ An LLM-based data pipeline for constructing historical datasets from archival im
 
 ## Pipeline Overview
 
+This pipeline is tailored towards our image corpus, available at [digi.bib.uni-mannheim.de](https://digi.bib.uni-mannheim.de).
+
 ```
-                                                                           ┐
-    ┌─────────────────────────┐                                            │
-    │  Image Corpus from a    │                                            │
-    │    specific Volume      │                                            │
-    └───────────┬─────────────┘                                            │
-                │ For each image                                           │
-                ▼                                                          │
-    ┌───────────────────────┐      ┌─────────────────────────┐             │
-    │    Gemini-2.5-Pro     │◄─────│  Patent Entry           │             │
-    │                       │      │  Extraction Prompt      │             │
-    └───────────┬───────────┘      └─────────────────────────┘             │
-                │                                                          │
-                ▼                                                          │
-    ┌───────────────────────┐                                              │
-    │  Dataset with         │                                              │
-    │  truncated entries    │                                           Stage I
-    └───────────┬───────────┘                                              │
-                │ For each row                                             │
-                ▼                                                          │
-    ┌───────────────────────┐      ┌─────────────────────────┐             │
-    │ Gemini-2.5-Flash-Lite │◄─────│  Reparation Prompt      │             │
-    │                       │      │                         │             │
-    └───────────┬───────────┘      └─────────────────────────┘             │
-                │                                                          │
-                ▼                                                          │
-    ┌───────────────────────┐                                              │
-    │  Dataset with         │                                              │
-    │  repaired entries     │                                              │
-    └───────────┬───────────┘                                              ┘
-                │ For each row                                             ┐
-                ▼                                                          │
-    ┌───────────────────────┐      ┌─────────────────────────┐             │
-    │ Gemini-2.5-Flash-Lite │◄─────│  Variable Extraction    │             │
-    │                       │      │  Prompt                 │          Stage II
-    └───────────┬───────────┘      └─────────────────────────┘             │
-                │                                                          │
-                ▼                                                          │
-    ┌───────────────────────┐                                              │
-    │  LLM-generated        │                                              │
-    │  Dataset              │                                              │
-    └───────────────────────┘                                              ┘
+                                                                              ┐
+                          ┌─────────────────────────┐                         │
+                          │  Image Corpus from a    │                         │
+                          │    specific Volume      │                         │
+                          └───────────┬─────────────┘                         │
+                                      │ For each image                        │
+                                      ▼                                       │
+  ┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┐      ┌───────────────────────┐                      │
+    Patent Entry                │    Gemini-2.5-Pro     │                      │
+    Extraction Prompt   ─────▶ │                       │                      │
+  └ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┘      └───────────┬───────────┘                      │
+                                           │                                  │
+                                           ▼                                  │
+                               ┌───────────────────────┐                      │
+                               │  Dataset with         │                   Stage I
+                               │  truncated entries    │                      │
+                               └───────────┬───────────┘                      │
+                                           │ For each row                     │
+                                           ▼                                  │
+  ┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┐      ┌───────────────────────┐                      │
+    Reparation Prompt   ─────▶ │ Gemini-2.5-Flash-Lite │                      │
+  └ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┘      └───────────┬───────────┘                      │
+                                           │                                  │
+                                           ▼                                  │
+                               ┌───────────────────────┐                      │
+                               │  Dataset with         │                      │
+                               │  repaired entries     │                      │
+                               └───────────────────────┘                      ┘
+                                           │ For each row                     ┐
+                                           ▼                                  │
+  ┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┐      ┌───────────────────────┐                      │
+    Variable Extraction        │ Gemini-2.5-Flash-Lite │                   Stage II
+    Prompt              ─────▶ │                       │                      │
+  └ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┘      └───────────┬───────────┘                      │
+                                           │                                  │
+                                           ▼                                  │
+                               ┌───────────────────────┐                      │
+                               │  LLM-generated        │                      │
+                               │  Dataset              │                      │
+                               └───────────────────────┘                      ┘
 ```
 
 Dashed boxes represent carefully refined prompts (see `src/*/prompts/`). The output is an LLM-generated dataset per volume—we then merge all volumes to construct the complete dataset.
