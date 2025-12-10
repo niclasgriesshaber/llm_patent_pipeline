@@ -369,36 +369,6 @@ def match_entries_fuzzy(gt_df: pd.DataFrame, llm_df: pd.DataFrame, threshold: fl
         used_gt_indices.add(gt_idx)
         used_llm_indices.add(llm_idx)
     
-    # Drop first and last matched pairs from both sides
-    matched_gt_indices = [i for i, matched in enumerate(gt_matches) if matched]
-    matched_llm_indices = [i for i, matched in enumerate(llm_matches) if matched]
-    
-    if len(matched_gt_indices) > 2:
-        # Drop first and last matched pairs
-        first_gt_idx = matched_gt_indices[0]
-        last_gt_idx = matched_gt_indices[-1]
-        first_llm_idx = matched_llm_indices[0]
-        last_llm_idx = matched_llm_indices[-1]
-        
-        # Reset the matches for first and last pairs
-        gt_matches[first_gt_idx] = False
-        gt_matches[last_gt_idx] = False
-        llm_matches[first_llm_idx] = False
-        llm_matches[last_llm_idx] = False
-        gt_match_ids[first_gt_idx] = '—'
-        gt_match_ids[last_gt_idx] = '—'
-        llm_match_ids[first_llm_idx] = '—'
-        llm_match_ids[last_llm_idx] = '—'
-    elif len(matched_gt_indices) == 2:
-        # If only 2 matches, drop the first one
-        first_gt_idx = matched_gt_indices[0]
-        first_llm_idx = matched_llm_indices[0]
-        gt_matches[first_gt_idx] = False
-        llm_matches[first_llm_idx] = False
-        gt_match_ids[first_gt_idx] = '—'
-        llm_match_ids[first_llm_idx] = '—'
-    # If only 1 or 0 matches, drop nothing (or already dropped)
-            
     return gt_matches, llm_matches, gt_match_ids, llm_match_ids
 
 def compare_variables(gt_value: str, llm_value: str, threshold: float = 0.85) -> bool:
