@@ -17,7 +17,7 @@ This pipeline is tailored towards our image corpus, available at [digi.bib.uni-m
                                         │ For each image                      │
                                         ▼                                     │
   ┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┐      ┌───────────────────────┐                      │
-    Patent Entry                │    Gemini-2.5-Pro     │                      │
+    Patent Entry               │    Gemini-2.5-Pro     │                      │
     Extraction Prompt   ─────▶ │                       │                      │
   └ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┘      └───────────┬───────────┘                      │
                                            │                                  │
