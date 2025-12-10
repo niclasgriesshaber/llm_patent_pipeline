@@ -21,3 +21,6 @@ data/**/*.json
 data/**/*.csv
 data/**/*.xlsx
 data/**/*.xls
+
+# Ignore Latex
+Latex/*
