@@ -10,12 +10,12 @@ This pipeline is tailored towards our image corpus, available at [digi.bib.uni-m
 
 ```
                                                                               ┐
-                          ┌───────────────────────────┐                       │
-                          │   Image Corpus from a     │                       │
-                          │     specific Volume       │                       │
-                          └─────────────┬─────────────┘                       │
-                                        │ For each image                      │
-                                        ▼                                     │
+                               ┌───────────────────────────┐                  │
+                               │   Image Corpus from a     │                  │
+                               │     specific Volume       │                  │
+                               └─────────────┬─────────────┘                  │
+                                             │ For each image                 │
+                                             ▼                                │
   ┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┐      ┌───────────────────────┐                      │
     Patent Entry               │    Gemini-2.5-Pro     │                      │
     Extraction Prompt   ─────▶ │                       │                      │
