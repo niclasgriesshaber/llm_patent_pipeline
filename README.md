@@ -10,12 +10,12 @@ This pipeline is tailored towards our image corpus, available at [digi.bib.uni-m
 
 ```
                                                                               ┐
-                          ┌─────────────────────────┐                         │
-                          │  Image Corpus from a    │                         │
-                          │    specific Volume      │                         │
-                          └───────────┬─────────────┘                         │
-                                      │ For each image                        │
-                                      ▼                                       │
+                          ┌───────────────────────────┐                       │
+                          │   Image Corpus from a     │                       │
+                          │     specific Volume       │                       │
+                          └─────────────┬─────────────┘                       │
+                                        │ For each image                      │
+                                        ▼                                     │
   ┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┐      ┌───────────────────────┐                      │
     Patent Entry                │    Gemini-2.5-Pro     │                      │
     Extraction Prompt   ─────▶ │                       │                      │
@@ -57,8 +57,8 @@ Dashed boxes represent carefully refined prompts (see `src/*/prompts/`). The out
 
 1. **Download [Cursor](https://cursor.sh/)** (an AI-assisted code editor)
 2. Tell the agent (`Cmd + L`) to clone this repository (`https://github.com/niclasgriesshaber/llm_patent_pipeline.git`) to your location of choice
-3. Generate API keys for the Google models at [aistudio.google.com/api-keys](https://aistudio.google.com/api-keys)
-4. Ask the agent about the pipeline and how to adapt it to your image corpus
+3. Ask the agent about the pipeline and how to adapt it to your image corpus
+4. If you want to use the Gemini model family, generate API keys at [aistudio.google.com/api-keys](https://aistudio.google.com/api-keys)
 
 ## Citation
 
