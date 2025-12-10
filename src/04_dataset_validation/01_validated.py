@@ -364,15 +364,15 @@ def main():
             """
             Clean and convert patent_id to integer.
             - Handles NaN values (returns None)
-            - Strips whitespace
+            - Strips whitespace (leading, trailing, and internal)
             - Removes .0 suffix if present (e.g., "6729.0" -> 6729)
             - Returns integer (not float)
             """
             if pd.isna(val):
                 return None
             
-            # Convert to string and strip whitespace
-            val_str = str(val).strip()
+            # Convert to string, strip leading/trailing whitespace, and remove internal spaces
+            val_str = str(val).strip().replace(' ', '')
             
             # Remove .0 suffix if present (pandas sometimes converts ints to floats)
             if val_str.endswith('.0'):
