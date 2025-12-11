@@ -475,89 +475,54 @@ def make_three_table_diff_html(perfect_text: str, llm_text: str, student_text: s
     """Create side-by-side text comparison for three tables with character-level highlighting."""
     
     def create_character_level_diff(text1: str, text2: str, highlight_class: str) -> str:
-        """Create ultra-precise character-level diff highlighting while preserving text formatting."""
+        """Create precise character-level diff highlighting using Levenshtein edit operations.
+        
+        This approach uses the exact edit operations from the Levenshtein algorithm,
+        which eliminates any ambiguity about what characters differ. This is more
+        accurate than alignment-based approaches that can have character collisions.
+        
+        Highlights characters in text1 that differ from text2:
+        - Substitutions (replace): characters in text1 that should be different
+        - Deletions (delete): extra characters in text1 that shouldn't be there
+        
+        Note: Insertions (characters missing from text1) cannot be highlighted since
+        they don't exist in text1 - we can only highlight what's actually there.
+        """
+        if not text1:
+            return ""
+        
+        # Get edit operations: what changes are needed to transform text1 into text2
+        # Each operation is (op_type, pos_in_text1, pos_in_text2)
+        ops = Levenshtein.editops(text1, text2)
+        
+        # Build set of positions in text1 that need highlighting
+        # 'replace' at (i, j) means text1[i] is wrong (should be text2[j])
+        # 'delete' at (i, j) means text1[i] is extra (shouldn't exist in output)
+        # 'insert' at (i, j) means text2[j] is missing from text1 (nothing to highlight)
+        highlight_positions = set()
+        for op_type, i, j in ops:
+            if op_type == 'replace' or op_type == 'delete':
+                highlight_positions.add(i)
+        
+        # Build HTML with highlighting
         html_parts = []
-        
-        # Use dynamic programming for precise alignment
-        aligned_text1, aligned_text2 = align_texts_for_comparison(text1, text2)
-        
-        # Create a mapping to track which characters in aligned_text1 correspond to original text1
-        # This will help us distinguish between original spaces and alignment spaces
-        original_positions = []
-        i = 0  # Index in original text1
-        
-        for j in range(len(aligned_text1)):
-            if aligned_text1[j] != ' ' or (i < len(text1) and text1[i] == ' '):
-                # This character corresponds to original text1 (either non-space or original space)
-                original_positions.append(i)
-                i += 1
+        for i, char in enumerate(text1):
+            escaped_char = html_escape(char)
+            if i in highlight_positions:
+                html_parts.append(f'<span class="{highlight_class}">{escaped_char}</span>')
             else:
-                # This is an alignment space - mark as -1
-                original_positions.append(-1)
-        
-        # Now process the aligned texts with proper mapping
-        for j in range(len(aligned_text1)):
-            if original_positions[j] == -1:
-                # This is an alignment space - skip it
-                continue
-            elif aligned_text1[j] == aligned_text2[j]:
-                # Characters match - no highlighting
-                html_parts.append(html_escape(aligned_text1[j]))
-            else:
-                # Characters differ - highlight the character
-                html_parts.append(f'<span class="{highlight_class}">{html_escape(aligned_text1[j])}</span>')
+                html_parts.append(escaped_char)
         
         return ''.join(html_parts)
-    
-    def align_texts_for_comparison(text1: str, text2: str):
-        """Align two texts for character-by-character comparison using dynamic programming."""
-        # Use dynamic programming to find optimal alignment
-        m, n = len(text1), len(text2)
-        
-        # Create DP table
-        dp = [[0] * (n + 1) for _ in range(m + 1)]
-        
-        # Fill DP table
-        for i in range(m + 1):
-            for j in range(n + 1):
-                if i == 0:
-                    dp[i][j] = j
-                elif j == 0:
-                    dp[i][j] = i
-                elif text1[i-1] == text2[j-1]:
-                    dp[i][j] = dp[i-1][j-1]
-                else:
-                    dp[i][j] = 1 + min(dp[i-1][j], dp[i][j-1], dp[i-1][j-1])
-        
-        # Backtrack to find alignment
-        aligned1, aligned2 = [], []
-        i, j = m, n
-        
-        while i > 0 or j > 0:
-            if i > 0 and j > 0 and text1[i-1] == text2[j-1]:
-                # Characters match
-                aligned1.append(text1[i-1])
-                aligned2.append(text2[j-1])
-                i -= 1
-                j -= 1
-            elif i > 0 and (j == 0 or dp[i-1][j] <= dp[i][j-1]):
-                # Deletion in text1
-                aligned1.append(text1[i-1])
-                aligned2.append(' ')
-                i -= 1
-            else:
-                # Insertion in text2
-                aligned1.append(' ')
-                aligned2.append(text2[j-1])
-                j -= 1
-        
-        return ''.join(reversed(aligned1)), ''.join(reversed(aligned2))
     
     html_parts = [
         f'<section class="three-diff-section">',
         f'<h2 class="diff-file-heading">{html_escape(filename)}.pdf</h2>',
         f'<div class="highlight-explanation">',
-        f'<p><strong>Note:</strong> The visual highlighting may occasionally mark identical text as different due to sequence alignment limitations. However, this does not affect CER calculations, which use precise character-level Levenshtein distance. The highlighting serves as a visual aid only - the underlying metrics remain accurate.</p>',
+        f'<p><strong>Highlighting Key:</strong> Characters highlighted in the LLM and Student columns represent errors compared to the Perfect transcription. This includes:</p>',
+        f'<ul><li><strong>Substitutions:</strong> Characters that differ from the corresponding position in Perfect</li>',
+        f'<li><strong>Extra characters:</strong> Characters that appear in the transcription but not in Perfect</li></ul>',
+        f'<p><em>Note: Missing characters (present in Perfect but absent in the transcription) cannot be highlighted since they do not exist in the displayed text. The CER metric fully accounts for all error types including missing characters.</em></p>',
         f'</div>',
         f'<div class="metrics-row">',
         f'<div class="metric-box gap-metric">',
