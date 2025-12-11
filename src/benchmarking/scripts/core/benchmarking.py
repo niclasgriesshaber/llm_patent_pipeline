@@ -281,110 +281,6 @@ def compute_levenshtein_stats(gt_text: str, llm_text: str):
     sub = sum(1 for op in ops if op[0] == 'replace')
     return ins, del_, sub
 
-def make_summary_table_html(summary_rows):
-    table = [
-        '<table class="summary-table">',
-        '<caption style="font-weight: bold; margin-bottom: 18px; font-size: 1.2em;">File-level CER and Edit Statistics</caption>',
-        '<tr><th>File</th><th>Year</th><th>CER (Unnorm)</th><th>CER (Norm)</th><th>Words (GT)</th><th>Words (LLM)</th><th>Chars (GT)</th><th>Chars (LLM)</th><th>Insertions</th><th>Deletions</th><th>Substitutions</th></tr>'
-    ]
-    for row in summary_rows:
-        table.append(
-            f'<tr>'
-            f'<td>{html_escape(row["file"])}<br></td>'
-            f'<td>{html_escape(row["year"])}<br></td>'
-            f'<td>{row["cer"]:.2%}</td>'
-            f'<td>{row["cer_normalized"]:.2%}</td>'
-            f'<td>{row["words_gt"]}</td>'
-            f'<td>{row["words_llm"]}</td>'
-            f'<td>{row["chars_gt"]}</td>'
-            f'<td>{row["chars_llm"]}</td>'
-            f'<td>{row["ins"]}</td>'
-            f'<td>{row["del"]}</td>'
-            f'<td>{row["sub"]}</td>'
-            f'</tr>'
-        )
-    table.append('</table>')
-    return '\n'.join(table)
-
-def make_interactive_cer_graph(summary_rows):
-    years = [int(row['year']) for row in summary_rows]
-    cers = [row['cer'] for row in summary_rows]
-    files = [row['file'] for row in summary_rows]
-    return f'''
-<div id="cer-graph" style="height:400px;"></div>
-<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
-<script>
-var data = [{{
-    x: {years},
-    y: {cers},
-    text: {files},
-    type: 'scatter',
-    mode: 'markers+lines',
-    marker: {{ size: 12 }},
-    hovertemplate: 'File: %{{text}}<br>Year: %{{x}}<br>CER: %{{y:.2%}}<extra></extra>'
-}}];
-var layout = {{
-    title: 'CER by Year',
-    xaxis: {{ title: 'Year', tickangle: -90, dtick: 1 }},
-    yaxis: {{ title: 'CER', tickformat: ',.0%' }},
-    margin: {{ t: 40, b: 120 }}
-}};
-Plotly.newPlot('cer-graph', data, layout);
-</script>
-'''
-
-def make_side_by_side_diff(gt_text, llm_text, file, year, cer):
-    """Create a side-by-side text file comparison with character-level diffing."""
-    
-    # Use difflib to get character-level differences
-    matcher = difflib.SequenceMatcher(None, gt_text, llm_text)
-    
-    # Create the HTML structure
-    html_parts = [
-        f'<section class="diff-section">',
-        f'<h2 class="diff-file-heading">{html_escape(file)}</h2>',
-        f'<h3 class="diff-cer">CER: {cer:.2%}</h3>',
-        f'<div class="text-file-comparison">',
-        f'<div class="text-file-container">',
-        f'<div class="text-file-header">Ground Truth Text File</div>',
-        f'<div class="text-file-content">'
-    ]
-    
-    # Process ground truth text with highlighting
-    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
-        if tag == 'equal':
-            # Same text - no highlighting, preserve line breaks
-            html_parts.append(html_escape(gt_text[i1:i2]))
-        else:
-            # Different text - highlight with yellow (inline span)
-            html_parts.append(f'<span class="diff-highlight">{html_escape(gt_text[i1:i2])}</span>')
-    
-    html_parts.extend([
-        f'</div>',  # Close text-file-content
-        f'</div>',  # Close text-file-container
-        f'<div class="text-file-container">',
-        f'<div class="text-file-header">LLM Output Text File</div>',
-        f'<div class="text-file-content">'
-    ])
-    
-    # Process LLM text with highlighting
-    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
-        if tag == 'equal':
-            # Same text - no highlighting, preserve line breaks
-            html_parts.append(html_escape(llm_text[j1:j2]))
-        else:
-            # Different text - highlight with yellow (inline span)
-            html_parts.append(f'<span class="diff-highlight">{html_escape(llm_text[j1:j2])}</span>')
-    
-    html_parts.extend([
-        f'</div>',  # Close text-file-content
-        f'</div>',  # Close text-file-container
-        f'</div>',  # Close text-file-comparison
-        f'</section>'
-    ])
-    
-    return ''.join(html_parts)  # Use join without newlines to prevent artificial breaks
-
 # --- File Matching and Availability Logic ---
 
 def find_matching_files(sampled_pdfs_dir: Path, student_xlsx_dir: Path, perfect_xlsx_dir: Path, llm_csv_dir: Path) -> Dict[str, Dict[str, Path]]:
@@ -1198,8 +1094,8 @@ def create_cer_chart_html(summary_rows: List[Dict]) -> str:
                 }},
                 shapes: [{{
                     type: 'line',
-                    x0: 1894,
-                    x1: 1894,
+                    x0: 1893.5,
+                    x1: 1893.5,
                     y0: 0,
                     y1: 1,
                     yref: 'paper',
@@ -1210,8 +1106,8 @@ def create_cer_chart_html(summary_rows: List[Dict]) -> str:
                     }}
                 }}, {{
                     type: 'line',
-                    x0: 1912,
-                    x1: 1912,
+                    x0: 1913.5,
+                    x1: 1913.5,
                     y0: 0,
                     y1: 1,
                     yref: 'paper',
@@ -1226,29 +1122,29 @@ def create_cer_chart_html(summary_rows: List[Dict]) -> str:
                     y: 1.02,
                     yref: 'paper',
                     xanchor: 'center',
-                    text: '<i>Roman Font</i>',
+                    text: '<i>Roman</i>',
                     showarrow: false,
                     font: {{
                         size: 11,
                         color: '#444'
                     }}
                 }}, {{
-                    x: 1903,
+                    x: 1903.5,
                     y: 1.02,
                     yref: 'paper',
                     xanchor: 'center',
-                    text: '<i>Unger Gothic</i>',
+                    text: '<i>Unger Fraktur</i>',
                     showarrow: false,
                     font: {{
                         size: 11,
                         color: '#444'
                     }}
                 }}, {{
-                    x: 1915,
+                    x: 1916,
                     y: 1.02,
                     yref: 'paper',
                     xanchor: 'center',
-                    text: '<i>Breitkopf Gothic</i>',
+                    text: '<i>Breitkopf Fraktur</i>',
                     showarrow: false,
                     font: {{
                         size: 11,
@@ -1723,322 +1619,3 @@ def run_variable_extraction_comparison(llm_csv_dir: Path, perfect_xlsx_dir: Path
         logging.info(f"Renamed variable_fuzzy_report.html to variable_extraction_report.html")
     
     return variable_results
-
-def run_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Path, fuzzy_threshold: float = 0.85, comparison_type: str = "perfect"):
-    """
-    Runs the full comparison logic: fuzzy matching and diffing.
-    Generates HTML reports and a JSON summary.
-    
-    Args:
-        llm_csv_dir: Directory containing LLM-generated CSV files
-        gt_xlsx_dir: Directory containing ground truth Excel files
-        output_dir: Directory to save comparison results
-        fuzzy_threshold: Threshold for fuzzy matching (default: 0.85)
-        comparison_type: Type of comparison ("perfect" or "student")
-    """
-    logging.info(f"Starting {comparison_type} comparison for data in {llm_csv_dir.name}")
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    gt_stems = get_file_stems(gt_xlsx_dir, 'xlsx')
-    llm_stems = get_file_stems(llm_csv_dir, 'csv')
-    common_stems = sorted(list(gt_stems.intersection(llm_stems)))
-
-    if not common_stems:
-        logging.warning(f"No common files found between {comparison_type} ground truth and LLM directories. Skipping comparison.")
-        return None
-
-    # --- Fuzzy Matching ---
-    pair_sections_html = []
-    total_gt_entries, total_llm_entries = 0, 0
-    total_gt_matched, total_llm_matched = 0, 0
-    full_gt_text, full_llm_text = "", ""
-
-    for stem in common_stems:
-        logging.info(f"Processing {comparison_type} pair: {stem}")
-        gt_df = load_gt_file(gt_xlsx_dir / f"{stem}.xlsx")
-        llm_df = load_llm_file(llm_csv_dir / f"{stem}.csv")
-
-        if gt_df.empty or llm_df.empty:
-            logging.warning(f"Skipping {comparison_type} pair {stem} due to empty dataframe after loading.")
-            continue
-
-        full_gt_text += "\n".join(gt_df['entry'].tolist()) + "\n"
-        full_llm_text += "\n".join(llm_df['entry'].tolist()) + "\n"
-
-        gt_matches, llm_matches, gt_match_ids, llm_match_ids = match_entries_fuzzy(gt_df, llm_df, fuzzy_threshold)
-
-        pair_sections_html.append(make_pair_section_html(gt_df, llm_df, gt_matches, llm_matches, gt_match_ids, llm_match_ids, stem))
-        
-        total_gt_entries += len(gt_df)
-        total_llm_entries += len(llm_df)
-        total_gt_matched += sum(gt_matches)
-        total_llm_matched += sum(llm_matches)
-
-    # --- Aggregation and Report Generation ---
-    overall_match_rate_gt = (total_gt_matched / total_gt_entries * 100) if total_gt_entries > 0 else 0
-    overall_match_rate_llm = (total_llm_matched / total_llm_entries * 100) if total_llm_entries > 0 else 0
-    
-    # Create threshold and transcription notes
-    threshold_note = f'<p><b>Fuzzy Matching Threshold:</b> {fuzzy_threshold}</p>'
-    
-    perfect_note = ""
-    student_note = ""
-    
-    if comparison_type == "perfect":
-        perfect_note = """
-        <div style="background-color: #d4edda; border: 1px solid #c3e6cb; border-radius: 5px; padding: 15px; margin: 15px 0;">
-            <p><strong>Note:</strong> These perfect transcriptions should contain absolutely no errors and any differences to the LLM-generated transcriptions are due to errors made by the LLM.</p>
-        </div>
-        """
-    elif comparison_type == "student":
-        student_note = """
-        <div style="background-color: #fff3cd; border: 1px solid #ffeaa7; border-radius: 5px; padding: 15px; margin: 15px 0;">
-            <p><strong>Note:</strong> The ground truth data contains errors made by human student assistants during transcription. 
-            These errors may affect the accuracy of the comparison results.</p>
-        </div>
-        """
-    
-    # Create transcription notes for the top of the page
-    top_notes = ""
-    if comparison_type == "perfect":
-        top_notes = """
-        <div style="background-color: #d4edda; border: 1px solid #c3e6cb; border-radius: 5px; padding: 15px; margin-bottom: 30px;">
-            <p style="margin: 0; color: #155724;"><strong>Note:</strong> These perfect transcriptions should contain absolutely no errors and any differences to the LLM-generated transcriptions are due to errors made by the LLM.</p>
-        </div>
-        """
-    elif comparison_type == "student":
-        top_notes = """
-        <div style="background-color: #fff3cd; border: 1px solid #ffeaa7; border-radius: 5px; padding: 15px; margin-bottom: 30px;">
-            <p style="margin: 0; color: #856404;"><strong>Note:</strong> The ground truth data contains errors made by human student assistants during transcription. 
-            These errors may affect the accuracy of the comparison results.</p>
-        </div>
-        """
-    
-    summary_html = (
-        f'<div class="summary-section">'
-        f'<h2>Overall Summary - {comparison_type.title()} Comparison</h2>'
-        f'{threshold_note}'
-        f'<p><b>Total Ground Truth Entries:</b> {total_gt_entries}</p>'
-        f'<p><b>Total LLM Entries:</b> {total_llm_entries}</p>'
-        f'<p><b>Total Matches:</b> {total_gt_matched}</p>'
-        f'<p><b>Overall Match Rate (Ground Truth perspective):</b> {overall_match_rate_gt:.2f}%</p>'
-        f'<p><b>Overall Match Rate (LLM perspective):</b> {overall_match_rate_llm:.2f}%</p>'
-        f'</div>'
-    )
-    
-    # Add spacing between summary and file pairs
-    sections_with_spacing = f'<div style="margin-top: 40px;">{"".join(pair_sections_html)}</div>'
-    
-    fuzzy_html_content = make_full_html(f"Fuzzy Matching Report - {comparison_type.title()}", sections_with_spacing, summary_html, top_notes)
-    fuzzy_report_path = output_dir / "patent_entry_matching_before_cleaning.html"
-    fuzzy_report_path.write_text(fuzzy_html_content, encoding='utf-8')
-    logging.info(f"Fuzzy report saved to {fuzzy_report_path}")
-
-    # --- CER and Diffing (Normalized) ---
-    summary_rows = []
-    diff_sections = []
-    
-    # Style section with improved diff table responsiveness
-    style = '''<style>
-    body{font-family:Segoe UI,Arial,sans-serif;background:#f4f4f9;color:#222;}
-    .container{max-width:1200px;margin:auto;padding:30px;}
-    .summary-section{margin-top:30px;padding:24px 32px;background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,0.04);}
-    .summary-table{width:100%;border-collapse:collapse;margin-bottom:30px;font-size:1.05em;}
-    .summary-table th,.summary-table td{border:1px solid #ddd;padding:10px 8px;text-align:left;}
-    .summary-table th{background:#e9e9f2;font-weight:600;}
-    .summary-table caption{font-weight: bold; margin-bottom: 18px; font-size: 1.2em;}
-    .diff-section{background:#f9fafc;border:1px solid #dbe2ea;border-radius:14px;margin-bottom:40px;padding:28px 22px;box-shadow:0 4px 16px rgba(0,0,0,0.06);}
-    .diff-file-heading{font-size:1.35em;font-weight:700;margin-bottom:8px;letter-spacing:0.5px;}
-    .diff-cer{font-size:1.08em;font-weight:600;margin-bottom:18px;}
-    /* Text file comparison styling */
-    .text-file-comparison{display:flex;gap:20px;margin-top:20px;}
-    .text-file-container{flex:1;background:#fff;border-radius:8px;border:1.5px solid #e0e0e0;box-shadow:0 1px 4px rgba(0,0,0,0.03);}
-    .text-file-header{background:#f2f2f2;font-weight:bold;font-size:1.08em;padding:12px 16px;margin:0;border-radius:8px 8px 0 0;border-bottom:1px solid #e0e0e0;}
-    .text-file-content{padding:16px;background:#fafafa;border-radius:0 0 8px 8px;font-family:monospace;font-size:0.9em;line-height:1.5;white-space:pre-wrap;overflow-x:auto;word-break:break-word;}
-    .text-line{padding:4px 16px;border-bottom:1px solid #f0f0f0;font-family:monospace;font-size:0.9em;line-height:1.4;white-space:pre-wrap;word-break:break-word;}
-    .text-line:last-child{border-bottom:none;}
-    .text-line:hover{background:#f6f8fa;}
-    .text-line.empty-line{height:12px;background:#f8f8f8;border-bottom:1px solid #e8e8e8;}
-    .diff-highlight{background-color:rgba(255,255,0,0.6);padding:1px 2px;border-radius:2px;}
-    .normalization-notice{background:#e3f2fd;border:1px solid #2196f3;border-radius:8px;padding:16px;margin-bottom:24px;color:#1565c0;}
-    </style>'''
-    
-    mathjax_script = '<script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>\n<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>'
-    cer_definition = '''<div class="summary-section"><h2>Character Error Rate (CER) Definition</h2><p>$$\\mathrm{CER} = \\frac{\\text{Levenshtein distance}}{\\text{number of characters in ground truth}}$$<br>Insertions, deletions, and substitutions are counted as edit operations. Lower CER means higher similarity.</p><p><strong>Unnormalized CER:</strong> Uses original text with all characters, case, linebreaks, and formatting preserved.</p><p><strong>Normalized CER:</strong> Uses text normalized to ASCII letters (a-z), digits (0-9), lowercase, no linebreaks, and trimmed whitespace (academic standard).</p></div>'''
-
-    for stem in common_stems:
-        gt_df = load_gt_file(gt_xlsx_dir / f"{stem}.xlsx")
-        llm_df = load_llm_file(llm_csv_dir / f"{stem}.csv")
-        if gt_df.empty or llm_df.empty:
-            continue
-            
-        # Original text for comparison (unnormalized)
-        # Create text files from Excel entries with proper structure for display
-        gt_text = create_text_file_from_entries(gt_df)
-        llm_text = create_text_file_from_entries(llm_df)
-        
-        # Create clean text files for CER calculation (no line breaks between entries)
-        gt_text_clean = create_clean_text_for_cer(gt_df)
-        llm_text_clean = create_clean_text_for_cer(llm_df)
-        
-        # Normalized text for normalized CER calculation
-        gt_df_normalized = create_normalized_dataframe(gt_df)
-        llm_df_normalized = create_normalized_dataframe(llm_df)
-        gt_text_normalized = " ".join(gt_df_normalized['entry'].tolist())
-        llm_text_normalized = " ".join(llm_df_normalized['entry'].tolist())
-        
-        # Calculate CERs
-        cer_unnormalized = Levenshtein.normalized_distance(gt_text_clean, llm_text_clean)
-        cer_normalized = Levenshtein.normalized_distance(gt_text_normalized, llm_text_normalized)
-        
-        # Get Levenshtein stats
-        ins, del_, sub = compute_levenshtein_stats(gt_text_clean, llm_text_clean)
-        
-        year = extract_year_from_filename(stem)
-        
-        # Summary
-        summary_rows.append({
-            'file': stem,
-            'year': year,
-            'cer': cer_unnormalized,
-            'cer_normalized': cer_normalized,
-            'words_gt': len(gt_text.split()),
-            'words_llm': len(llm_text.split()),
-            'chars_gt': len(gt_text),
-            'chars_llm': len(llm_text),
-            'ins': ins,
-            'del': del_,
-            'sub': sub
-        })
-        
-        # Create diff section
-        diff_sections.append(make_side_by_side_diff(gt_text, llm_text, stem, year, cer_unnormalized))
-
-    # Generate diff report
-    if summary_rows:
-        summary_table_html = '<div style="margin-top: 32px;">' + make_summary_table_html(summary_rows) + '</div>'
-        cer_graph_html = make_interactive_cer_graph(summary_rows)
-        
-        # Calculate average CER by concatenating all files
-        all_gt_text = ""
-        all_llm_text = ""
-        all_gt_text_normalized = ""
-        all_llm_text_normalized = ""
-        
-        for stem in common_stems:
-            gt_df = load_gt_file(gt_xlsx_dir / f"{stem}.xlsx")
-            llm_df = load_llm_file(llm_csv_dir / f"{stem}.csv")
-            if gt_df.empty or llm_df.empty:
-                continue
-                
-            # Use clean text files for CER calculation
-            all_gt_text += create_clean_text_for_cer(gt_df)
-            all_llm_text += create_clean_text_for_cer(llm_df)
-            
-            gt_df_normalized = create_normalized_dataframe(gt_df)
-            llm_df_normalized = create_normalized_dataframe(llm_df)
-            all_gt_text_normalized += " ".join(gt_df_normalized['entry'].tolist()) + " "
-            all_llm_text_normalized += " ".join(llm_df_normalized['entry'].tolist()) + " "
-        
-        avg_cer_unnormalized = Levenshtein.normalized_distance(all_gt_text, all_llm_text)
-        avg_cer_normalized = Levenshtein.normalized_distance(all_gt_text_normalized, all_llm_text_normalized)
-        
-        # Create combined header section with transcription notes (no fuzzy threshold for text comparison)
-        header_section = '''
-        <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; padding: 20px; margin-bottom: 25px;">
-        '''
-        
-        if comparison_type == "perfect":
-            header_section += '''
-            <div style="background-color: #d4edda; border: 1px solid #c3e6cb; border-radius: 5px; padding: 12px; margin-bottom: 15px;">
-                <p style="margin: 0; color: #155724;"><strong>Note:</strong> These perfect transcriptions should contain absolutely no errors and any differences to the LLM-generated transcriptions are due to errors made by the LLM.</p>
-            </div>
-            '''
-        elif comparison_type == "student":
-            header_section += '''
-            <div style="background-color: #fff3cd; border: 1px solid #ffeaa7; border-radius: 5px; padding: 12px; margin-bottom: 15px;">
-                <p style="margin: 0; color: #856404;"><strong>Note:</strong> The ground truth data contains errors made by human student assistants during transcription. These errors may affect the accuracy of the comparison results.</p>
-            </div>
-            '''
-        
-        header_section += '''
-            <div style="background-color: #e3f2fd; border: 1px solid #2196f3; border-radius: 5px; padding: 12px;">
-                <p style="margin: 0; color: #1565c0;"><strong>Text Processing Notice:</strong> This report shows results with original text including all characters, case, linebreaks, and formatting preserved.</p>
-            </div>
-        </div>
-        '''
-        
-        # Empty variables for backward compatibility
-        threshold_note = ""
-        perfect_note = ""
-        student_note = ""
-        normalization_notice = ""
-        
-        # Add average CER section
-        avg_cer_html = f'''
-        <div class="summary-section">
-            <h2>Average Character Error Rate (CER)</h2>
-            <p><strong>Unnormalized CER:</strong> {avg_cer_unnormalized:.2%} (calculated by concatenating all files)</p>
-            <p><strong>Normalized CER:</strong> {avg_cer_normalized:.2%} (calculated by concatenating all normalized files)</p>
-            <p><em>Note: Average CER is computed by concatenating all files and calculating the overall CER, not by averaging individual file CERs.</em></p>
-        </div>
-        '''
-        
-        diff_legend_html = '''
-        <div class="diff-legend" style="margin: 36px 0 24px 0; padding: 18px 24px; background: #f8f8fc; border-radius: 8px; border: 1px solid #e0e0e0;">
-          <strong>Text File Comparison:</strong>
-          <p style="margin: 10px 0 0 0; font-size: 1em;">
-            This comparison shows the complete text files created from Excel entries. Each entry is preserved as a block with its original formatting. 
-            Empty lines between entries show the structure of the original Excel file. The CER is calculated on the complete text files.
-          </p>
-        </div>
-        '''
-
-        # Create title for diff report
-        diff_title = f"<h1 style='text-align: center; color: #444; margin-bottom: 30px;'>Text Comparison Report - {comparison_type.title()} Transcriptions</h1>"
-        
-        full_html = (
-            '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">'
-            f'<title>Text Comparison Report - {comparison_type.title()} Transcriptions</title>'
-            '{mathjax_script}'
-            '{style}'
-            '</head><body><div class="container">'
-            '{diff_title}{header_section}{cer_definition}{summary_table_html}{avg_cer_html}{cer_graph_html}{diff_legend_html}{diff_sections}'
-            '</div></body></html>'
-        ).format(
-            mathjax_script=mathjax_script,
-            style=style,
-            diff_title=diff_title,
-            header_section=header_section,
-            cer_definition=cer_definition,
-            summary_table_html=summary_table_html,
-            avg_cer_html=avg_cer_html,
-            cer_graph_html=cer_graph_html,
-            diff_legend_html=diff_legend_html,
-            diff_sections=''.join(diff_sections)
-        )
-        diff_report_path = output_dir / "character_error_rate.html"
-        diff_report_path.write_text(full_html, encoding='utf-8')
-        logging.info(f"Diff report saved to {diff_report_path}")
-
-    # Calculate overall CER (use concatenated approach)
-    overall_cer = 0
-    if summary_rows:
-        # Use the concatenated CER calculation
-        overall_cer = avg_cer_unnormalized
-
-    # --- Return Results for JSON Generation ---
-    results = {
-        'comparison_type': comparison_type,
-        'overall_match_rate': round(overall_match_rate_gt, 2),
-        'character_error_rate': round(overall_cer * 100, 2),
-        'total_gt_entries': total_gt_entries,
-        'total_llm_entries': total_llm_entries,
-        'total_gt_matched': total_gt_matched,
-        'total_llm_matched': total_llm_matched,
-        'fuzzy_threshold': fuzzy_threshold,
-        'common_files_processed': len(common_stems),
-        'files_with_results': [row['file'] for row in summary_rows]
-    }
-    
-    return results 

@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Core modules are now in the same directory
 from core.llm_processing import process_pdf
-from core.benchmarking import run_comparison, run_unified_comparison
+from core.benchmarking import run_unified_comparison
 
 # --- Configuration ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
