@@ -481,7 +481,7 @@ def create_global_threshold_table(threshold_sensitivity: dict) -> str:
 
 def make_variable_table_html_simple(gt_df: pd.DataFrame, llm_df: pd.DataFrame, gt_matches: list, 
                                    llm_matches: list, gt_match_ids: list, llm_match_ids: list, 
-                                   filename_stem: str) -> tuple:
+                                   filename_stem: str, threshold: float = 0.85) -> tuple:
     """Create HTML table for variable comparison (simplified version without individual threshold analysis)."""
     # Get matched pairs
     matched_pairs = []
@@ -494,7 +494,7 @@ def make_variable_table_html_simple(gt_df: pd.DataFrame, llm_df: pd.DataFrame, g
     if not matched_pairs:
         return f"<p>No matches found for {filename_stem}</p>", "", {}
     
-    # Calculate variable-level statistics for current threshold (0.85)
+    # Calculate variable-level statistics for the specified threshold
     total_cells = len(matched_pairs) * len(VARIABLE_FIELDS)
     matched_cells = 0
     variable_stats = {field: {'total': 0, 'matched': 0} for field in VARIABLE_FIELDS}
@@ -507,7 +507,7 @@ def make_variable_table_html_simple(gt_df: pd.DataFrame, llm_df: pd.DataFrame, g
             gt_value = str(gt_df.iloc[gt_idx].get(field, "NaN"))
             llm_value = str(llm_df.iloc[llm_idx].get(field, "NaN"))
             
-            is_match = compare_variables(gt_value, llm_value)
+            is_match = compare_variables(gt_value, llm_value, threshold)
             variable_stats[field]['total'] += 1
             if is_match:
                 variable_stats[field]['matched'] += 1
@@ -643,10 +643,24 @@ def run_variable_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Pa
     # Create global threshold sensitivity table
     global_threshold_table_html = create_global_threshold_table(global_threshold_sensitivity)
     
-    # Aggregate statistics
-    total_cells = 0
-    total_matched_cells = 0
-    total_variable_stats = {field: {'total': 0, 'matched': 0} for field in VARIABLE_FIELDS}
+    # Get overall statistics from global threshold sensitivity at the specified threshold
+    # This ensures consistency between the sensitivity table and overall summary
+    total_cells = len(all_matched_pairs) * len(VARIABLE_FIELDS)
+    
+    # Use the global threshold sensitivity data for the specified threshold
+    if fuzzy_threshold in global_threshold_sensitivity:
+        threshold_data = global_threshold_sensitivity[fuzzy_threshold]
+        overall_match_rate = threshold_data['overall_rate']
+        overall_variable_rates = threshold_data['variable_rates']
+        total_matched_cells = int(total_cells * overall_match_rate / 100)
+    else:
+        # Fallback: find closest threshold
+        closest_threshold = min(global_threshold_sensitivity.keys(), key=lambda x: abs(x - fuzzy_threshold))
+        threshold_data = global_threshold_sensitivity[closest_threshold]
+        overall_match_rate = threshold_data['overall_rate']
+        overall_variable_rates = threshold_data['variable_rates']
+        total_matched_cells = int(total_cells * overall_match_rate / 100)
+    
     file_sections = []
     
     # Second pass: create individual file sections
@@ -659,17 +673,10 @@ def run_variable_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Pa
             gt_df, llm_df, fuzzy_threshold
         )
         
-        # Create variable comparison table (without individual threshold analysis)
+        # Create variable comparison table (pass fuzzy_threshold for consistent comparison)
         metrics_html, table_html, stats = make_variable_table_html_simple(
-            gt_df, llm_df, gt_matches, llm_matches, gt_match_ids, llm_match_ids, stem
+            gt_df, llm_df, gt_matches, llm_matches, gt_match_ids, llm_match_ids, stem, fuzzy_threshold
         )
-        
-        # Aggregate statistics
-        total_cells += stats['total_cells']
-        total_matched_cells += stats['matched_cells']
-        for field in VARIABLE_FIELDS:
-            total_variable_stats[field]['total'] += stats['variable_match_rates'][field] * stats['total_cells'] / 100
-            total_variable_stats[field]['matched'] += stats['variable_match_rates'][field] * stats['total_cells'] / 100 * stats['variable_match_rates'][field] / 100
         
         # Create file section
         file_section = f"""
@@ -682,14 +689,6 @@ def run_variable_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Pa
         </section>
         """
         file_sections.append(file_section)
-    
-    # Calculate overall statistics
-    overall_match_rate = (total_matched_cells / total_cells * 100) if total_cells > 0 else 0
-    overall_variable_rates = {}
-    for field in VARIABLE_FIELDS:
-        stats = total_variable_stats[field]
-        rate = (stats['matched'] / stats['total'] * 100) if stats['total'] > 0 else 0
-        overall_variable_rates[field] = rate
     
     # Create overall summary
     threshold_note = f"<p><b>Fuzzy Matching Threshold:</b> {fuzzy_threshold}</p>"
@@ -727,9 +726,17 @@ def run_variable_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Pa
         </div>
         """
     
+    # Create summary title based on comparison type
+    if comparison_type == "perfect":
+        summary_title = "Overall Variable Extraction Summary - Perfect vs LLM-Generated"
+    elif comparison_type == "student":
+        summary_title = "Overall Variable Extraction Summary - Student vs LLM-Generated"
+    else:
+        summary_title = f"Overall Variable Extraction Summary - {comparison_type.title()}"
+    
     summary_html = f"""
     <div class="summary-section">
-        <h2>Overall Variable Extraction Summary - {comparison_type.title()}</h2>
+        <h2>{summary_title}</h2>
         {threshold_note}
         <p><b>Total Cells:</b> {total_cells}</p>
         <p><b>Total Matched Cells:</b> {total_matched_cells}</p>
@@ -744,9 +751,17 @@ def run_variable_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Pa
     # Add spacing between summary and file sections
     sections_with_spacing = f'<div style="margin-top: 40px;">{"".join(file_sections)}</div>'
     
-    # Generate HTML report with global threshold table at the top
+    # Create report title based on comparison type
+    if comparison_type == "perfect":
+        report_title = "Variable Extraction Report - Perfect vs LLM-Generated Transcriptions"
+    elif comparison_type == "student":
+        report_title = "Variable Extraction Report - Student vs LLM-Generated Transcriptions"
+    else:
+        report_title = f"Variable Extraction Report - {comparison_type.title()}"
+    
+    # Generate HTML report with summary at the top, then threshold sensitivity, then file sections
     html_content = make_full_html(
-        f"Variable Extraction Report - {comparison_type.title()}",
+        report_title,
         global_threshold_table_html,
         sections_with_spacing,
         summary_html,
@@ -778,6 +793,8 @@ def make_full_html(title: str, global_threshold_html: str, sections_html: str, s
         .container {{ max-width: 1400px; margin: auto; padding: 20px; }}
         h1, h2 {{ color: #444; }}
         h1 {{ text-align: center; }}
+        .summary-section {{ margin-bottom: 30px; padding: 20px; background: #fff; border: 1px solid #ddd; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }}
+        .summary-section h2 {{ margin-top: 0; color: #2c3e50; }}
         .global-threshold-analysis {{ background: #fff; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 30px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }}
         .global-threshold-analysis h2 {{ margin-top: 0; color: #2c3e50; }}
         .global-threshold-analysis p {{ color: #666; margin-bottom: 20px; }}
@@ -791,15 +808,14 @@ def make_full_html(title: str, global_threshold_html: str, sections_html: str, s
         .benchmark-table th {{ background-color: #f2f2f2; font-weight: bold; }}
         .benchmark-table caption {{ font-weight: bold; margin-bottom: 10px; font-size: 1.2em; color: #2c3e50; }}
         .filename {{ font-family: monospace; background: #eee; padding: 2px 5px; border-radius: 4px; }}
-        .summary-section {{ margin-top: 30px; padding: 20px; background: #fff; border-radius: 8px; }}
     </style>
 </head>
 <body>
     <div class="container">
         <h1>{title}</h1>
         {top_notes}
-        {global_threshold_html}
         {summary_html}
+        {global_threshold_html}
         {sections_html}
     </div>
 </body>
