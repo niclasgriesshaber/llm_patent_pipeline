@@ -1001,7 +1001,7 @@ def create_document_outline() -> str:
     <div class="document-outline">
         <h2>Document Outline</h2>
         <p><strong>Note:</strong> This entire document was AI-generated using Claude-4.5-Sonnet in the Cursor IDE.</p>
-        <p>This report provides a comprehensive analysis of transcription accuracy comparing LLM-generated and student-generated transcriptions against Perfect ground truth. The analysis includes:</p>
+        <p>This report provides a comprehensive analysis of transcription accuracy comparing LLM-generated and student-constructed transcriptions against Perfect ground truth. The analysis includes:</p>
         <ol>
             <li><strong>File Availability Summary</strong></li>
             <li><strong>Character Error Rate (CER) Definition</strong></li>

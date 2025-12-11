@@ -42,6 +42,19 @@ MODELS = ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-
 # Variable fields to extract and compare
 VARIABLE_FIELDS = ['patent_id', 'name', 'location', 'description', 'date']
 
+# Display names for HTML output (maps internal field names to user-friendly names)
+VARIABLE_DISPLAY_NAMES = {
+    'patent_id': 'patent_id',
+    'name': 'assignee',
+    'location': 'location',
+    'description': 'description',
+    'date': 'date'
+}
+
+def get_display_name(field: str) -> str:
+    """Get the display name for a field (for HTML output only)."""
+    return VARIABLE_DISPLAY_NAMES.get(field, field)
+
 # --- LLM Processing Functions ---
 
 def is_special_volume_csv(csv_path: Path) -> bool:
@@ -452,7 +465,7 @@ def create_global_threshold_table(threshold_sensitivity: dict) -> str:
             row_cells.append(f'<td>{data["variable_rates"][field]:.2f}%</td>')
         threshold_table_rows.append(f"<tr>{''.join(row_cells)}</tr>")
     
-    threshold_header = ''.join([f'<th>{field}</th>' for field in VARIABLE_FIELDS])
+    threshold_header = ''.join([f'<th>{get_display_name(field)}</th>' for field in VARIABLE_FIELDS])
     threshold_table_html = f"""
     <div class="global-threshold-analysis">
         <h2>Global Threshold Sensitivity Analysis</h2>
@@ -526,12 +539,12 @@ def make_variable_table_html_simple(gt_df: pd.DataFrame, llm_df: pd.DataFrame, g
         <b>Matched Cells:</b> {matched_cells} &nbsp; 
         <b>Overall Match Rate:</b> {overall_match_rate:.2f}%<br>
         <b>Variable Match Rates:</b> 
-        {', '.join([f'{field}: {rate:.2f}%' for field, rate in variable_match_rates.items()])}
+        {', '.join([f'{get_display_name(field)}: {rate:.2f}%' for field, rate in variable_match_rates.items()])}
     </div>
     """
     
     # Create table HTML with legend at the beginning
-    header_cells = ''.join([f'<th>{field}</th>' for field in VARIABLE_FIELDS])
+    header_cells = ''.join([f'<th>{get_display_name(field)}</th>' for field in VARIABLE_FIELDS])
     table_html = f"""
     <div class="table-legend">
         <p><strong>Legend:</strong> Values in each cell show "Ground Truth / LLM Generated"</p>
@@ -723,7 +736,7 @@ def run_variable_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Pa
         <p><b>Overall Match Rate:</b> {overall_match_rate:.2f}%</p>
         <p><b>Variable Match Rates:</b></p>
         <ul>
-            {''.join([f'<li><b>{field}:</b> {rate:.2f}%</li>' for field, rate in overall_variable_rates.items()])}
+            {''.join([f'<li><b>{get_display_name(field)}:</b> {rate:.2f}%</li>' for field, rate in overall_variable_rates.items()])}
         </ul>
     </div>
     """

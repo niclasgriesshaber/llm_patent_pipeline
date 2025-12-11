@@ -37,6 +37,19 @@ OUTPUT_BASE_DIR = BENCHMARKING_ROOT / 'results' / 'student-constructed'
 # Variable fields to extract and compare
 VARIABLE_FIELDS = ['patent_id', 'name', 'location', 'description', 'date']
 
+# Display names for HTML output (maps internal field names to user-friendly names)
+VARIABLE_DISPLAY_NAMES = {
+    'patent_id': 'patent_id',
+    'name': 'assignee',
+    'location': 'location',
+    'description': 'description',
+    'date': 'date'
+}
+
+def get_display_name(field: str) -> str:
+    """Get the display name for a field (for HTML output only)."""
+    return VARIABLE_DISPLAY_NAMES.get(field, field)
+
 
 # --- Data Loading Functions ---
 
@@ -581,7 +594,7 @@ def generate_file_sections(common_stems: List[str], all_perfect_dfs: List, all_s
         
         file_match_rate = (file_matched_cells / file_total_cells * 100) if file_total_cells > 0 else 0
         
-        header_cells = ''.join([f'<th>{field}</th>' for field in VARIABLE_FIELDS])
+        header_cells = ''.join([f'<th>{get_display_name(field)}</th>' for field in VARIABLE_FIELDS])
         section_html = f'''
         <section class="pair-section">
             <h2>File: <span class="filename">{stem}</span></h2>
@@ -628,7 +641,7 @@ def generate_variable_extraction_report(threshold_sensitivity: Dict, total_cells
             row_cells.append(f'<td>{data["variable_rates"][field]:.2f}%</td>')
         threshold_rows.append(f"<tr>{''.join(row_cells)}</tr>")
     
-    threshold_header = ''.join([f'<th>{field}</th>' for field in VARIABLE_FIELDS])
+    threshold_header = ''.join([f'<th>{get_display_name(field)}</th>' for field in VARIABLE_FIELDS])
     threshold_table_html = f'''
     <div class="global-threshold-analysis">
         <h2>Global Threshold Sensitivity Analysis</h2>
@@ -650,7 +663,7 @@ def generate_variable_extraction_report(threshold_sensitivity: Dict, total_cells
         <p><b>Overall Match Rate:</b> {overall_match_rate:.2f}%</p>
         <p><b>Variable Match Rates:</b></p>
         <ul>
-            {''.join([f'<li><b>{field}:</b> {rate:.2f}%</li>' for field, rate in variable_rates.items()])}
+            {''.join([f'<li><b>{get_display_name(field)}:</b> {rate:.2f}%</li>' for field, rate in variable_rates.items()])}
         </ul>
     </div>
     '''
