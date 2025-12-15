@@ -172,7 +172,16 @@ def compare_variables(gt_value: str, student_value: str, threshold: float = 0.85
     except (TypeError, ValueError):
         return False
     
-    if gt_str == "" or student_str == "" or gt_str.lower() == "nan" or student_str.lower() == "nan":
+    # Handle empty strings and "nan" values
+    gt_is_empty_or_nan = gt_str == "" or gt_str.lower() == "nan"
+    student_is_empty_or_nan = student_str == "" or student_str.lower() == "nan"
+    
+    # If both are empty/nan, they match
+    if gt_is_empty_or_nan and student_is_empty_or_nan:
+        return True
+    
+    # If only one is empty/nan, they don't match
+    if gt_is_empty_or_nan or student_is_empty_or_nan:
         return False
     
     # Special handling for patent_id: remove .0 suffix if present
