@@ -8,7 +8,6 @@ but uses student data instead of LLM-generated data.
 
 Stages:
 - Stage 1 (Dataset Construction): Compares student entries to perfect entries
-- Stage 2 (Dataset Cleaning): SKIPPED - not applicable for student transcriptions
 - Stage 3 (Variable Extraction): Compares student-extracted variables to perfect variables
 
 Output:
@@ -730,8 +729,8 @@ def main():
     parser.add_argument(
         '--threshold',
         type=float,
-        default=0.85,
-        help='Fuzzy matching threshold (0.0-1.0). Default: 0.85'
+        default=0.9,
+        help='Fuzzy matching threshold (0.0-1.0). Default: 0.9'
     )
     parser.add_argument(
         '--stage',
@@ -761,10 +760,6 @@ def main():
         if stage1_results:
             results['stage1'] = stage1_results
             logging.info(f"Stage 1 complete: {stage1_results['files_processed']} files processed")
-    
-    # Stage 2 is skipped (not applicable for student transcriptions)
-    if args.stage == 'all':
-        logging.info("Stage 2 (Dataset Cleaning): SKIPPED - not applicable for student transcriptions")
     
     # Run Stage 3: Variable Extraction
     if args.stage in ['all', '3']:

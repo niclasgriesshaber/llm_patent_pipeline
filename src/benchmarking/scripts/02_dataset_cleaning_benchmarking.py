@@ -481,8 +481,8 @@ def main():
     parser.add_argument(
         '--threshold',
         type=float,
-        default=0.85,
-        help='Fuzzy matching threshold for patent entry matching (0.0-1.0). Default: 0.85'
+        default=0.9,
+        help='Fuzzy matching threshold for patent entry matching (0.0-1.0). Default: 0.9'
     )
 
     
