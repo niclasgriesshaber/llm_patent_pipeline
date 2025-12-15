@@ -47,7 +47,7 @@ VARIABLE_DISPLAY_NAMES = {
     'patent_id': 'patent_id',
     'name': 'assignee',
     'location': 'location',
-    'description': 'description',
+    'description': 'title',
     'date': 'date'
 }
 
