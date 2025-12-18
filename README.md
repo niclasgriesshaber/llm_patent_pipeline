@@ -60,6 +60,24 @@ Dashed boxes represent carefully refined prompts (see `src/*/prompts/`). The out
 3. Ask the agent about the pipeline and how to adapt it to your image corpus
 4. If you want to use the Gemini model family, generate API keys at [aistudio.google.com/api-keys](https://aistudio.google.com/api-keys)
 
+## Benchmarking Data
+
+The `data/benchmarking/` folder contains all benchmarking datasets:
+
+- **Input Data** (`data/benchmarking/input_data/`):
+  - `sampled_pdfs/` — Sampled PDF pages from each volume
+  - `transcriptions_xlsx/perfect_transcriptions_xlsx/` — *Perfect benchmarking datasets* (ground truth)
+  - `transcriptions_xlsx/student_transcriptions_xlsx/` — *Student-constructed* transcriptions
+
+- **Results** (`data/benchmarking/results/`):
+  - `01_dataset_construction/` — *LLM-generated* outputs from Stage I construction
+  - `02_dataset_cleaning/` — *LLM-generated* outputs from Stage I cleaning
+  - `03_variable_extraction/` — *LLM-generated* outputs from Stage II
+  - `overall/` — Concatenated transcriptions and CER results
+  - `student-constructed/` — Evaluation reports for *student-constructed* data
+
+Interactive benchmarking results can be viewed at [historymind.ai](https://historymind.ai).
+
 ## Citation
 
 Will follow shortly.

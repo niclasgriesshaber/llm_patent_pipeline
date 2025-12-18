@@ -1,0 +1,8 @@
+Total rows processed: 35
+Complete LLM failures (exceptions): 0
+Partial LLM failures (some variables NaN): 1
+Total failures: 1
+
+Partial failures - rows with some variables NaN (id):
+1
+

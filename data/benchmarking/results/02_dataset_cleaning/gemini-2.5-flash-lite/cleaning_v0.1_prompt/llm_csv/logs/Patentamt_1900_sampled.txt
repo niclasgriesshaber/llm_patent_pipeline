@@ -1,0 +1,4 @@
+Isolated incomplete rows merged with below: 0
+Pairs of incomplete rows: 0
+Runs of >2 incomplete rows: 0
+LLM failures: 0
