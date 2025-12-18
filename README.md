@@ -1,4 +1,4 @@
-# Multimodal LLMs for Historical Dataset Construction from Archival Image Scans
+# Multimodal LLMs for Historical Dataset Construction from Archival Image Scans: German Patents (1877-1918)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
