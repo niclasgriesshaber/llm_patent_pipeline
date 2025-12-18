@@ -2,6 +2,7 @@
 data/*
 !data/benchmarking/
 !data/benchmarking/**
+data/benchmarking/results/overall/
 config/.env
 __pycache__/
 *.pyc

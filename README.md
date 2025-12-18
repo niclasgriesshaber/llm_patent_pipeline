@@ -66,14 +66,13 @@ The `data/benchmarking/` folder contains all benchmarking datasets:
 
 - **Input Data** (`data/benchmarking/input_data/`):
   - `sampled_pdfs/` — Sampled PDF pages from each volume
-  - `transcriptions_xlsx/perfect_transcriptions_xlsx/` — *Perfect benchmarking datasets* (ground truth)
-  - `transcriptions_xlsx/student_transcriptions_xlsx/` — *Student-constructed* transcriptions
+  - `transcriptions_xlsx/perfect_transcriptions_xlsx/` — *Perfect benchmarking datasets*
+  - `transcriptions_xlsx/student_transcriptions_xlsx/` — *Student-constructed benchmarking datasets*
 
 - **Results** (`data/benchmarking/results/`):
   - `01_dataset_construction/` — *LLM-generated* outputs from Stage I construction
   - `02_dataset_cleaning/` — *LLM-generated* outputs from Stage I cleaning
   - `03_variable_extraction/` — *LLM-generated* outputs from Stage II
-  - `overall/` — Concatenated transcriptions and CER results
   - `student-constructed/` — Evaluation reports for *student-constructed* data
 
 Interactive benchmarking results can be viewed at [historymind.ai](https://historymind.ai).
