@@ -6,7 +6,7 @@ An LLM-based data pipeline for constructing historical datasets from archival im
 
 ## Pipeline Overview
 
-This pipeline is tailored towards our image corpus, available at [digi.bib.uni-mannheim.de](https://digi.bib.uni-mannheim.de).
+This pipeline is tailored towards our image corpus, available at [digi.bib.uni-mannheim.de]([https://digi.bib.uni-mannheim.de](https://digi.bib.uni-mannheim.de/sammlungen/patentregister)).
 
 ```
                                                                               ┐
