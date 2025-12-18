@@ -1,7 +1,8 @@
-.DS_Store
+**/.DS_Store
 data/*
 !data/benchmarking/
 !data/benchmarking/**
+data/benchmarking/**/.DS_Store
 data/benchmarking/results/overall/
 config/.env
 __pycache__/
