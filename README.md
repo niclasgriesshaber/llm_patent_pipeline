@@ -10,10 +10,10 @@ This pipeline is tailored towards our image corpus, available at [digi.bib.uni-m
 
 ```
                                                                               ┐
-                               ┌───────────────────────────┐                  │
-                               │   Image Corpus from a     │                  │
-                               │     specific Volume       │                  │
-                               └───────────┬───────────────┘                  │
+                               ┌───────────────────────┐                      │
+                               │   Image Corpus from   │                      │
+                               │     specific Volume   │                      │
+                               └───────────┬───────────┘                      │
                                            │ For each image                   │  
                                            ▼                                  │
   ┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┐      ┌───────────────────────┐                      │
@@ -65,17 +65,17 @@ Dashed boxes represent carefully refined prompts (see `src/*/prompts/`). The out
 The `data/benchmarking/` folder contains all benchmarking datasets:
 
 - **Input Data** (`data/benchmarking/input_data/`):
-  - `sampled_pdfs/` — Sampled PDF pages from each volume
-  - `transcriptions_xlsx/perfect_transcriptions_xlsx/` — *Perfect benchmarking datasets*
-  - `transcriptions_xlsx/student_transcriptions_xlsx/` — *Student-constructed benchmarking datasets*
+  - `sampled_pdfs/` — Sampled PDF pages from each of the 41 volumes
+  - `transcriptions_xlsx/perfect_transcriptions_xlsx/` — *Perfect* benchmarking datasets
+  - `transcriptions_xlsx/student_transcriptions_xlsx/` — *Student-constructed* benchmarking datasets
 
 - **Results** (`data/benchmarking/results/`):
-  - `01_dataset_construction/` — *LLM-generated* outputs from Stage I construction
-  - `02_dataset_cleaning/` — *LLM-generated* outputs from Stage I cleaning
-  - `03_variable_extraction/` — *LLM-generated* outputs from Stage II
+  - `01_dataset_construction/` — *LLM-generated* outputs from Stage I Patent Entry Extractoin
+  - `02_dataset_cleaning/` — *LLM-generated* outputs from Stage I Reparation
+  - `03_variable_extraction/` — *LLM-generated* outputs from Stage II Variable Extraction
   - `student-constructed/` — Evaluation reports for *student-constructed* data
 
-Benchmarking results can be viewed at [historymind.ai](https://historymind.ai).
+Benchmarking results can be inspected visually at [historymind.ai](https://historymind.ai).
 
 ## Citation
 
