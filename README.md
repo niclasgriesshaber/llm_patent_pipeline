@@ -75,7 +75,7 @@ The `data/benchmarking/` folder contains all benchmarking datasets:
   - `03_variable_extraction/` — *LLM-generated* outputs from Stage II
   - `student-constructed/` — Evaluation reports for *student-constructed* data
 
-Interactive benchmarking results can be viewed at [historymind.ai](https://historymind.ai).
+Benchmarking results can be viewed at [historymind.ai](https://historymind.ai).
 
 ## Citation
 
