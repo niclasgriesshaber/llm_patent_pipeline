@@ -329,13 +329,13 @@ def generate_entry_matching_report(comparison_results: List[Dict], total_perfect
     # Build summary HTML
     summary_html = f'''
     <div class="summary-section">
-        <h2>Patent Entry Matching Summary - Student vs Perfect</h2>
+        <h2>Patent Entry Matching Summary - <em>Student-constructed</em> vs <em>Perfect</em></h2>
         <p><strong>Fuzzy Matching Threshold:</strong> {threshold}</p>
-        <p><strong>Total Perfect Entries:</strong> {total_perfect}</p>
-        <p><strong>Total Student Entries:</strong> {total_student}</p>
+        <p><strong>Total <em>Perfect</em> Entries:</strong> {total_perfect}</p>
+        <p><strong>Total <em>Student-constructed</em> Entries:</strong> {total_student}</p>
         <p><strong>Total Matches:</strong> {total_matches}</p>
-        <p><strong>Match Rate (Perfect perspective):</strong> {match_rate_perfect:.2f}%</p>
-        <p><strong>Match Rate (Student perspective):</strong> {match_rate_student:.2f}%</p>
+        <p><strong>Match Rate (<em>Perfect</em> perspective):</strong> {match_rate_perfect:.2f}%</p>
+        <p><strong>Match Rate (<em>Student-constructed</em> perspective):</strong> {match_rate_student:.2f}%</p>
     </div>
     '''
     
@@ -344,7 +344,7 @@ def generate_entry_matching_report(comparison_results: List[Dict], total_perfect
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Patent Entry Matching - Student vs Perfect Transcriptions</title>
+    <title>Patent Entry Matching - Student-constructed vs Perfect Entries</title>
     <style>
         body {{ font-family: 'Segoe UI', Arial, sans-serif; background: #f4f4f9; color: #222; margin: 0; }}
         .container {{ max-width: 1400px; margin: auto; padding: 20px; }}
@@ -361,9 +361,9 @@ def generate_entry_matching_report(comparison_results: List[Dict], total_perfect
 </head>
 <body>
     <div class="container">
-        <h1>Patent Entry Matching - Student vs Perfect Transcriptions</h1>
+        <h1>Patent Entry Matching - <em>Student-constructed</em> vs <em>Perfect</em> Entries</h1>
         <div style="background-color: #fff3cd; border: 1px solid #ffeaa7; border-radius: 5px; padding: 15px; margin-bottom: 30px;">
-            <p style="margin: 0; color: #856404;"><strong>Note:</strong> This report compares student (research assistant) transcriptions against perfect (error-free) transcriptions. Any unmatched entries indicate human transcription errors or omissions.</p>
+            <p style="margin: 0; color: #856404;"><strong>Note:</strong> This report compares <em>student-constructed</em> (research assistant) transcriptions against <em>perfect</em> (error-free) transcriptions. Any unmatched entries indicate human transcription errors or omissions.</p>
         </div>
         {summary_html}
         {''.join(sections_html)}
@@ -664,7 +664,7 @@ def generate_variable_extraction_report(threshold_sensitivity: Dict, total_cells
     # Build summary HTML
     summary_html = f'''
     <div class="summary-section">
-        <h2>Overall Variable Extraction Summary - Student vs Perfect</h2>
+        <h2>Overall Variable Extraction Summary - <em>Student-constructed</em> vs <em>Perfect</em></h2>
         <p><b>Fuzzy Matching Threshold:</b> {threshold}</p>
         <p><b>Total Cells:</b> {total_cells}</p>
         <p><b>Matched Cells:</b> {matched_cells}</p>
@@ -681,7 +681,7 @@ def generate_variable_extraction_report(threshold_sensitivity: Dict, total_cells
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Variable Extraction Report - Student vs Perfect Transcriptions</title>
+    <title>Variable Extraction: Student-constructed vs Perfect</title>
     <style>
         body {{ font-family: sans-serif; margin: 0; background-color: #f4f4f9; color: #333; }}
         .container {{ max-width: 1400px; margin: auto; padding: 20px; }}
@@ -698,17 +698,17 @@ def generate_variable_extraction_report(threshold_sensitivity: Dict, total_cells
         .benchmark-table th, .benchmark-table td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
         .benchmark-table th {{ background-color: #f2f2f2; font-weight: bold; }}
         .filename {{ font-family: monospace; background: #eee; padding: 2px 5px; border-radius: 4px; }}
-        .summary-section {{ margin-top: 30px; padding: 20px; background: #fff; border-radius: 8px; }}
+        .summary-section {{ margin-bottom: 30px; padding: 20px; background: #fff; border-radius: 8px; border: 1px solid #ddd; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }}
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Variable Extraction Report - Student vs Perfect Transcriptions</h1>
+        <h1>Variable Extraction: <em>Student-constructed</em> vs <em>Perfect</em></h1>
         <div style="background-color: #fff3cd; border: 1px solid #ffeaa7; border-radius: 5px; padding: 15px; margin-bottom: 30px;">
-            <p style="margin: 0; color: #856404;"><strong>Note:</strong> This report compares student (research assistant) extracted variables against perfect (error-free) transcriptions. Any mismatches indicate human variable extraction errors.</p>
+            <p style="margin: 0; color: #856404;"><strong>Note:</strong> This report compares <em>student-constructed</em> extracted variables against <em>perfect</em> (error-free) transcriptions. Any mismatches indicate human variable extraction errors.</p>
         </div>
-        {threshold_table_html}
         {summary_html}
+        {threshold_table_html}
         <div style="margin-top: 40px;">
             {''.join(file_sections)}
         </div>

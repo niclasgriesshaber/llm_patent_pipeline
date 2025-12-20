@@ -728,9 +728,9 @@ def run_variable_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Pa
     
     # Create summary title based on comparison type
     if comparison_type == "perfect":
-        summary_title = "Overall Variable Extraction Summary - Perfect vs LLM-Generated"
+        summary_title = "Overall Variable Extraction Summary - <em>LLM-generated</em> vs <em>Perfect</em>"
     elif comparison_type == "student":
-        summary_title = "Overall Variable Extraction Summary - Student vs LLM-Generated"
+        summary_title = "Overall Variable Extraction Summary - <em>Student-constructed</em> vs <em>Perfect</em>"
     else:
         summary_title = f"Overall Variable Extraction Summary - {comparison_type.title()}"
     
@@ -753,11 +753,11 @@ def run_variable_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Pa
     
     # Create report title based on comparison type
     if comparison_type == "perfect":
-        report_title = "Variable Extraction Report - Perfect vs LLM-Generated Transcriptions"
+        report_title = "Variable Extraction: <em>LLM-generated</em> vs <em>Perfect</em>"
     elif comparison_type == "student":
-        report_title = "Variable Extraction Report - Student vs LLM-Generated Transcriptions"
+        report_title = "Variable Extraction: <em>Student-constructed</em> vs <em>Perfect</em>"
     else:
-        report_title = f"Variable Extraction Report - {comparison_type.title()}"
+        report_title = f"Variable Extraction: {comparison_type.title()}"
     
     # Generate HTML report with summary at the top, then threshold sensitivity, then file sections
     html_content = make_full_html(
@@ -783,11 +783,15 @@ def run_variable_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Pa
 
 def make_full_html(title: str, global_threshold_html: str, sections_html: str, summary_html: str, top_notes: str = "") -> str:
     """Create full HTML report."""
+    # Clean title for browser tab (remove HTML tags)
+    import re
+    clean_title = re.sub('<[^<]+?>', '', title)
+    
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>{title}</title>
+    <title>{clean_title}</title>
     <style>
         body {{ font-family: sans-serif; margin: 0; background-color: #f4f4f9; color: #333; }}
         .container {{ max-width: 1400px; margin: auto; padding: 20px; }}

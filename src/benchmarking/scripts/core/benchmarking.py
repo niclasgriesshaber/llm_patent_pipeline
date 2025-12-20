@@ -839,10 +839,10 @@ def generate_fuzzy_report_func(comparison_results: List[Dict], file_matrix: Dict
     
     # Generate full HTML
     if report_type == "after_cleaning":
-        title = "Patent Entry Matching After Cleaning - Perfect vs LLM Transcriptions"
+        title = "Patent Entry Matching After Repairing Truncated Entries<br><em>LLM-generated</em> vs <em>Perfect</em> Patent Entries"
         fuzzy_report_path = output_dir / "patent_entry_matching_after_cleaning.html"
     else:
-        title = "Patent Entry Matching Before Cleaning - Perfect vs LLM Transcriptions"
+        title = "Patent Entry Matching Before Repairing Truncated Entries<br><em>LLM-generated</em> vs <em>Perfect</em> Patent Entries"
         fuzzy_report_path = output_dir / "patent_entry_matching_before_cleaning.html"
     
     full_html = make_two_way_html(title, availability_summary + summary_html, ''.join(sections_html))
@@ -872,7 +872,7 @@ def generate_diff_report(diff_sections: List[str], summary_rows: List[Dict], fil
     gap_analysis_html = create_performance_gap_analysis(summary_rows, file_matrix, llm_csv_dir, student_xlsx_dir, perfect_xlsx_dir)
     
     # Generate full HTML
-    title = "Character Error Rate - Perfect, LLM, and Student Transcriptions"
+    title = "Character Error Rate: <em>LLM-generated</em> vs <em>student-constructed</em> vs <em>perfect</em>"
     full_html = make_unified_diff_html(
         title, document_outline, availability_summary, cer_definition, summary_table_html, 
         cer_chart_html, gap_analysis_html, ''.join(diff_sections)
@@ -966,14 +966,14 @@ def create_document_outline() -> str:
     <div class="document-outline">
         <h2>Document Outline</h2>
         <p><strong>Note:</strong> This entire document was AI-generated using Claude-4.5-Sonnet in the Cursor IDE.</p>
-        <p>This report provides a comprehensive analysis of transcription accuracy comparing LLM-generated and student-constructed transcriptions against Perfect ground truth. The analysis includes:</p>
+        <p>This report provides a comprehensive analysis of transcription accuracy comparing <em>LLM-generated</em> and <em>student-constructed</em> transcriptions against <em>perfect</em> ground truth. We concatenated all patent entries from each dataset into a text file and then compare this against the <em>perfect</em> text file with patent entries for all 41 volumes. The analysis includes:</p>
         <ol>
             <li><strong>File Availability Summary</strong></li>
             <li><strong>Character Error Rate (CER) Definition</strong></li>
             <li><strong>File-level Performance Metrics Table</strong> - Detailed CER and performance gap for each file</li>
             <li><strong>Character Error Rate by Year Chart</strong> - Interactive visualization of CER trends over time</li>
             <li><strong>Performance Gap Analysis</strong> - Overall statistics</li>
-            <li><strong>Side-by-Side Text Comparisons</strong> - Detailed three-table format showing character differences between Perfect, LLM, and Student transcriptions</li>
+            <li><strong>Side-by-Side Text Comparisons</strong> - Detailed three-table format showing character differences between <em>perfect</em>, <em>LLM-generated</em>, and <em>student-constructed</em> transcriptions</li>
         </ol>
     </div>
     '''
