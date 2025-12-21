@@ -10,10 +10,10 @@ print("Starting the dataset merging script...")
 
 script_location = Path(__file__).resolve().parent
 project_root = script_location.parent.parent
-input_dir = project_root / "data" / "04_dataset_validation" / "validated_repaired_xlsx"
-output_dir = project_root / "data" / "05_merged_csv"
-output_csv_file = output_dir / "imperial-patent-office.csv"
-output_excel_file = output_dir / "imperial-patent-office.xlsx"
+input_dir = project_root / "data" / "05_dataset_merging" / "input_xlsx"
+output_dir = project_root / "data" / "05_dataset_merging"
+output_csv_file = output_dir / "german-patents-1877-1918.csv"
+output_excel_file = output_dir / "german-patents-1877-1918.xlsx"
 
 print(f"Script location: {script_location}")
 print(f"Project root determined as: {project_root}")
