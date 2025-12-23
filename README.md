@@ -90,6 +90,7 @@ Benchmarking results can be inspected visually at [historymind.ai](https://histo
   primaryClass  = {cs.CL},
   url           = {https://arxiv.org/abs/2504.00414}
 }
+```
 
 ## License
 
@@ -98,4 +99,8 @@ MIT License—see [LICENSE](LICENSE) for details.
 ## Disclaimer
 
 This repository does not endorse any product or organization. No legal or financial advice is provided.
+
+## Contact
+
+If you have any questions, please feel free to reach out to niclas.griesshaber@linacre.ox.ac.uk
 
