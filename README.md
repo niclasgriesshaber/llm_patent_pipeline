@@ -80,7 +80,16 @@ Benchmarking results can be inspected visually at [historymind.ai](https://histo
 
 ## Citation
 
-Will follow shortly.
+```
+@misc{greif2025multimodalllmsocrocr,
+  title         = {Multimodal LLMs for OCR, OCR Post-Correction, and Named Entity Recognition in Historical Documents},
+  author        = {Greif, Gavin and Griesshaber, Niclas and Greif, Robin},
+  year          = {2025},
+  eprint        = {2504.00414},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.CL},
+  url           = {https://arxiv.org/abs/2504.00414}
+}
 
 ## License
 
