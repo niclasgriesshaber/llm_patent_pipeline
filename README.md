@@ -75,6 +75,7 @@ The `data/benchmarking/` folder contains all benchmarking datasets:
   - `02_dataset_cleaning/` — *LLM-generated* outputs from Stage I Reparation
   - `03_variable_extraction/` — *LLM-generated* outputs from Stage II Variable Extraction
   - `student-constructed/` — Evaluation reports for *student-constructed* data
+  - `revisions_for_VSWG_zero_shot/` — *LLM-generated* outputs from zero-shot single-call digitization (Gemini-3.1-Pro-Preview, 1 API call per page)
 
 Benchmarking results can be inspected visually at [historymind.ai](https://historymind.ai).
 
