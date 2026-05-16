@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>VSWG Revisions — CER by Year (Zero-Shot vs Multi-Stage vs Student)</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; margin: 0; background: #f8f9fa; }
+        .container { max-width: 1100px; margin: auto; padding: 30px; }
+        h1 { color: #2c3e50; text-align: center; }
+        .note { background: #e8f4fd; border-left: 4px solid #2196f3; padding: 15px; margin: 20px 0; font-size: 0.95em; }
+        .methodology { background: #f0f7e6; border-left: 4px solid #4caf50; padding: 15px; margin: 20px 0; font-size: 0.95em; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Character Error Rate by Year</h1>
+    <p style="text-align:center; color:#666;">Comparison: Multi-Stage Pipeline vs Zero-Shot vs Research Assistants</p>
+
+    <div class="methodology">
+        <strong>Methodology:</strong> CER computed identically for all three traces —
+        text normalized to lowercase ASCII a-z + 0-9, Levenshtein normalized distance
+        against perfect (expert-verified) transcriptions. Lower CER = better performance.
+    </div>
+
+    <div id="cer-chart" style="height: 550px; margin: 30px 0;"></div>
+
+    <div class="note">
+        <strong>Vertical dashed lines</strong> mark transitions between typeface eras in the
+        patent registers: Roman (1878–1893), Unger Fraktur (1894–1913), Breitkopf Fraktur (1914–1918).
+    </div>
+
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script>
+        // Trace 1: Multi-stage pipeline (Gemini-2.5-Pro + cleaning)
+        var trace1 = {
+            x: [1878, 1879, 1880, 1881, 1882, 1883, 1884, 1885, 1886, 1887, 1888, 1889, 1890, 1891, 1892, 1893, 1894, 1895, 1896, 1897, 1898, 1899, 1900, 1901, 1902, 1903, 1904, 1905, 1906, 1907, 1908, 1909, 1910, 1911, 1912, 1913, 1914, 1915, 1916, 1917, 1918],
+            y: [0.0009925558312655087, 0.008907032844683615, 0.0028095524784266506, 0.0039753528125621145, 0.0024922118380062306, 0.007386228258279724, 0.00423728813559322, 0.0034525277435265103, 0.002426202992317024, 0.012089416058394161, 0.0024043277900220395, 0.0025162507863283707, 0.008108700416392724, 0.0025157232704402514, 0.0029424127784783522, 0.0025565388397246805, 0.029075402209730566, 0.02908142799839551, 0.03312583370386839, 0.02689486552567237, 0.03359271208958057, 0.04086021505376344, 0.03350172826375964, 0.033858097908130255, 0.02780767850735558, 0.019340578375391416, 0.0268857356235997, 0.010878323932312651, 0.03742098609355247, 0.03398669304082, 0.05709846572149932, 0.027970640745883752, 0.031032424905510246, 0.022809351834252044, 0.036345776031434185, 0.02814498933901919, 0.02835002835002835, 0.04180366369187412, 0.03316138540899042, 0.03572373643821117, 0.033672670321064996],
+            type: 'scatter',
+            mode: 'lines+markers',
+            name: 'Multi-Stage Pipeline (Gemini-2.5-Pro)',
+            line: { color: '#2196f3', width: 3 },
+            marker: { size: 8, color: '#2196f3' },
+            hovertemplate: 'Year: %{x}<br>Multi-Stage CER: %{y:.2%}<extra></extra>'
+        };
+
+        // Trace 2: Zero-shot (Gemini-3.1-Pro-Preview, 1 call/page)
+        var trace2 = {
+            x: [1878, 1879, 1880, 1881, 1882, 1883, 1884, 1885, 1886, 1887, 1888, 1889, 1890, 1891, 1892, 1893, 1894, 1895, 1896, 1897, 1898, 1899, 1900, 1901, 1902, 1903, 1904, 1905, 1906, 1907, 1908, 1909, 1910, 1911, 1912, 1913, 1914, 1915, 1916, 1917, 1918],
+            y: [0.006415001233654083, 0.0029940119760479044, 0.0028039254956939716, 0.0013969267611255239, 0.003937823834196891, 0.004531361793465299, 0.003987240829346092, 0.010768477728830151, 0.00963275135460566, 0.012718600953895072, 0.017193675889328065, 0.012634631317315658, 0.006808697562047002, 0.007918316315899145, 0.007322175732217573, 0.002751572327044025, 0.0259840992825286, 0.024493073679983938, 0.027586206896551724, 0.0232501223690651, 0.03853383458646616, 0.0351219512195122, 0.029231995748073347, 0.03358449946178687, 0.026193039110154286, 0.02394443428989216, 0.04352596927578639, 0.024601456406219246, 0.03151790216843167, 0.030868628858578606, 0.02813975448536355, 0.028994082840236687, 0.02600754417311892, 0.021280638419152575, 0.040206777713957496, 0.03397027600849257, 0.026420079260237782, 0.033177570093457946, 0.039473684210526314, 0.032778218345228656, 0.03981385729058945],
+            type: 'scatter',
+            mode: 'lines+markers',
+            name: 'Zero-Shot (Gemini-3.1-Pro-Preview)',
+            line: { color: '#ff9800', width: 3 },
+            marker: { size: 8, color: '#ff9800' },
+            hovertemplate: 'Year: %{x}<br>Zero-Shot CER: %{y:.2%}<extra></extra>'
+        };
+
+        // Trace 3: Research Assistants (student baseline)
+        var trace3 = {
+            x: [1878, 1879, 1880, 1881, 1882, 1883, 1884, 1885, 1886, 1887, 1888, 1889, 1890, 1891, 1892, 1893, 1894, 1895, 1896, 1897, 1898, 1899, 1900, 1901, 1902, 1903, 1904, 1905, 1906, 1907, 1908, 1909, 1910, 1911, 1912, 1913, 1914, 1915, 1916, 1917, 1918],
+            y: [0.002977667493796526, 0.02788173652694611, 0.004804804804804805, 0.004578025477707006, 0.004770794440987347, 0.013387520918001434, 0.004251926654265214, 0.007416563658838072, 0.010937816487745595, 0.010121923165401427, 0.014053402931138326, 0.005018820577164366, 0.042913732394366196, 0.005658005029337804, 0.0018963337547408343, 0.005912495072920773, 0.013262074425969913, 0.011083743842364532, 0.09196713829301689, 0.048427358961557664, 0.026557313024799845, 0.048204921339249696, 0.0051742919389978215, 0.02922077922077922, 0.02867897472665352, 0.01918111398008115, 0.004962779156327543, 0.028088784128854842, 0.050623052959501556, 0.057179866765358994, 0.06273062730627306, 0.036647094553553354, 0.11886830856910238, 0.023954372623574145, 0.02627481510315298, 0.023086789226165028, 0.03648648648648649, 0.02663209992929531, 0.04283194759385236, 0.04375, 0.038933333333333334],
+            type: 'scatter',
+            mode: 'lines+markers',
+            name: 'Research Assistants',
+            line: { color: '#f44336', width: 3 },
+            marker: { size: 8, color: '#f44336' },
+            hovertemplate: 'Year: %{x}<br>Research Assistants CER: %{y:.2%}<extra></extra>'
+        };
+
+        var data = [trace1, trace2, trace3];
+
+        var layout = {
+            title: {
+                text: 'Character Error Rate Comparison by Year',
+                font: { size: 18, color: '#333' }
+            },
+            xaxis: {
+                title: 'Year',
+                titlefont: { size: 14 },
+                tickfont: { size: 12 },
+                dtick: 2
+            },
+            yaxis: {
+                title: 'Character Error Rate (CER)',
+                titlefont: { size: 14 },
+                tickfont: { size: 12 },
+                tickformat: ',.1%'
+            },
+            legend: {
+                x: 0.02,
+                y: 0.98,
+                bgcolor: 'rgba(255,255,255,0.9)',
+                bordercolor: '#ccc',
+                borderwidth: 1
+            },
+            shapes: [{
+                type: 'line',
+                x0: 1893.5,
+                x1: 1893.5,
+                y0: 0,
+                y1: 1,
+                yref: 'paper',
+                line: { color: '#666', width: 2, dash: 'dot' }
+            }, {
+                type: 'line',
+                x0: 1913.5,
+                x1: 1913.5,
+                y0: 0,
+                y1: 1,
+                yref: 'paper',
+                line: { color: '#666', width: 2, dash: 'dot' }
+            }],
+            annotations: [{
+                x: 1886,
+                y: 1.02,
+                yref: 'paper',
+                xanchor: 'center',
+                text: '<i>Roman</i>',
+                showarrow: false,
+                font: { size: 11, color: '#444' }
+            }, {
+                x: 1903.5,
+                y: 1.02,
+                yref: 'paper',
+                xanchor: 'center',
+                text: '<i>Unger Fraktur</i>',
+                showarrow: false,
+                font: { size: 11, color: '#444' }
+            }, {
+                x: 1916,
+                y: 1.02,
+                yref: 'paper',
+                xanchor: 'center',
+                text: '<i>Breitkopf Fraktur</i>',
+                showarrow: false,
+                font: { size: 11, color: '#444' }
+            }],
+            margin: { t: 80, b: 60, l: 80, r: 40 },
+            plot_bgcolor: 'rgba(248,248,248,0.5)',
+            paper_bgcolor: 'white'
+        };
+
+        Plotly.newPlot('cer-chart', data, layout);
+    </script>
+</div>
+</body>
+</html>

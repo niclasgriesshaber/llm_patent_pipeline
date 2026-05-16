@@ -1,0 +1,14 @@
+Metric,Value
+Model,Gemini-3.1-Pro-Preview
+Approach,Zero-shot (1 call/page)
+Files Evaluated,41
+Entry Match Rate (avg),100.00%
+CER (Zero-Shot vs Perfect),0.0216
+CER (Student vs Perfect),0.0272
+Performance Gap,+0.0056
+Variable: patent_id,99.93%
+Variable: name,97.26%
+Variable: location,94.66%
+Variable: description,97.55%
+Variable: date,99.42%
+Overall Variable Match,97.76%
