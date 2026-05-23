@@ -1,4 +1,4 @@
-Metric,Multi-Stage Pipeline,Zero-Shot,Research Assistants
+Metric,Multi-Stage Pipeline,Single-Step,Research Assistants
 CER (total),0.0203,0.0215,0.0272
 Entry Match Rate,99.49%,99.93%,98.05%
 Var: patent_id,99.49%,99.93%,97.86%

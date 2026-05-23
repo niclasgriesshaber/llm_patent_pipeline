@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>VSWG Revisions — Zero-Shot Digitization Benchmark</title>
+    <title>VSWG Revisions — Single-Step Digitization Benchmark</title>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; margin: 0; background: #f8f9fa; color: #333; }
         .container { max-width: 1000px; margin: auto; padding: 30px; }
@@ -19,7 +19,7 @@
 </head>
 <body>
 <div class="container">
-    <h1>Zero-Shot Digitization Benchmark</h1>
+    <h1>Single-Step Digitization Benchmark</h1>
     <p style="text-align:center; color:#666;">VSWG Paper Revisions — Gemini-2.5-Pro</p>
 
     <div class="methodology">
@@ -39,7 +39,7 @@
 <tr><td>Matched Entries (total)</td><td>1248</td></tr>
 <tr><td>GT Entries (total)</td><td>1385</td></tr>
 <tr><td>Entry Match Rate (aggregate)</td><td>90.11%</td></tr>
-<tr><td>CER (Zero-Shot vs Perfect)</td><td>0.0403</td></tr>
+<tr><td>CER (Single-Step vs Perfect)</td><td>0.0403</td></tr>
 <tr><td>CER (Student vs Perfect)</td><td>0.0272</td></tr>
 <tr><td>Performance Gap</td><td>-0.0131</td></tr>
 <tr><td>Variable: patent_id</td><td>99.60%</td></tr>
@@ -51,8 +51,8 @@
 </table>
 
     <div class="note">
-        <strong>Performance Gap:</strong> Computed as CER(Student) - CER(Zero-Shot).
-        Positive values indicate the zero-shot approach outperforms research assistants.
+        <strong>Performance Gap:</strong> Computed as CER(Student) - CER(Single-Step).
+        Positive values indicate the single-step approach outperforms research assistants.
     </div>
 
     <h2>Per-File Results</h2>

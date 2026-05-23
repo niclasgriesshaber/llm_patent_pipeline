@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
 =============================================================================
-REVISIONS FOR VSWG — Zero-Shot Inference Script
+REVISIONS FOR VSWG — Single-Step Inference Script
 =============================================================================
 
 Purpose:
-    This script implements a zero-shot digitization approach for the VSWG paper
+    This script implements a single-step digitization approach for the VSWG paper
     revisions. Instead of the multi-stage pipeline (extraction → cleaning →
     variable extraction), it extracts patent entries AND structured variables
     in a single LLM call per page.
@@ -21,7 +21,7 @@ Design choices:
     - Temperature 0.0, dynamic thinking (budget=-1), max_output_tokens=20000
 
 Usage:
-    python revisions_for_VSWG_zero_shot_inference.py
+    python revisions_for_VSWG_single_step_inference.py
 
     To re-run only failed pages, simply run the script again — it will skip
     pages that already have CSV output.
@@ -72,8 +72,8 @@ THINKING_BUDGET = -1  # Dynamic thinking
 # Paths — all relative to project root
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 SAMPLED_PDFS_DIR = PROJECT_ROOT / "data" / "benchmarking" / "input_data" / "sampled_pdfs"
-OUTPUT_DIR = PROJECT_ROOT / "data" / "benchmarking" / "results" / "revisions_for_VSWG_zero_shot" / "llm_csv"
-PROMPTS_DIR = PROJECT_ROOT / "src" / "benchmarking" / "prompts" / "revisions_for_VSWG_zero_shot"
+OUTPUT_DIR = PROJECT_ROOT / "data" / "benchmarking" / "results" / "revisions_for_VSWG_single_step" / "llm_csv"
+PROMPTS_DIR = PROJECT_ROOT / "src" / "benchmarking" / "prompts" / "revisions_for_VSWG_single_step"
 
 # Parallel workers — all 41 pages processed concurrently
 MAX_WORKERS = 41
@@ -93,13 +93,13 @@ def is_special_volume(pdf_path: Path) -> bool:
 
 def load_prompt(pdf_path: Path) -> str:
     """
-    Load the appropriate zero-shot prompt for a given PDF.
-    Uses special_volumes_prompt.txt for 1878/1879, zero_shot_prompt.txt otherwise.
+    Load the appropriate single-step prompt for a given PDF.
+    Uses special_volumes_prompt.txt for 1878/1879, single_step_prompt.txt otherwise.
     """
     if is_special_volume(pdf_path):
         prompt_file = PROMPTS_DIR / "special_volumes_prompt.txt"
     else:
-        prompt_file = PROMPTS_DIR / "zero_shot_prompt.txt"
+        prompt_file = PROMPTS_DIR / "single_step_prompt.txt"
 
     if not prompt_file.exists():
         raise FileNotFoundError(f"Prompt file not found: {prompt_file}")
@@ -212,7 +212,7 @@ def process_single_pdf(pdf_path: Path) -> dict:
     """
     Process a single sampled PDF page:
     1. Convert PDF to PNG image
-    2. Call Gemini with zero-shot prompt
+    2. Call Gemini with single-step prompt
     3. Parse response into structured entries
     4. Save as CSV
 
@@ -294,7 +294,7 @@ def process_single_pdf(pdf_path: Path) -> dict:
 # =============================================================================
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="VSWG single-step zero-shot inference")
+    parser = argparse.ArgumentParser(description="VSWG single-step single-step inference")
     parser.add_argument(
         "--model", default=MODEL_NAME,
         help=f"Gemini model name (default: {MODEL_NAME})"

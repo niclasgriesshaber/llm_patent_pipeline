@@ -6,7 +6,7 @@ Entry Match Rate (avg),99.93%
 Matched Entries (total),1384
 GT Entries (total),1385
 Entry Match Rate (aggregate),99.93%
-CER (Zero-Shot vs Perfect),0.0207
+CER (Single-Step vs Perfect),0.0207
 CER (Student vs Perfect),0.0272
 Performance Gap,+0.0065
 Variable: patent_id,99.93%

@@ -8,26 +8,26 @@ Purpose:
     Creates an interactive Plotly.js line plot showing Character Error Rate (CER)
     by year with THREE traces:
     1. Multi-stage pipeline (Gemini-2.5-Pro + cleaning) — blue
-    2. Zero-shot (Gemini-3.1-Pro-Preview, 1 call/page) — green
+    2. Single-step (Gemini-3.1-Pro-Preview, 1 call/page) — green
     3. Research Assistants (student baseline) — red
 
     This is copied and refined from create_cer_chart_html() in core/benchmarking.py
-    (lines 981-1127), extended with the zero-shot trace.
+    (lines 981-1127), extended with the single-step trace.
 
     Uses identical CER computation to ensure fair comparison across all traces.
 
 Data sources:
     - Multi-stage: data/benchmarking/results/02_dataset_cleaning/gemini-2.5-flash-lite/
                    cleaning_v0.1_prompt/llm_csv/ (the cleaned pipeline output)
-    - Zero-shot:   data/benchmarking/results/revisions_for_VSWG_zero_shot/llm_csv/
+    - Single-step:   data/benchmarking/results/revisions_for_VSWG_single_step/llm_csv/
     - Student:     data/benchmarking/input_data/transcriptions_xlsx/student_transcriptions_xlsx/
     - Perfect:     data/benchmarking/input_data/transcriptions_xlsx/perfect_transcriptions_xlsx/
 
 Output:
-    data/benchmarking/results/revisions_for_VSWG_zero_shot/revisions_for_VSWG_cer_by_year.html
+    data/benchmarking/results/revisions_for_VSWG_single_step/revisions_for_VSWG_cer_by_year.html
 
 Usage:
-    python revisions_for_VSWG_zero_shot_cer_plot.py
+    python revisions_for_VSWG_single_step_cer_plot.py
 =============================================================================
 """
 
@@ -60,11 +60,11 @@ STUDENT_XLSX_DIR = BENCHMARKING_ROOT / "input_data" / "transcriptions_xlsx" / "s
 MULTISTAGE_CSV_DIR = (BENCHMARKING_ROOT / "results" / "02_dataset_cleaning" /
                       "gemini-2.5-flash-lite" / "cleaning_v0.1_prompt" / "llm_csv")
 
-# Zero-shot results
-ZERO_SHOT_CSV_DIR = BENCHMARKING_ROOT / "results" / "revisions_for_VSWG_zero_shot" / "llm_csv"
+# Single-step results
+SINGLE_STEP_CSV_DIR = BENCHMARKING_ROOT / "results" / "revisions_for_VSWG_single_step" / "llm_csv"
 
 # Output
-OUTPUT_DIR = BENCHMARKING_ROOT / "results" / "revisions_for_VSWG_zero_shot"
+OUTPUT_DIR = BENCHMARKING_ROOT / "results" / "revisions_for_VSWG_single_step"
 OUTPUT_FILE = OUTPUT_DIR / "revisions_for_VSWG_cer_by_year.html"
 
 
@@ -100,8 +100,8 @@ def compute_cer_for_file(source_entries: list, perfect_entries: list) -> float:
 
 def compute_all_cer_by_year():
     """
-    Compute CER per year for all three sources: multi-stage, zero-shot, student.
-    Returns a list of dicts with year, multistage_cer, zeroshot_cer, student_cer.
+    Compute CER per year for all three sources: multi-stage, single-step, student.
+    Returns a list of dicts with year, multistage_cer, singlestep_cer, student_cer.
     """
     # Build lookup of perfect transcription files (normalize _perfected suffix)
     perfect_files = {}
@@ -126,8 +126,8 @@ def compute_all_cer_by_year():
             base_stem = stem
         multistage_files[base_stem] = f
 
-    # Build lookup of zero-shot files
-    zeroshot_files = {f.stem: f for f in ZERO_SHOT_CSV_DIR.glob("*.csv")}
+    # Build lookup of single-step files
+    singlestep_files = {f.stem: f for f in SINGLE_STEP_CSV_DIR.glob("*.csv")}
 
     # Find stems that have perfect transcription (required as ground truth)
     all_stems = sorted(perfect_files.keys())
@@ -157,16 +157,16 @@ def compute_all_cer_by_year():
         else:
             row['multistage_cer'] = None
 
-        # Zero-shot CER
-        if stem in zeroshot_files:
-            zs_df = load_llm_file(zeroshot_files[stem])
-            if not zs_df.empty:
-                zs_entries = zs_df['entry'].astype(str).tolist()
-                row['zeroshot_cer'] = compute_cer_for_file(zs_entries, perfect_entries)
+        # Single-step CER
+        if stem in singlestep_files:
+            ss_df = load_llm_file(singlestep_files[stem])
+            if not ss_df.empty:
+                ss_entries = ss_df['entry'].astype(str).tolist()
+                row['singlestep_cer'] = compute_cer_for_file(ss_entries, perfect_entries)
             else:
-                row['zeroshot_cer'] = None
+                row['singlestep_cer'] = None
         else:
-            row['zeroshot_cer'] = None
+            row['singlestep_cer'] = None
 
         # Student CER
         if stem in student_files:
@@ -197,8 +197,8 @@ def generate_plot_html(cer_data: list) -> str:
     ms_years = [d['year'] for d in cer_data if d.get('multistage_cer') is not None]
     ms_cers = [d['multistage_cer'] for d in cer_data if d.get('multistage_cer') is not None]
 
-    zs_years = [d['year'] for d in cer_data if d.get('zeroshot_cer') is not None]
-    zs_cers = [d['zeroshot_cer'] for d in cer_data if d.get('zeroshot_cer') is not None]
+    ss_years = [d['year'] for d in cer_data if d.get('singlestep_cer') is not None]
+    ss_cers = [d['singlestep_cer'] for d in cer_data if d.get('singlestep_cer') is not None]
 
     st_years = [d['year'] for d in cer_data if d.get('student_cer') is not None]
     st_cers = [d['student_cer'] for d in cer_data if d.get('student_cer') is not None]
@@ -206,8 +206,8 @@ def generate_plot_html(cer_data: list) -> str:
     # Convert to JSON for JavaScript embedding
     ms_years_js = json.dumps(ms_years)
     ms_cers_js = json.dumps(ms_cers)
-    zs_years_js = json.dumps(zs_years)
-    zs_cers_js = json.dumps(zs_cers)
+    ss_years_js = json.dumps(ss_years)
+    ss_cers_js = json.dumps(ss_cers)
     st_years_js = json.dumps(st_years)
     st_cers_js = json.dumps(st_cers)
 
@@ -215,7 +215,7 @@ def generate_plot_html(cer_data: list) -> str:
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>VSWG Revisions — CER by Year (Zero-Shot vs Multi-Stage vs Student)</title>
+    <title>VSWG Revisions — CER by Year (Single-Step vs Multi-Stage vs Student)</title>
     <style>
         body {{ font-family: -apple-system, BlinkMacSystemFont, sans-serif; margin: 0; background: #f8f9fa; }}
         .container {{ max-width: 1100px; margin: auto; padding: 30px; }}
@@ -227,7 +227,7 @@ def generate_plot_html(cer_data: list) -> str:
 <body>
 <div class="container">
     <h1>Character Error Rate by Year</h1>
-    <p style="text-align:center; color:#666;">Comparison: Multi-Stage Pipeline vs Zero-Shot vs Research Assistants</p>
+    <p style="text-align:center; color:#666;">Comparison: Multi-Stage Pipeline vs Single-Step vs Research Assistants</p>
 
     <div class="methodology">
         <strong>Methodology:</strong> CER computed identically for all three traces —
@@ -256,16 +256,16 @@ def generate_plot_html(cer_data: list) -> str:
             hovertemplate: 'Year: %{{x}}<br>Multi-Stage CER: %{{y:.2%}}<extra></extra>'
         }};
 
-        // Trace 2: Zero-shot (Gemini-3.1-Pro-Preview, 1 call/page)
+        // Trace 2: Single-step (Gemini-3.1-Pro-Preview, 1 call/page)
         var trace2 = {{
-            x: {zs_years_js},
-            y: {zs_cers_js},
+            x: {ss_years_js},
+            y: {ss_cers_js},
             type: 'scatter',
             mode: 'lines+markers',
-            name: 'Zero-Shot (Gemini-3.1-Pro-Preview)',
+            name: 'Single-Step (Gemini-3.1-Pro-Preview)',
             line: {{ color: '#ff9800', width: 3 }},
             marker: {{ size: 8, color: '#ff9800' }},
-            hovertemplate: 'Year: %{{x}}<br>Zero-Shot CER: %{{y:.2%}}<extra></extra>'
+            hovertemplate: 'Year: %{{x}}<br>Single-Step CER: %{{y:.2%}}<extra></extra>'
         }};
 
         // Trace 3: Research Assistants (student baseline)
@@ -377,9 +377,9 @@ def main():
 
     # Log summary
     ms_count = sum(1 for d in cer_data if d.get('multistage_cer') is not None)
-    zs_count = sum(1 for d in cer_data if d.get('zeroshot_cer') is not None)
+    ss_count = sum(1 for d in cer_data if d.get('singlestep_cer') is not None)
     st_count = sum(1 for d in cer_data if d.get('student_cer') is not None)
-    logging.info(f"Data points: Multi-stage={ms_count}, Zero-shot={zs_count}, Student={st_count}")
+    logging.info(f"Data points: Multi-stage={ms_count}, Single-step={ss_count}, Student={st_count}")
 
     # Generate HTML
     html_content = generate_plot_html(cer_data)

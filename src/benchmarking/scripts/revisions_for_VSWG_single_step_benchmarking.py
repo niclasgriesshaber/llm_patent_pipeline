@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
 =============================================================================
-REVISIONS FOR VSWG — Zero-Shot Benchmarking & Evaluation Script
+REVISIONS FOR VSWG — Single-Step Benchmarking & Evaluation Script
 =============================================================================
 
 Purpose:
-    Evaluates the zero-shot inference results against ground truth, producing
+    Evaluates the single-step inference results against ground truth, producing
     a single consolidated table suitable for inclusion in the VSWG paper.
 
     This script uses IDENTICAL methodology to the existing pipeline benchmarks
@@ -17,7 +17,7 @@ Purpose:
 
 Metrics computed:
     1. Entry Match Rate: fuzzy match of extracted entries vs perfect transcriptions
-    2. CER (LLM vs Perfect): character error rate of zero-shot extraction
+    2. CER (LLM vs Perfect): character error rate of single-step extraction
     3. CER (Student vs Perfect): student baseline for performance gap
     4. Performance Gap: student_cer - llm_cer (positive = LLM better)
     5. Variable-level match rates: per-field accuracy (patent_id, name, location,
@@ -28,7 +28,7 @@ Outputs:
     - revisions_for_VSWG_report.html             (visual reference)
 
 Usage:
-    python revisions_for_VSWG_zero_shot_benchmarking.py
+    python revisions_for_VSWG_single_step_benchmarking.py
 =============================================================================
 """
 
@@ -67,9 +67,9 @@ BENCHMARKING_ROOT = PROJECT_ROOT / "data" / "benchmarking"
 PERFECT_XLSX_DIR = BENCHMARKING_ROOT / "input_data" / "transcriptions_xlsx" / "perfect_transcriptions_xlsx"
 STUDENT_XLSX_DIR = BENCHMARKING_ROOT / "input_data" / "transcriptions_xlsx" / "student_transcriptions_xlsx"
 
-# Zero-shot results directory
-ZERO_SHOT_DIR = BENCHMARKING_ROOT / "results" / "revisions_for_VSWG_zero_shot"
-LLM_CSV_DIR = ZERO_SHOT_DIR / "llm_csv"
+# Single-step results directory
+SINGLE_STEP_DIR = BENCHMARKING_ROOT / "results" / "revisions_for_VSWG_single_step"
+LLM_CSV_DIR = SINGLE_STEP_DIR / "llm_csv"
 
 # Label used in the "Model" row / HTML title, and suffix appended to output
 # filenames. Defaults reproduce the original 3.1-Pro run; overridable via CLI so a
@@ -91,7 +91,7 @@ VARIABLE_FIELDS = ['patent_id', 'name', 'location', 'description', 'date']
 
 def load_llm_csv_with_variables(filepath: Path) -> pd.DataFrame:
     """
-    Load a zero-shot LLM CSV file which contains both entry text AND variables.
+    Load a single-step LLM CSV file which contains both entry text AND variables.
     Applies same preprocessing as existing scripts: NFC normalization, whitespace trimming.
     """
     try:
@@ -397,7 +397,7 @@ def evaluate_all():
         {"Metric": "Matched Entries (total)", "Value": f"{total_matched_entries}"},
         {"Metric": "GT Entries (total)", "Value": f"{total_gt_entries}"},
         {"Metric": "Entry Match Rate (aggregate)", "Value": f"{aggregate_entry_match_rate:.2f}%"},
-        {"Metric": "CER (Zero-Shot vs Perfect)", "Value": f"{agg_llm_cer:.4f}"},
+        {"Metric": "CER (Single-Step vs Perfect)", "Value": f"{agg_llm_cer:.4f}"},
         {"Metric": "CER (Student vs Perfect)", "Value": f"{agg_student_cer:.4f}"},
         {"Metric": "Performance Gap", "Value": f"{agg_performance_gap:+.4f}"},
         {"Metric": "Variable: patent_id", "Value": f"{variable_rates.get('patent_id', 0):.2f}%"},
@@ -409,14 +409,14 @@ def evaluate_all():
     ]
 
     table_df = pd.DataFrame(table_rows)
-    csv_output_path = ZERO_SHOT_DIR / f"revisions_for_VSWG_consolidated_table{OUT_SUFFIX}.csv"
+    csv_output_path = SINGLE_STEP_DIR / f"revisions_for_VSWG_consolidated_table{OUT_SUFFIX}.csv"
     table_df.to_csv(csv_output_path, index=False)
     logging.info(f"Consolidated table saved to: {csv_output_path}")
 
     # =========================================================================
     # OUTPUT: HTML REPORT
     # =========================================================================
-    html_output_path = ZERO_SHOT_DIR / f"revisions_for_VSWG_report{OUT_SUFFIX}.html"
+    html_output_path = SINGLE_STEP_DIR / f"revisions_for_VSWG_report{OUT_SUFFIX}.html"
     html_content = generate_html_report(
         table_rows, per_file_results, variable_rates, overall_variable_rate,
         agg_llm_cer, agg_student_cer, agg_performance_gap, avg_entry_match_rate
@@ -426,7 +426,7 @@ def evaluate_all():
 
     # Print summary to console
     logging.info("=" * 70)
-    logging.info("CONSOLIDATED RESULTS (Zero-Shot Digitization)")
+    logging.info("CONSOLIDATED RESULTS (Single-Step Digitization)")
     logging.info("=" * 70)
     for row in table_rows:
         logging.info(f"  {row['Metric']:30s} {row['Value']}")
@@ -472,7 +472,7 @@ def generate_html_report(table_rows, per_file_results, variable_rates, overall_v
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>VSWG Revisions — Zero-Shot Digitization Benchmark</title>
+    <title>VSWG Revisions — Single-Step Digitization Benchmark</title>
     <style>
         body {{ font-family: -apple-system, BlinkMacSystemFont, sans-serif; margin: 0; background: #f8f9fa; color: #333; }}
         .container {{ max-width: 1000px; margin: auto; padding: 30px; }}
@@ -489,7 +489,7 @@ def generate_html_report(table_rows, per_file_results, variable_rates, overall_v
 </head>
 <body>
 <div class="container">
-    <h1>Zero-Shot Digitization Benchmark</h1>
+    <h1>Single-Step Digitization Benchmark</h1>
     <p style="text-align:center; color:#666;">VSWG Paper Revisions — {html_escape(MODEL_LABEL)}</p>
 
     <div class="methodology">
@@ -503,8 +503,8 @@ def generate_html_report(table_rows, per_file_results, variable_rates, overall_v
     {table_html}
 
     <div class="note">
-        <strong>Performance Gap:</strong> Computed as CER(Student) - CER(Zero-Shot).
-        Positive values indicate the zero-shot approach outperforms research assistants.
+        <strong>Performance Gap:</strong> Computed as CER(Student) - CER(Single-Step).
+        Positive values indicate the single-step approach outperforms research assistants.
     </div>
 
     <h2>Per-File Results</h2>
