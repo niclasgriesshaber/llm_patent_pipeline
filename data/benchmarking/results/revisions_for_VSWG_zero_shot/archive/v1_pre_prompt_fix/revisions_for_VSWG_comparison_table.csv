@@ -1,0 +1,9 @@
+Metric,Multi-Stage Pipeline,Zero-Shot,Research Assistants
+CER (total),0.0203,0.0215,0.0272
+Entry Match Rate,99.49%,99.93%,98.05%
+Var: patent_id,99.49%,99.93%,97.86%
+Var: name,96.08%,97.25%,95.88%
+Var: location,95.72%,94.65%,93.23%
+Var: description,97.82%,97.62%,97.79%
+Var: date,99.35%,99.49%,99.34%
+Var: Overall,97.69%,97.79%,96.82%

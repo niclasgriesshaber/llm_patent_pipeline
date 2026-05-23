@@ -31,6 +31,7 @@ Usage:
 import re
 import json
 import logging
+import argparse
 import tempfile
 import pandas as pd
 import fitz  # PyMuPDF — used instead of pdf2image+poppler for PDF→PNG conversion
@@ -60,6 +61,9 @@ if not API_KEY:
     raise RuntimeError("GOOGLE_API_KEY not found. Set it in config/.env or as an environment variable.")
 
 # Model configuration
+# MODEL_NAME and OUTPUT_DIR default to the original 3.1-Pro setup but can be
+# overridden via CLI args (--model, --output-dir) so a second model (e.g.
+# gemini-2.5-pro) can be run into a separate directory without clobbering results.
 MODEL_NAME = "gemini-3.1-pro-preview"
 TEMPERATURE = 0.0
 MAX_OUTPUT_TOKENS = 20000
@@ -289,10 +293,34 @@ def process_single_pdf(pdf_path: Path) -> dict:
 # MAIN EXECUTION
 # =============================================================================
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="VSWG single-step zero-shot inference")
+    parser.add_argument(
+        "--model", default=MODEL_NAME,
+        help=f"Gemini model name (default: {MODEL_NAME})"
+    )
+    parser.add_argument(
+        "--output-dir", default=str(OUTPUT_DIR),
+        help="Directory for output CSVs (default: the 3.1-Pro llm_csv dir)"
+    )
+    parser.add_argument(
+        "--max-output-tokens", type=int, default=MAX_OUTPUT_TOKENS,
+        help=f"Max output tokens — raise for models with heavy dynamic thinking "
+             f"that truncate JSON (default: {MAX_OUTPUT_TOKENS})"
+    )
+    return parser.parse_args()
+
+
 def main():
     """
     Main function: discovers PDFs, runs inference in parallel, reports results.
     """
+    global MODEL_NAME, OUTPUT_DIR, MAX_OUTPUT_TOKENS
+    args = parse_args()
+    MODEL_NAME = args.model
+    OUTPUT_DIR = Path(args.output_dir)
+    MAX_OUTPUT_TOKENS = args.max_output_tokens
+
     # Ensure output directory exists
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 

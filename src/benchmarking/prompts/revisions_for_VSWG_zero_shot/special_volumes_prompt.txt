@@ -8,9 +8,11 @@ For each patent entry, transcribe the full entry text verbatim (preserving all h
 
 - patent_id: in these volumes, the patent ID is at the END of the entry in "P. R. XXXX." format — extract only the digits
 - name: patent holder name(s) only — exclude occupations and exclude the Vertreter (representative)
-- location: patent holder location(s) including street addresses — exclude the Vertreter location
+- location: patent holder location(s) including street addresses — exclude the Vertreter location. Include ALL locations when multiple patent holders are listed
 - description: the patent subject matter — exclude Vertreter information and exclude addendum notes like "(Zusatz zum Patent ...)"
 - date: the German registration date (before the final "P. R. XXXX.")
+
+Do not add trailing periods to extracted variable values. The variables should contain clean text without sentence-ending punctuation.
 
 Use "NaN" for any variable that cannot be reliably determined (e.g., in truncated entries).
 

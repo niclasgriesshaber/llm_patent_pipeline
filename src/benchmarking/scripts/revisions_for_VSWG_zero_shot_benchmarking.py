@@ -10,8 +10,8 @@ Purpose:
 
     This script uses IDENTICAL methodology to the existing pipeline benchmarks
     to ensure a fair comparison:
-    - Same fuzzy matching algorithm (greedy mutual-best, threshold=0.85)
-    - Same CER calculation (Levenshtein normalized distance on cleaned text)
+    - Same fuzzy matching algorithm (greedy mutual-best, threshold=0.9 for entries)
+    - Same CER calculation (Levenshtein normalized distance on raw concatenated text)
     - Same performance gap formula (CER_student - CER_llm)
     - Same variable comparison (compare_variables with 0.85 threshold)
 
@@ -34,6 +34,7 @@ Usage:
 
 import sys
 import logging
+import argparse
 import pandas as pd
 from pathlib import Path
 from rapidfuzz.distance import Levenshtein
@@ -43,10 +44,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 # Import EXISTING benchmarking functions to ensure identical methodology
 from core.benchmarking import (
-    normalize_text_for_cer,
     create_clean_text_for_cer,
     load_gt_file,
-    load_llm_file,
     match_entries_fuzzy,
     extract_year_from_filename,
     html_escape
@@ -72,8 +71,15 @@ STUDENT_XLSX_DIR = BENCHMARKING_ROOT / "input_data" / "transcriptions_xlsx" / "s
 ZERO_SHOT_DIR = BENCHMARKING_ROOT / "results" / "revisions_for_VSWG_zero_shot"
 LLM_CSV_DIR = ZERO_SHOT_DIR / "llm_csv"
 
-# Fuzzy matching threshold — same as used in core/benchmarking.py defaults
-FUZZY_THRESHOLD = 0.85
+# Label used in the "Model" row / HTML title, and suffix appended to output
+# filenames. Defaults reproduce the original 3.1-Pro run; overridable via CLI so a
+# second model (gemini-2.5-pro) can be evaluated without overwriting outputs.
+MODEL_LABEL = "Gemini-3.1-Pro-Preview"
+OUT_SUFFIX = ""
+
+# Fuzzy matching thresholds — aligned with existing pipeline benchmarks
+ENTRY_FUZZY_THRESHOLD = 0.9      # For entry-level matching (same as 01/02 scripts)
+VARIABLE_FUZZY_THRESHOLD = 0.85  # For variable-level comparison (same as 03 script)
 
 # Variable fields (same as in 03_variable_extraction_benchmarking.py)
 VARIABLE_FIELDS = ['patent_id', 'name', 'location', 'description', 'date']
@@ -161,20 +167,20 @@ def load_perfect_with_variables(filepath: Path) -> pd.DataFrame:
 # =============================================================================
 
 def compare_variables(gt_value: str, llm_value: str, threshold: float = 0.85) -> bool:
-    """
-    Compare two variable values using fuzzy matching.
-    IDENTICAL to compare_variables() in 03_variable_extraction_benchmarking.py.
-    """
+    """Compare two variable values using fuzzy matching."""
     if pd.isna(gt_value) or pd.isna(llm_value):
         return False
 
-    gt_str = str(gt_value).strip()
-    llm_str = str(llm_value).strip()
-
-    if gt_str == "" or llm_str == "" or gt_str == "NaN" or llm_str == "NaN":
+    try:
+        gt_str = str(gt_value).strip()
+        llm_str = str(llm_value).strip()
+    except (TypeError, ValueError):
         return False
 
-    # Special handling for patent_id: remove .0 from LLM value
+    if gt_str == "" or llm_str == "":
+        return False
+
+    # Special handling for patent_id: remove .0 from LLM value if present
     if gt_str.isdigit() and llm_str.endswith('.0'):
         llm_str = llm_str[:-2]
 
@@ -264,21 +270,15 @@ def evaluate_all():
         # ----- ENTRY MATCHING (identical to core/benchmarking.py) -----
         # Fuzzy match LLM entries against perfect transcriptions
         gt_matches, llm_matches, _, _ = match_entries_fuzzy(
-            perfect_df[['id', 'entry']], llm_df[['id', 'entry']], FUZZY_THRESHOLD
+            perfect_df[['id', 'entry']], llm_df[['id', 'entry']], ENTRY_FUZZY_THRESHOLD
         )
         entry_match_rate = sum(gt_matches) / len(gt_matches) * 100 if gt_matches else 0
 
         # ----- CER CALCULATION (identical to core/benchmarking.py) -----
-        # Concatenate all entries and normalize for CER
-        perfect_clean = normalize_text_for_cer(
-            ' '.join(perfect_df['entry'].astype(str).tolist())
-        )
-        llm_clean = normalize_text_for_cer(
-            ' '.join(llm_df['entry'].astype(str).tolist())
-        )
-        student_clean = normalize_text_for_cer(
-            ' '.join(student_df['entry'].astype(str).tolist())
-        )
+        # Concatenate all entry text (raw, no normalization) — same as main branch
+        perfect_clean = create_clean_text_for_cer(perfect_df[['id', 'entry']])
+        llm_clean = create_clean_text_for_cer(llm_df[['id', 'entry']])
+        student_clean = create_clean_text_for_cer(student_df)  # already [id, entry] only
 
         # CER = normalized Levenshtein distance (same as existing scripts)
         llm_cer = Levenshtein.normalized_distance(perfect_clean, llm_clean)
@@ -287,9 +287,8 @@ def evaluate_all():
 
         # ----- VARIABLE MATCHING (identical to 03_variable_extraction_benchmarking.py) -----
         # Match entries first, then compare variables for matched pairs
-        perfect_var_df = load_perfect_with_variables(perfect_path)
         gt_matches_var, llm_matches_var, gt_match_ids, _ = match_entries_fuzzy(
-            perfect_var_df[['id', 'entry']], llm_df[['id', 'entry']], FUZZY_THRESHOLD
+            perfect_df[['id', 'entry']], llm_df[['id', 'entry']], ENTRY_FUZZY_THRESHOLD
         )
 
         # For each matched pair, compare variables field by field
@@ -306,7 +305,7 @@ def evaluate_all():
             if llm_row_candidates.empty:
                 continue
             llm_row = llm_row_candidates.iloc[0]
-            gt_row = perfect_var_df.iloc[i]
+            gt_row = perfect_df.iloc[i]
 
             for field in VARIABLE_FIELDS:
                 gt_val = str(gt_row.get(field, "NaN"))
@@ -315,7 +314,7 @@ def evaluate_all():
                 variable_stats[field]['total'] += 1
                 total_variable_cells += 1
 
-                if compare_variables(gt_val, llm_val, FUZZY_THRESHOLD):
+                if compare_variables(gt_val, llm_val, VARIABLE_FUZZY_THRESHOLD):
                     variable_stats[field]['matched'] += 1
                     matched_variable_cells += 1
 
@@ -341,27 +340,30 @@ def evaluate_all():
     # =========================================================================
 
     # Aggregate CER: concatenate ALL entries across all files then compute CER
-    # (this is the approach used in overall_cer_calculation.py)
-    all_perfect_entries = []
-    all_llm_entries = []
-    all_student_entries = []
+    # (same approach as create_performance_gap_analysis in core/benchmarking.py)
+    all_perfect_text = ""
+    all_llm_text = ""
+    all_student_text = ""
 
     for stem, llm_path, perfect_path, student_path in common_files:
         perfect_df = load_perfect_with_variables(perfect_path)
         llm_df = load_llm_csv_with_variables(llm_path)
         student_df = load_gt_file(student_path)
 
-        if not perfect_df.empty:
-            all_perfect_entries.extend(perfect_df['entry'].astype(str).tolist())
-        if not llm_df.empty:
-            all_llm_entries.extend(llm_df['entry'].astype(str).tolist())
-        if not student_df.empty:
-            all_student_entries.extend(student_df['entry'].astype(str).tolist())
+        if not perfect_df.empty and not llm_df.empty and not student_df.empty:
+            perfect_text = create_clean_text_for_cer(perfect_df[['id', 'entry']])
+            llm_text = create_clean_text_for_cer(llm_df[['id', 'entry']])
+            student_text = create_clean_text_for_cer(student_df)
 
-    # Compute aggregate CER on concatenated text
-    agg_perfect_clean = normalize_text_for_cer(' '.join(all_perfect_entries))
-    agg_llm_clean = normalize_text_for_cer(' '.join(all_llm_entries))
-    agg_student_clean = normalize_text_for_cer(' '.join(all_student_entries))
+            if perfect_text and llm_text and student_text:
+                all_perfect_text += perfect_text + " "
+                all_llm_text += llm_text + " "
+                all_student_text += student_text + " "
+
+    # Compute aggregate CER on concatenated text (same as main branch)
+    agg_perfect_clean = all_perfect_text
+    agg_llm_clean = all_llm_text
+    agg_student_clean = all_student_text
 
     agg_llm_cer = Levenshtein.normalized_distance(agg_perfect_clean, agg_llm_clean)
     agg_student_cer = Levenshtein.normalized_distance(agg_perfect_clean, agg_student_clean)
@@ -369,6 +371,11 @@ def evaluate_all():
 
     # Aggregate entry match rate (average across files)
     avg_entry_match_rate = sum(r['entry_match_rate'] for r in per_file_results) / len(per_file_results)
+
+    # Aggregate entry counts (for the "X / N (NN.NN%)" cell in the LaTeX table)
+    total_matched_entries = sum(r['matched_entries'] for r in per_file_results)
+    total_gt_entries = sum(r['perfect_entries'] for r in per_file_results)
+    aggregate_entry_match_rate = (total_matched_entries / total_gt_entries * 100) if total_gt_entries else 0
 
     # Aggregate variable match rates
     overall_variable_rate = (matched_variable_cells / total_variable_cells * 100) if total_variable_cells > 0 else 0
@@ -383,10 +390,13 @@ def evaluate_all():
     # =========================================================================
 
     table_rows = [
-        {"Metric": "Model", "Value": "Gemini-3.1-Pro-Preview"},
-        {"Metric": "Approach", "Value": "Zero-shot (1 call/page)"},
+        {"Metric": "Model", "Value": MODEL_LABEL},
+        {"Metric": "Approach", "Value": "Single-step (1 call/page)"},
         {"Metric": "Files Evaluated", "Value": f"{len(per_file_results)}"},
         {"Metric": "Entry Match Rate (avg)", "Value": f"{avg_entry_match_rate:.2f}%"},
+        {"Metric": "Matched Entries (total)", "Value": f"{total_matched_entries}"},
+        {"Metric": "GT Entries (total)", "Value": f"{total_gt_entries}"},
+        {"Metric": "Entry Match Rate (aggregate)", "Value": f"{aggregate_entry_match_rate:.2f}%"},
         {"Metric": "CER (Zero-Shot vs Perfect)", "Value": f"{agg_llm_cer:.4f}"},
         {"Metric": "CER (Student vs Perfect)", "Value": f"{agg_student_cer:.4f}"},
         {"Metric": "Performance Gap", "Value": f"{agg_performance_gap:+.4f}"},
@@ -399,14 +409,14 @@ def evaluate_all():
     ]
 
     table_df = pd.DataFrame(table_rows)
-    csv_output_path = ZERO_SHOT_DIR / "revisions_for_VSWG_consolidated_table.csv"
+    csv_output_path = ZERO_SHOT_DIR / f"revisions_for_VSWG_consolidated_table{OUT_SUFFIX}.csv"
     table_df.to_csv(csv_output_path, index=False)
     logging.info(f"Consolidated table saved to: {csv_output_path}")
 
     # =========================================================================
     # OUTPUT: HTML REPORT
     # =========================================================================
-    html_output_path = ZERO_SHOT_DIR / "revisions_for_VSWG_report.html"
+    html_output_path = ZERO_SHOT_DIR / f"revisions_for_VSWG_report{OUT_SUFFIX}.html"
     html_content = generate_html_report(
         table_rows, per_file_results, variable_rates, overall_variable_rate,
         agg_llm_cer, agg_student_cer, agg_performance_gap, avg_entry_match_rate
@@ -480,13 +490,13 @@ def generate_html_report(table_rows, per_file_results, variable_rates, overall_v
 <body>
 <div class="container">
     <h1>Zero-Shot Digitization Benchmark</h1>
-    <p style="text-align:center; color:#666;">VSWG Paper Revisions — Gemini-3.1-Pro-Preview</p>
+    <p style="text-align:center; color:#666;">VSWG Paper Revisions — {html_escape(MODEL_LABEL)}</p>
 
     <div class="methodology">
         <strong>Methodology:</strong> This evaluation uses identical comparison logic to the
-        existing multi-stage pipeline benchmarks: same fuzzy matching threshold (0.85),
-        same CER normalization (lowercase, ASCII a-z + 0-9), same Levenshtein distance
-        metric, same variable comparison function. Results are directly comparable.
+        existing multi-stage pipeline benchmarks: same fuzzy entry matching threshold (0.9),
+        same CER calculation (Levenshtein normalized distance on raw concatenated text),
+        same variable comparison (0.85 threshold). Results are directly comparable.
     </div>
 
     <h2>Consolidated Results</h2>
@@ -508,5 +518,26 @@ def generate_html_report(table_rows, per_file_results, variable_rates, overall_v
 # ENTRY POINT
 # =============================================================================
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="VSWG single-step benchmarking/evaluation")
+    parser.add_argument(
+        "--llm-dir", default=str(LLM_CSV_DIR),
+        help="Directory of single-step LLM CSVs to evaluate (default: 3.1-Pro llm_csv)"
+    )
+    parser.add_argument(
+        "--model-label", default=MODEL_LABEL,
+        help=f"Model label for the report (default: {MODEL_LABEL})"
+    )
+    parser.add_argument(
+        "--out-suffix", default=OUT_SUFFIX,
+        help="Suffix appended to output filenames (default: none — overwrites 3.1-Pro outputs)"
+    )
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
+    args = parse_args()
+    LLM_CSV_DIR = Path(args.llm_dir)
+    MODEL_LABEL = args.model_label
+    OUT_SUFFIX = args.out_suffix
     evaluate_all()

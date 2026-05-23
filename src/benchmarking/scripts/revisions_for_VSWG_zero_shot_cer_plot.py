@@ -35,14 +35,13 @@ import sys
 import json
 import logging
 import re
-import pandas as pd
 from pathlib import Path
 from rapidfuzz.distance import Levenshtein
 
 # Add the scripts directory to path so we can import core modules
 sys.path.insert(0, str(Path(__file__).parent))
 
-from core.benchmarking import normalize_text_for_cer, load_gt_file, load_llm_file
+from core.benchmarking import load_gt_file, load_llm_file
 
 # =============================================================================
 # CONFIGURATION
@@ -82,13 +81,12 @@ def extract_year(filename: str) -> str:
 def compute_cer_for_file(source_entries: list, perfect_entries: list) -> float:
     """
     Compute CER between source entries and perfect entries.
-    Uses identical normalization as core/benchmarking.py:
-    - Concatenate all entries with spaces
-    - Normalize: lowercase, ASCII a-z 0-9 only, collapse whitespace
+    Uses identical method as create_clean_text_for_cer() in core/benchmarking.py:
+    - Concatenate all entries with spaces (raw text, no normalization)
     - Levenshtein normalized distance
     """
-    source_text = normalize_text_for_cer(' '.join(source_entries))
-    perfect_text = normalize_text_for_cer(' '.join(perfect_entries))
+    source_text = ' '.join(str(e).strip() for e in source_entries if str(e).strip())
+    perfect_text = ' '.join(str(e).strip() for e in perfect_entries if str(e).strip())
 
     if not perfect_text:
         return 0.0
@@ -233,7 +231,7 @@ def generate_plot_html(cer_data: list) -> str:
 
     <div class="methodology">
         <strong>Methodology:</strong> CER computed identically for all three traces —
-        text normalized to lowercase ASCII a-z + 0-9, Levenshtein normalized distance
+        raw concatenated entry text compared via Levenshtein normalized distance
         against perfect (expert-verified) transcriptions. Lower CER = better performance.
     </div>
 
