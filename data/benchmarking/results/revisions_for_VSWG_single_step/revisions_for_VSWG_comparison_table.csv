@@ -5,8 +5,8 @@ Extracted Entries,1385,1386,1373
 Matched Entries,1378,1384,1358
 Entry Match Rate,99.49%,99.93%,98.05%
 Var: patent_id,99.49%,99.93%,97.86%
-Var: name,96.08%,97.83%,95.88%
-Var: location,95.72%,96.75%,93.23%
-Var: description,97.82%,99.28%,97.79%
-Var: date,99.35%,99.71%,99.34%
-Var: Overall,97.69%,98.70%,96.82%
+Var: name,92.16%,95.16%,94.92%
+Var: location,91.36%,92.20%,90.65%
+Var: description,93.40%,97.47%,96.91%
+Var: date,98.91%,99.42%,98.53%
+Var: Overall,95.07%,96.84%,95.77%

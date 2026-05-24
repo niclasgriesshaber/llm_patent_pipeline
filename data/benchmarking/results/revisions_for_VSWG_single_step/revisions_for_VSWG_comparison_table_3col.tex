@@ -19,16 +19,16 @@ Matched Entries & 1{,}378 & 1{,}248 & 1{,}384 \\
 \midrule
 \multicolumn{4}{l}{\textit{Field-level accuracy (matched entries)}} \\[2pt]
 Patent ID & 99.49\% & 99.60\% & 99.93\% \\
-Name & 96.08\% & 94.55\% & 97.83\% \\
-Location & 95.72\% & 96.55\% & 96.75\% \\
-Description & 97.82\% & 97.68\% & 99.28\% \\
-Date & 99.35\% & 99.20\% & 99.71\% \\
+Assignee & 92.16\% & 90.95\% & 95.16\% \\
+Location & 91.36\% & 93.27\% & 92.20\% \\
+Title & 93.40\% & 94.95\% & 97.47\% \\
+Date & 98.91\% & 98.24\% & 99.42\% \\
 \midrule
-Overall & 97.69\% & 97.52\% & 98.70\% \\
+Overall & 95.07\% & 95.40\% & 96.84\% \\
 \bottomrule
 \end{tabular}
 \begin{tablenotes}
 \small
-\item \textit{Notes.} All three approaches decode at temperature~$0$ and are scored with identical methodology. CER (aggregate) is the Levenshtein normalized distance on the concatenated raw entry text across all 41~files, reported as a percentage. Entry matching uses a greedy mutual-best algorithm with a 0.9 similarity threshold; Recall is the share of the 1{,}385~\textit{perfect} entries that are matched, and Precision is the share of \textit{extracted} entries that are matched. Field-level accuracy is the share of \textit{matched entry pairs} where the extracted variable meets a 0.85 fuzzy similarity threshold; its denominator is therefore the number of matched entries, which differs from the 1{,}385~perfect total. The two-stage pipeline uses Gemini~2.5~Pro for entry extraction and Gemini~2.5~Flash~Lite for cleaning and variable extraction; the single-step columns extract entries and all five fields in one call per page. The two single-step columns are configuration-identical (dynamic thinking budget) and differ only in the model, whereas the two-stage pipeline reflects the production configuration (fixed thinking budget) and therefore differs from the single-step columns in inference settings, though all columns share the same ground truth and evaluation.
+\item \textit{Notes.} All three approaches decode at temperature~$0$ and are scored with identical methodology. CER (aggregate) is the Levenshtein normalized distance on the concatenated raw entry text across all 41~files, reported as a percentage. Entry matching uses a greedy mutual-best algorithm with a 0.9 similarity threshold; Recall is the share of the 1{,}385~\textit{perfect} entries that are matched, and Precision is the share of \textit{extracted} entries that are matched. Field-level accuracy is the share of \textit{matched entry pairs} where the extracted variable meets a 0.90 fuzzy similarity threshold; its denominator is therefore the number of matched entries, which differs from the 1{,}385~perfect total. The two-stage pipeline uses Gemini~2.5~Pro for entry extraction and Gemini~2.5~Flash~Lite for cleaning and variable extraction; the single-step columns extract entries and all five fields in one call per page. The two single-step columns are configuration-identical (dynamic thinking budget) and differ only in the model, whereas the two-stage pipeline reflects the production configuration (fixed thinking budget) and therefore differs from the single-step columns in inference settings, though all columns share the same ground truth and evaluation.
 \end{tablenotes}
 \end{table}

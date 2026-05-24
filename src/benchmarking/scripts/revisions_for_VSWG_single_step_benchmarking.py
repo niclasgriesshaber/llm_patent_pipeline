@@ -13,7 +13,7 @@ Purpose:
     - Same fuzzy matching algorithm (greedy mutual-best, threshold=0.9 for entries)
     - Same CER calculation (Levenshtein normalized distance on raw concatenated text)
     - Same performance gap formula (CER_student - CER_llm)
-    - Same variable comparison (compare_variables with 0.85 threshold)
+    - Same variable comparison (compare_variables with 0.90 threshold)
 
 Metrics computed:
     1. Entry Match Rate: fuzzy match of extracted entries vs perfect transcriptions
@@ -79,7 +79,7 @@ OUT_SUFFIX = ""
 
 # Fuzzy matching thresholds — aligned with existing pipeline benchmarks
 ENTRY_FUZZY_THRESHOLD = 0.9      # For entry-level matching (same as 01/02 scripts)
-VARIABLE_FUZZY_THRESHOLD = 0.85  # For variable-level comparison (same as 03 script)
+VARIABLE_FUZZY_THRESHOLD = 0.90  # For variable-level comparison (matches the 03 script's CLI default and Table 2)
 
 # Variable fields (same as in 03_variable_extraction_benchmarking.py)
 VARIABLE_FIELDS = ['patent_id', 'name', 'location', 'description', 'date']
@@ -166,7 +166,7 @@ def load_perfect_with_variables(filepath: Path) -> pd.DataFrame:
 # VARIABLE COMPARISON (same logic as 03_variable_extraction_benchmarking.py)
 # =============================================================================
 
-def compare_variables(gt_value: str, llm_value: str, threshold: float = 0.85) -> bool:
+def compare_variables(gt_value: str, llm_value: str, threshold: float = 0.90) -> bool:
     """Compare two variable values using fuzzy matching."""
     if pd.isna(gt_value) or pd.isna(llm_value):
         return False
@@ -496,7 +496,7 @@ def generate_html_report(table_rows, per_file_results, variable_rates, overall_v
         <strong>Methodology:</strong> This evaluation uses identical comparison logic to the
         existing multi-stage pipeline benchmarks: same fuzzy entry matching threshold (0.9),
         same CER calculation (Levenshtein normalized distance on raw concatenated text),
-        same variable comparison (0.85 threshold). Results are directly comparable.
+        same variable comparison (0.90 threshold). Results are directly comparable.
     </div>
 
     <h2>Consolidated Results</h2>

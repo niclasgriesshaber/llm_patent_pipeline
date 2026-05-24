@@ -10,8 +10,8 @@ CER (Single-Step vs Perfect),0.0207
 CER (Student vs Perfect),0.0272
 Performance Gap,+0.0065
 Variable: patent_id,99.93%
-Variable: name,97.83%
-Variable: location,96.75%
-Variable: description,99.28%
-Variable: date,99.71%
-Overall Variable Match,98.70%
+Variable: name,95.16%
+Variable: location,92.20%
+Variable: description,97.47%
+Variable: date,99.42%
+Overall Variable Match,96.84%
