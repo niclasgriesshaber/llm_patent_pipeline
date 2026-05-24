@@ -106,7 +106,7 @@ def get_common_file_stems() -> List[str]:
 
 # --- Fuzzy Matching Logic ---
 
-def match_entries_fuzzy(gt_df: pd.DataFrame, student_df: pd.DataFrame, threshold: float = 0.85) -> Tuple[List[bool], List[bool], List[str], List[str]]:
+def match_entries_fuzzy(gt_df: pd.DataFrame, student_df: pd.DataFrame, threshold: float = 0.90) -> Tuple[List[bool], List[bool], List[str], List[str]]:
     """Performs mutual best fuzzy matching between two dataframes."""
     gt_entries = gt_df['entry'].astype(str).tolist()
     student_entries = student_df['entry'].astype(str).tolist()
@@ -160,7 +160,7 @@ def match_entries_fuzzy(gt_df: pd.DataFrame, student_df: pd.DataFrame, threshold
     return gt_matches, student_matches, gt_match_ids, student_match_ids
 
 
-def compare_variables(gt_value: str, student_value: str, threshold: float = 0.85) -> bool:
+def compare_variables(gt_value: str, student_value: str, threshold: float = 0.90) -> bool:
     """Compare two variable values using fuzzy matching."""
     if pd.isna(gt_value) or pd.isna(student_value):
         return False
@@ -221,7 +221,7 @@ def make_table_html(df: pd.DataFrame, matches: List[bool], match_ids: List[str],
 
 # --- Stage 1: Patent Entry Matching ---
 
-def run_stage1_entry_matching(threshold: float = 0.85):
+def run_stage1_entry_matching(threshold: float = 0.90):
     """
     Stage 1: Compare student entries to perfect entries.
     Generates patent_entry_matching.html report.
@@ -378,7 +378,7 @@ def generate_entry_matching_report(comparison_results: List[Dict], total_perfect
 
 # --- Stage 3: Variable Extraction Comparison ---
 
-def run_stage3_variable_extraction(threshold: float = 0.85):
+def run_stage3_variable_extraction(threshold: float = 0.90):
     """
     Stage 3: Compare student-extracted variables to perfect variables.
     Generates variable_extraction_report.html report.
