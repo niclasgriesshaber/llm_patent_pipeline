@@ -46,7 +46,7 @@ def get_prompt_for_pdf(pdf_path: Path, prompt_name: str) -> str:
             raise FileNotFoundError(f"Prompt file not found: {prompt_file}")
         return prompt_file.read_text(encoding='utf-8')
 
-def run_single_benchmark(model_name: str, prompt_name: str, max_workers: int = 20, threshold: float = 0.85):
+def run_single_benchmark(model_name: str, prompt_name: str, max_workers: int = 20, threshold: float = 0.90):
     """
     Executes the full benchmarking pipeline for a single model and prompt combination.
     """

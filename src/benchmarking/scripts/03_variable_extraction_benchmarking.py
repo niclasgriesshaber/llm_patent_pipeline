@@ -331,7 +331,7 @@ def load_llm_variables(llm_csv_path: Path) -> pd.DataFrame:
         logging.error(f"Error loading LLM file {llm_csv_path}: {e}")
         return pd.DataFrame()
 
-def match_entries_fuzzy(gt_df: pd.DataFrame, llm_df: pd.DataFrame, threshold: float = 0.85):
+def match_entries_fuzzy(gt_df: pd.DataFrame, llm_df: pd.DataFrame, threshold: float = 0.90):
     """Performs mutual best fuzzy matching between two dataframes based on entry field."""
     gt_entries = gt_df['entry'].astype(str).tolist()
     llm_entries = llm_df['entry'].astype(str).tolist()
@@ -384,7 +384,7 @@ def match_entries_fuzzy(gt_df: pd.DataFrame, llm_df: pd.DataFrame, threshold: fl
     
     return gt_matches, llm_matches, gt_match_ids, llm_match_ids
 
-def compare_variables(gt_value: str, llm_value: str, threshold: float = 0.85) -> bool:
+def compare_variables(gt_value: str, llm_value: str, threshold: float = 0.90) -> bool:
     """Compare two variable values using fuzzy matching."""
     if pd.isna(gt_value) or pd.isna(llm_value):
         return False
@@ -481,7 +481,7 @@ def create_global_threshold_table(threshold_sensitivity: dict) -> str:
 
 def make_variable_table_html_simple(gt_df: pd.DataFrame, llm_df: pd.DataFrame, gt_matches: list, 
                                    llm_matches: list, gt_match_ids: list, llm_match_ids: list, 
-                                   filename_stem: str, threshold: float = 0.85) -> tuple:
+                                   filename_stem: str, threshold: float = 0.90) -> tuple:
     """Create HTML table for variable comparison (simplified version without individual threshold analysis)."""
     # Get matched pairs
     matched_pairs = []
@@ -564,7 +564,7 @@ def make_variable_table_html_simple(gt_df: pd.DataFrame, llm_df: pd.DataFrame, g
     }
 
 def run_variable_comparison(llm_csv_dir: Path, gt_xlsx_dir: Path, output_dir: Path, 
-                          fuzzy_threshold: float = 0.85, comparison_type: str = "perfect"):
+                          fuzzy_threshold: float = 0.90, comparison_type: str = "perfect"):
     """Run variable-specific comparison between LLM and ground truth."""
     logging.info(f"Starting {comparison_type} variable comparison")
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -827,7 +827,7 @@ def make_full_html(title: str, global_threshold_html: str, sections_html: str, s
 
 # --- Main Benchmarking Function ---
 
-def run_single_benchmark(dataset_cleaning_model: str, dataset_cleaning_prompt: str, model: str, prompt: str, threshold: float = 0.85):
+def run_single_benchmark(dataset_cleaning_model: str, dataset_cleaning_prompt: str, model: str, prompt: str, threshold: float = 0.90):
     """
     Executes the full benchmarking pipeline for variable extraction for a single model and prompt combination.
     """

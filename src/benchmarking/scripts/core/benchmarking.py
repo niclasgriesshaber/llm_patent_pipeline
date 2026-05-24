@@ -130,7 +130,7 @@ def load_llm_file(filepath: Path) -> pd.DataFrame:
 
 # --- Fuzzy Matching Logic ---
 
-def match_entries_fuzzy(gt_df: pd.DataFrame, llm_df: pd.DataFrame, threshold: float = 0.85) -> Tuple[List[bool], List[bool], List[str], List[str]]:
+def match_entries_fuzzy(gt_df: pd.DataFrame, llm_df: pd.DataFrame, threshold: float = 0.90) -> Tuple[List[bool], List[bool], List[str], List[str]]:
     """Performs mutual best fuzzy matching between two dataframes."""
     gt_entries = gt_df['entry'].astype(str).tolist()
     llm_entries = llm_df['entry'].astype(str).tolist()
@@ -358,7 +358,7 @@ def find_matching_files(sampled_pdfs_dir: Path, student_xlsx_dir: Path, perfect_
     return file_matrix
 
 def create_three_table_comparison(perfect_df: pd.DataFrame, llm_df: pd.DataFrame, student_df: pd.DataFrame, 
-                                 filename_stem: str, fuzzy_threshold: float = 0.85) -> Dict[str, Any]:
+                                 filename_stem: str, fuzzy_threshold: float = 0.90) -> Dict[str, Any]:
     """
     Create a three-table comparison showing Perfect, LLM, and Student transcriptions.
     
@@ -410,7 +410,7 @@ def create_three_table_comparison(perfect_df: pd.DataFrame, llm_df: pd.DataFrame
     }
 
 def create_two_table_comparison(perfect_df: pd.DataFrame, llm_df: pd.DataFrame, 
-                               filename_stem: str, fuzzy_threshold: float = 0.85) -> Dict[str, Any]:
+                               filename_stem: str, fuzzy_threshold: float = 0.90) -> Dict[str, Any]:
     """
     Create a two-table comparison showing Perfect and LLM transcriptions only.
     
@@ -567,7 +567,7 @@ def make_three_table_diff_html(perfect_text: str, llm_text: str, student_text: s
 # --- Main Comparison Logic ---
 
 def run_unified_comparison(llm_csv_dir: Path, student_xlsx_dir: Path, perfect_xlsx_dir: Path, 
-                          sampled_pdfs_dir: Path, output_dir: Path, fuzzy_threshold: float = 0.85):
+                          sampled_pdfs_dir: Path, output_dir: Path, fuzzy_threshold: float = 0.90):
     """
     Run unified comparison with three-table format: Perfect, LLM, and Student.
     Generates comprehensive HTML reports with academic transparency.
@@ -672,7 +672,7 @@ def run_unified_comparison(llm_csv_dir: Path, student_xlsx_dir: Path, perfect_xl
     }
 
 def run_unified_comparison_cer_only(llm_csv_dir: Path, student_xlsx_dir: Path, perfect_xlsx_dir: Path, 
-                                   sampled_pdfs_dir: Path, output_dir: Path, fuzzy_threshold: float = 0.85):
+                                   sampled_pdfs_dir: Path, output_dir: Path, fuzzy_threshold: float = 0.90):
     """
     Run unified comparison with three-table format but only generate the character error rate report.
     This is used by the 02 script to avoid generating unnecessary fuzzy matching reports.
@@ -1384,7 +1384,7 @@ def make_unified_diff_html(title: str, document_outline: str, availability_summa
     </html>
     '''
 
-def run_after_cleaning_comparison(llm_csv_dir: Path, perfect_xlsx_dir: Path, output_dir: Path, fuzzy_threshold: float = 0.85):
+def run_after_cleaning_comparison(llm_csv_dir: Path, perfect_xlsx_dir: Path, output_dir: Path, fuzzy_threshold: float = 0.90):
     """
     Runs the comparison logic specifically for after-cleaning evaluation.
     Generates only the 2-way patent entry matching report (Perfect vs LLM-cleaned).
@@ -1393,7 +1393,7 @@ def run_after_cleaning_comparison(llm_csv_dir: Path, perfect_xlsx_dir: Path, out
         llm_csv_dir: Directory containing LLM-cleaned CSV files
         perfect_xlsx_dir: Directory containing perfect transcription Excel files
         output_dir: Directory to save comparison results
-        fuzzy_threshold: Threshold for fuzzy matching (default: 0.85)
+        fuzzy_threshold: Threshold for fuzzy matching (default: 0.90)
     """
     logging.info(f"Starting after-cleaning comparison for data in {llm_csv_dir.name}")
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -1479,7 +1479,7 @@ def run_after_cleaning_comparison(llm_csv_dir: Path, perfect_xlsx_dir: Path, out
         'files_with_results': [r['filename_stem'] for r in comparison_results]
     }
 
-def run_variable_extraction_comparison(llm_csv_dir: Path, perfect_xlsx_dir: Path, output_dir: Path, fuzzy_threshold: float = 0.85):
+def run_variable_extraction_comparison(llm_csv_dir: Path, perfect_xlsx_dir: Path, output_dir: Path, fuzzy_threshold: float = 0.90):
     """
     Runs the variable extraction comparison logic specifically for Perfect vs LLM-with-variables evaluation.
     Generates only the variable extraction report comparing Perfect transcriptions vs LLM CSV files with extracted variables.
@@ -1488,7 +1488,7 @@ def run_variable_extraction_comparison(llm_csv_dir: Path, perfect_xlsx_dir: Path
         llm_csv_dir: Directory containing LLM CSV files with extracted variables
         perfect_xlsx_dir: Directory containing perfect transcription Excel files
         output_dir: Directory to save comparison results
-        fuzzy_threshold: Threshold for fuzzy matching (default: 0.85)
+        fuzzy_threshold: Threshold for fuzzy matching (default: 0.90)
     """
     logging.info(f"Starting variable extraction comparison for data in {llm_csv_dir.name}")
     output_dir.mkdir(parents=True, exist_ok=True)

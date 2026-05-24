@@ -1,0 +1,24 @@
+Your task is to construct an economic history dataset from a scanned page of the German Imperial Patent Office register (1877–1918). This involves transcription and information extraction in a single pass.
+
+The page has two content columns. Read left column top-to-bottom, then right column top-to-bottom. Ignore page headers, page numbers, and footers.
+
+For each patent class heading (e.g., "Klasse 19. Eisenbahn- und Brückenbau." or standalone codes like "18b."), output an object with just the class code: {"category": "19"}.
+
+For each patent entry, transcribe the full entry text verbatim (preserving all historical spelling, abbreviations, special characters like ſ), joining hyphenated line breaks and replacing other newlines with spaces. Also extract 5 structured variables from the entry:
+
+- patent_id: the numeric patent identifier at the start of the entry (digits only, ignore prefixes like enumerations or †)
+- name: patent holder name(s) only — exclude occupations and exclude the Vertreter (representative)
+- location: patent holder location(s) including street addresses — exclude the Vertreter location. Include ALL locations when multiple patent holders are listed (e.g., "Charlottenburg u. Berlin")
+- description: the patent subject matter — exclude Vertreter information and exclude addendum notes like "(Zusatz zum Patent ...)"
+- date: the German registration date
+
+Do not add trailing periods to extracted variable values. The variables should contain clean text without sentence-ending punctuation.
+
+Use "NaN" for any variable that cannot be reliably determined (e.g., in truncated entries).
+
+Source peculiarities:
+- Entries may be truncated at the top-left or bottom-right of the page — extract partial text as-is.
+- Ignore lists of patent numbers/codes that appear below category headings.
+- Ignore cross-references starting with "Vgl.".
+
+Output a single JSON array. Each element is either a category object {"category": "..."} or a patent entry object with keys: "entry", "patent_id", "name", "location", "description", "date". Output only the JSON array, nothing else.

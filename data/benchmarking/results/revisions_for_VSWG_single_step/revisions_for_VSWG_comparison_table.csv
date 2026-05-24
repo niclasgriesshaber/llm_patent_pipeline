@@ -1,0 +1,12 @@
+Metric,Multi-Stage Pipeline,Single-Step,Research Assistants
+CER (total),0.0203,0.0207,0.0272
+Perfect Entries,1385,1385,1385
+Extracted Entries,1385,1386,1373
+Matched Entries,1378,1384,1358
+Entry Match Rate,99.49%,99.93%,98.05%
+Var: patent_id,99.49%,99.93%,97.86%
+Var: name,92.16%,95.16%,94.92%
+Var: location,91.36%,92.20%,90.65%
+Var: description,93.40%,97.47%,96.91%
+Var: date,98.91%,99.42%,98.53%
+Var: Overall,95.07%,96.84%,95.77%

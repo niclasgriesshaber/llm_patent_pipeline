@@ -315,7 +315,7 @@ def process_single_csv(csv_path: Path, output_dir: Path, prompt_name: str, model
 
 # --- Main Functions ---
 
-def run_single_benchmark(dataset_construction_model: str, dataset_construction_prompt: str, model: str, prompt: str, threshold: float = 0.85):
+def run_single_benchmark(dataset_construction_model: str, dataset_construction_prompt: str, model: str, prompt: str, threshold: float = 0.90):
     """
     Executes the full benchmarking pipeline for dataset cleaning for a single model and prompt combination.
     """
