@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-An LLM-based data pipeline for constructing historical datasets from archival image scans. Originally developed for German patents (1877–1918). **Researchers can adapt this to their own image corpora using LLM-assisted coding tools** (e.g., Cursor).
+An LLM-based data pipeline for constructing historical datasets from archival image scans. Originally developed for German patents (1877–1918). **Researchers can adapt this to their own image corpora using LLM-assisted coding tools** (e.g., Cursor, Claude Code, Codex).
 
 ## Pipeline Overview
 
@@ -59,7 +59,7 @@ Dashed boxes represent carefully refined prompts (see `src/*/prompts/`). The out
 1. **Download [Cursor](https://cursor.sh/)** (an AI-assisted code editor)
 2. Tell the agent (`Cmd + L`) to clone this repository (`https://github.com/niclasgriesshaber/llm_patent_pipeline.git`) to your location of choice
 3. Ask the agent about the pipeline and how to adapt it to your image corpus
-4. If you want to use the Gemini model family, generate API keys at [aistudio.google.com/api-keys](https://aistudio.google.com/api-keys)
+4. If you want to use the Gemini model family to extract information from your archival image corpus, you can generate API keys at [aistudio.google.com/api-keys](https://aistudio.google.com/api-keys)
 
 ## Benchmarking Data
 
