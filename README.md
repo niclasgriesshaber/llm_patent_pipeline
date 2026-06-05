@@ -30,7 +30,7 @@ This pipeline is tailored towards our image corpus, available at [digi.bib.uni-m
                                            │ For each row                     │
                                            ▼                                  │
   ┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┐      ┌───────────────────────┐                      │
-    Reparation Prompt   ─────▶ │ Gemini-2.5-Flash-Lite │                      │
+    Repair Prompt       ─────▶ │ Gemini-2.5-Flash-Lite │                      │
   └ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┘      └───────────┬───────────┘                      │
                                            │                                  │
                                            ▼                                  │
