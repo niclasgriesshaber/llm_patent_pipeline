@@ -103,5 +103,5 @@ This repository does not endorse any product or organization. No legal or financ
 
 ## Contact
 
-If you have any questions, please feel free to reach out to niclas.griesshaber@linacre.ox.ac.uk
+If you have any questions, please feel free to reach out to niclas.griesshaber@history.ox.ac.uk
 
